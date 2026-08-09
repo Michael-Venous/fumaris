@@ -1,3 +1,6 @@
+from .diagnostics import console_log
+
+
 def collection_signature(collection):
     if collection is None:
         return None
@@ -21,9 +24,9 @@ def participants(domain_props):
         for path, objects in collection_tree(collection):
             for obj in objects:
                 key = obj.as_pointer()
-                if key in seen or not hasattr(obj, "plume_forge"):
+                if key in seen or not hasattr(obj, "fumaris"):
                     continue
-                if obj.plume_forge.smoke_object_type != role:
+                if obj.fumaris.smoke_object_type != role:
                     continue
                 seen.add(key)
                 item = participant_for_object(
@@ -43,7 +46,9 @@ def participants(domain_props):
     add_collection(domain_props.outflow_collection, "outflow")
 
     if skipped:
-        print("Plume Forge skipped unsupported participants: " + ", ".join(skipped))
+        console_log(
+            "Fumaris skipped unsupported participants: " + ", ".join(skipped)
+        )
     return result
 
 
@@ -56,7 +61,7 @@ def collection_tree(collection, parent_path=""):
 
 
 def participant_for_object(obj, role, participant_id, collection_name):
-    props = obj.plume_forge
+    props = obj.fumaris
 
     def item(kind):
         return {

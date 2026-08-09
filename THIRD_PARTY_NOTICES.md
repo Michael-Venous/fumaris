@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-Plume Forge includes or dynamically uses third-party software. Each component
-remains subject to its own license; no Plume Forge license overrides those
+Fumaris includes or dynamically uses third-party software. Each component
+remains subject to its own license; no Fumaris license overrides those
 terms.
 
 The packaged runtime may include:
@@ -9,6 +9,12 @@ The packaged runtime may include:
 | Component | License |
 | --- | --- |
 | NVIDIA Flow / PhysX distribution | BSD-3-Clause |
+| Slang shader compiler | Apache-2.0 WITH LLVM-exception |
+| glslang used by Slang | BSD, MIT, Apache-2.0, and GPL-3.0 with Bison exception |
+| miniz used by Slang | MIT |
+| SPIR-V Headers used by Slang | Modified MIT |
+| SPIR-V Tools used by Slang | Apache-2.0 |
+| ankerl::unordered_dense used by Slang | MIT |
 | OpenVDB | MPL-2.0 |
 | oneTBB | Apache-2.0 |
 | Imath | BSD-3-Clause |
@@ -22,7 +28,7 @@ The packaged runtime may include:
 | zlib / zlib-ng compatibility library | Zlib |
 | Zstandard | BSD-3-Clause or GPL-2.0-only |
 | bzip2 | bzip2-1.0.6 |
-| XZ Utils | mixed public-domain, LGPL, and GPL terms |
+| liblzma from XZ Utils | 0BSD |
 | GCC runtime libraries | GPL with GCC Runtime Library Exception |
 
 Release engineering must include complete applicable license texts for every
@@ -31,6 +37,12 @@ binary shipped by a particular platform package before public sale.
 Project home pages:
 
 - https://github.com/NVIDIA-Omniverse/PhysX
+- https://github.com/shader-slang/slang
+- https://github.com/KhronosGroup/glslang
+- https://github.com/richgel999/miniz
+- https://github.com/KhronosGroup/SPIRV-Headers
+- https://github.com/KhronosGroup/SPIRV-Tools
+- https://github.com/martinus/unordered_dense
 - https://github.com/AcademySoftwareFoundation/openvdb
 - https://github.com/uxlfoundation/oneTBB
 - https://github.com/AcademySoftwareFoundation/Imath
@@ -44,5 +56,5 @@ Project home pages:
 - https://github.com/madler/zlib
 - https://github.com/facebook/zstd
 
-This notice is an inventory aid, not a substitute for the complete license
-texts required by the final release package.
+Applicable license texts are included in the `licenses` directory. The exact
+set of native libraries differs by platform package.

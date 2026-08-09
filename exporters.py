@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import bpy
 from mathutils import Matrix, Vector
 
+from .diagnostics import console_log
 from .mesh_export import (
     _add_mesh_initial_velocity,
     _add_mesh_motion_velocities,
@@ -51,9 +52,9 @@ def build_session(
     scene = context.scene
     domain = domain or context.object
     sim_start, sim_end = simulation_frame_range(domain)
-    participants = _participants(domain.plume_forge)
+    participants = _participants(domain.fumaris)
     if not any(item["role"] == "emitter" for item in participants):
-        raise RuntimeError("Assign an emitter collection containing at least one PlumeForge emitter")
+        raise RuntimeError("Assign an emitter collection containing at least one Fumaris emitter")
 
     if log_participants:
         _log_participants(domain, participants)
@@ -64,15 +65,16 @@ def build_session(
         "end_frame": sim_end if end_frame is None else end_frame,
         "fps": scene.render.fps / scene.render.fps_base,
         "output_directory": output_directory_for_object(domain),
-        "output_prefix": domain.plume_forge.output_prefix or "plume_forge_",
-        "vdb_compression": getattr(domain.plume_forge, "vdb_compression", "active_mask"),
+        "output_prefix": domain.fumaris.output_prefix or "fumaris_",
+        "vdb_compression": getattr(domain.fumaris, "vdb_compression", "active_mask"),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
-        "flow_profile_enabled": os.environ.get(
-            "PLUME_FORGE_FLOW_PROFILE", ""
+        "flow_profile_enabled": (
+            os.environ.get("FUMARIS_FLOW_PROFILE")
+            or os.environ.get("PLUME_FORGE_FLOW_PROFILE", "")
         ).strip().lower() in {"1", "true", "yes", "on"},
-        "preview_max_points": _preview_max_points(domain.plume_forge, preview_max_points),
-        "initial_domain": _domain_state(domain.plume_forge, resolution_scale),
+        "preview_max_points": _preview_max_points(domain.fumaris, preview_max_points),
+        "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
     return settings, participants
 
@@ -87,7 +89,7 @@ def _preview_max_points(props, override=None):
 
 
 def session_structure_signature(domain):
-    props = domain.plume_forge
+    props = domain.fumaris
     sim_start, sim_end = simulation_frame_range(domain)
     participants = _participants(props)
     return (
@@ -106,10 +108,10 @@ def session_structure_signature(domain):
                 item["collection"],
                 item["object"].name,
                 item["object"].type,
-                _participant_shape(item["object"].plume_forge),
-                getattr(item["object"].plume_forge, "gn_subtype", ""),
-                getattr(item["object"].plume_forge, "particle_subtype", ""),
-                getattr(item["object"].plume_forge, "collider_type", ""),
+                _participant_shape(item["object"].fumaris),
+                getattr(item["object"].fumaris, "gn_subtype", ""),
+                getattr(item["object"].fumaris, "particle_subtype", ""),
+                getattr(item["object"].fumaris, "collider_type", ""),
             )
             for item in participants
         ),
@@ -159,8 +161,8 @@ def build_frame(
     return FramePacket(
         {
             "frame": frame,
-            "preview_max_points": _preview_max_points((domain or context.object).plume_forge),
-            "domain": _domain_state((domain or context.object).plume_forge, resolution_scale),
+            "preview_max_points": _preview_max_points((domain or context.object).fumaris),
+            "domain": _domain_state((domain or context.object).fumaris, resolution_scale),
             "meshes": meshes,
             "boxes": boxes,
             "spheres": spheres,
@@ -174,14 +176,14 @@ def build_frame(
 
 
 def _log_participants(domain, participants):
-    print(f"Plume Forge participants for {domain.name}:")
+    console_log(f"Fumaris participants for {domain.name}:")
     for item in participants:
         obj = item["object"]
-        print(
+        console_log(
             "  "
             f"#{item['id']} {item['role']}/{item['kind']} "
             f"{obj.name} collection={item.get('collection', '')} "
-            f"enabled={bool(obj.plume_forge.participant_enabled)}"
+            f"enabled={bool(obj.fumaris.participant_enabled)}"
         )
 
 
@@ -200,6 +202,7 @@ def _domain_state(props, resolution_scale=1.0):
         "allocation_speed_threshold": props.allocation_speed_threshold,
         "allocation_speed_min_smoke": props.allocation_speed_min_smoke,
         "allocate_neighbor_blocks": props.allocate_neighbor_blocks,
+        "boundary_safe_advection": props.boundary_safe_advection,
         "gravity": list(props.gravity),
         "buoyancy_per_temp": props.buoyancy_per_temp,
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
@@ -226,10 +229,11 @@ def _domain_state(props, resolution_scale=1.0):
 
 def _mesh_state(participant, depsgraph, payload, frame):
     obj = participant["object"]
-    props = obj.plume_forge
+    props = obj.fumaris
     enabled = bool(props.participant_enabled)
     if not enabled:
         participant.pop("previous_positions", None)
+        participant.pop("previous_matrix", None)
         track_deformation = False
         matrix = Matrix.Identity(4) if _is_particles(props, "mesh") else obj.evaluated_get(depsgraph).matrix_world.copy()
         positions = array("f")
@@ -291,7 +295,15 @@ def _mesh_state(participant, depsgraph, payload, frame):
     index_section = _reuse_section() if reuse_geometry else _append_array(payload, indices)
     velocity_section = _append_array(payload, velocities) if velocities else None
     minimum, maximum = _mesh_distances(props, participant["role"])
-    channels = _channels(props, participant["role"]) if enabled else _disabled_channels()
+    channels = (
+        _participant_channels(
+            props,
+            participant["role"],
+            velocity_active=bool(velocities) or _transform_moved(participant, matrix),
+        )
+        if enabled
+        else _disabled_channels()
+    )
 
     state = {
         "id": participant["id"],
@@ -315,7 +327,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
 
 def _sphere_state(participant, depsgraph):
     obj = participant["object"]
-    props = obj.plume_forge
+    props = obj.fumaris
     matrix = obj.evaluated_get(depsgraph).matrix_world
     position = matrix.translation
     if participant["role"] == "collider":
@@ -326,7 +338,18 @@ def _sphere_state(participant, depsgraph):
         radius = props.emitter_radius
     radius *= max(abs(value) for value in matrix.to_scale())
     enabled = bool(props.participant_enabled)
-    channels = _channels(props, participant["role"], matrix=matrix) if enabled else _disabled_channels()
+    channels = (
+        _participant_channels(
+            props,
+            participant["role"],
+            matrix=matrix,
+            velocity_active=_transform_moved(participant, matrix),
+        )
+        if enabled
+        else _disabled_channels()
+    )
+    if not enabled:
+        participant.pop("previous_matrix", None)
 
     return {
         "id": participant["id"],
@@ -344,10 +367,21 @@ def _sphere_state(participant, depsgraph):
 
 def _box_state(participant, depsgraph):
     obj = participant["object"]
-    props = obj.plume_forge
+    props = obj.fumaris
     matrix = obj.evaluated_get(depsgraph).matrix_world
     enabled = bool(props.participant_enabled)
-    channels = _channels(props, participant["role"], matrix=matrix) if enabled else _disabled_channels()
+    channels = (
+        _participant_channels(
+            props,
+            participant["role"],
+            matrix=matrix,
+            velocity_active=_transform_moved(participant, matrix),
+        )
+        if enabled
+        else _disabled_channels()
+    )
+    if not enabled:
+        participant.pop("previous_matrix", None)
     return {
         "id": participant["id"],
         "role": participant["role"],
@@ -362,7 +396,19 @@ def _box_state(participant, depsgraph):
 
 def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
     obj = participant["object"]
-    props = obj.plume_forge
+    props = obj.fumaris
+    matrix = obj.evaluated_get(depsgraph).matrix_world
+    enabled = bool(props.participant_enabled)
+    if not enabled:
+        return {
+            "id": participant["id"],
+            "enabled": False,
+            "filepath": "",
+            "file_version": 0,
+            "local_to_world": [value for row in matrix for value in row],
+            **_disabled_channels(),
+        }
+
     filepath = (
         _stage_gn_volume(obj, depsgraph, frame, volume_stage_dir)
         if _is_geometry_nodes(props, "volume")
@@ -372,15 +418,15 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
     if not filepath or not os.path.isfile(filepath):
         raise RuntimeError(f"{obj.name} did not provide a volume VDB")
 
-    matrix = obj.evaluated_get(depsgraph).matrix_world
-    enabled = bool(props.participant_enabled)
-    channels = _channels(props, participant["role"]) if enabled else _disabled_channels()
+    file_version = _volume_file_version(filepath)
+
     return {
         "id": participant["id"],
-        "enabled": enabled,
+        "enabled": True,
         "filepath": filepath,
+        "file_version": file_version,
         "local_to_world": [value for row in matrix for value in row],
-        **channels,
+        **_participant_channels(props, participant["role"]),
     }
 
 
@@ -414,9 +460,19 @@ def _stage_gn_volume(obj, depsgraph, frame, directory):
     return filepath
 
 
+def _volume_file_version(filepath):
+    stat = os.stat(filepath)
+    version = (
+        (stat.st_mtime_ns & ((1 << 63) - 1))
+        ^ ((stat.st_ctime_ns & ((1 << 63) - 1)) << 1)
+        ^ (stat.st_size << 7)
+    ) & ((1 << 64) - 1)
+    return version or 1
+
+
 def _effector_state(participant, depsgraph):
     obj = participant["object"]
-    props = obj.plume_forge
+    props = obj.fumaris
     matrix = obj.evaluated_get(depsgraph).matrix_world
     position = matrix.translation
     axis = matrix.to_quaternion() @ Vector((0.0, 0.0, 1.0))
@@ -466,18 +522,17 @@ def _effector_z_direction_id(name):
 
 def _sphere_cloud_state(participant, depsgraph, payload, frame):
     obj = participant["object"]
-    props = obj.plume_forge
+    props = obj.fumaris
     enabled = bool(props.participant_enabled)
     if enabled:
-        try:
-            positions, radii, velocities, values = _point_arrays(obj, props, depsgraph)
-        except RuntimeError:
-            raise
+        positions, radii, velocities, values = _point_arrays(obj, props, depsgraph)
     else:
         positions, radii, velocities, values = _empty_point_arrays()
 
     if not positions:
         positions, radii, velocities, values = _empty_point_arrays()
+
+    _disable_inactive_point_velocity_coupling(velocities, values)
 
     sections = {
         "positions": _versioned(payload, positions, frame),
@@ -551,6 +606,45 @@ def _channels(props, role, matrix=None):
     if matrix is not None:
         return _channel_values(props, velocity=_world_vector(matrix, props.velocity))
     return _channel_values(props)
+
+
+def _participant_channels(props, role, matrix=None, *, velocity_active=False):
+    channels = _channels(props, role, matrix)
+    if (
+        role == "emitter"
+        and not velocity_active
+        and not _vector_active(channels["velocity"])
+    ):
+        # A zero target with a positive Flow coupling rate is a drag field.
+        # Static sources should emit no velocity rather than pinning nearby fluid.
+        channels["couple_rate_velocity"] = 0.0
+    return channels
+
+
+def _transform_moved(participant, matrix):
+    previous = participant.get("previous_matrix")
+    participant["previous_matrix"] = matrix.copy()
+    if previous is None:
+        return False
+    return any(
+        abs(matrix[row][column] - previous[row][column]) > 1e-6
+        for row in range(4)
+        for column in range(4)
+    )
+
+
+def _vector_active(values):
+    return any(abs(value) > 1e-6 for value in values)
+
+
+def _disable_inactive_point_velocity_coupling(velocities, values):
+    coupling = values.get("couple_rate_velocities")
+    if coupling is None:
+        return
+    for index in range(min(len(coupling), len(velocities) // 3)):
+        offset = index * 3
+        if not _vector_active(velocities[offset:offset + 3]):
+            coupling[index] = 0.0
 
 
 def _channel_values(props, **overrides):

@@ -1,4 +1,4 @@
-# Plume Forge Installation
+# Fumaris Installation
 
 ## Requirements
 
@@ -12,16 +12,27 @@
 1. Download the ZIP for your operating system. Do not extract it.
 2. In Blender, open `Edit > Preferences > Extensions`.
 3. Open the menu in the upper-right and choose `Install from Disk`.
-4. Select the Plume Forge ZIP and enable the extension if prompted.
-5. Select an object and open `Physics Properties > PlumeForge`.
+4. Select the Fumaris ZIP and enable the extension if prompted.
+5. Select an object and open `Physics Properties > Fumaris`.
 
 The package is self-contained. Do not move or delete files inside the installed
 extension directory.
+
+The first simulation on a new GPU may pause for several minutes while Flow
+compiles and caches shaders. Blender remains responsive and the simulation
+controls show an initialization notice during this one-time work.
 
 ## Updating
 
 Stop any active preview or bake, close Blender, then install the new ZIP from
 disk. Keep a backup of production `.blend` files before upgrading beta builds.
+
+Fumaris 0.2.0 replaces the former Plume Forge extension ID. Disable and
+uninstall Plume Forge before installing Fumaris; do not enable both add-ons at
+once. Included beta scenes have been migrated to Fumaris's new RNA key. Other
+files saved with a development build of Plume Forge must be migrated before
+removing that build. Old default caches are migrated or cleaned when the
+corresponding domain next runs.
 
 ## Quick Start
 

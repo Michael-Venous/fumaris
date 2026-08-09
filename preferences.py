@@ -4,12 +4,12 @@ from bpy.props import StringProperty
 from .utils import runtime_validation_error
 
 
-class PlumeForgePreferences(bpy.types.AddonPreferences):
+class FumarisPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
     executable_path: StringProperty(
         name="Bridge Executable",
-        description="Optional path to a custom Plume Forge bridge executable",
+        description="Optional path to a custom Fumaris bridge executable",
         subtype="FILE_PATH",
     )
 
@@ -27,14 +27,14 @@ class PlumeForgePreferences(bpy.types.AddonPreferences):
 
 def register():
     try:
-        bpy.utils.unregister_class(PlumeForgePreferences)
+        bpy.utils.unregister_class(FumarisPreferences)
     except RuntimeError:
         pass
-    bpy.utils.register_class(PlumeForgePreferences)
+    bpy.utils.register_class(FumarisPreferences)
 
 
 def unregister():
     try:
-        bpy.utils.unregister_class(PlumeForgePreferences)
+        bpy.utils.unregister_class(FumarisPreferences)
     except RuntimeError:
         pass

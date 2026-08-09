@@ -3,6 +3,6 @@ __pycache__/
 .pytest_cache/
 bin/
 *.vdb
-plume_forge_cache/
+fumaris_cache/
 .DS_Store
 Thumbs.db

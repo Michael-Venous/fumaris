@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import Panel
 
-from .runtime import active_mode
+from .runtime import active_job, active_mode
 
 
 def _foldout(layout, props, property_name, label):
@@ -241,22 +241,24 @@ def _bake_summary(props, state):
 
 
 def _draw_domain(layout, scene, props):
+    job = active_job()
     mode = active_mode()
     is_baking = mode == "baking"
     is_previewing = mode == "previewing"
+    is_initializing = job is not None and not getattr(job, "_accepted", False)
 
     controls = layout.box()
     controls.label(text="Simulate", icon="PHYSICS")
     row = controls.row(align=True)
     sub = row.row(align=True)
     sub.enabled = mode is None
-    sub.operator("plume_forge.bake", icon="RENDER_ANIMATION", text="Bake")
+    sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
     stop = row.row(align=True)
     stop.enabled = is_baking
-    stop.operator("plume_forge.stop", icon="CANCEL", text="Stop")
+    stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
     delete = row.row(align=True)
     delete.enabled = mode is None
-    delete.operator("plume_forge.delete", icon="TRASH", text="Delete")
+    delete.operator("fumaris.delete", icon="TRASH", text="Delete")
 
     if props.simulation_state == "baking":
         controls.label(text="Simulation is baking", icon="TIME")
@@ -265,13 +267,19 @@ def _draw_domain(layout, scene, props):
     elif props.simulation_state == "stopped":
         controls.label(text=_bake_summary(props, "Stopped"), icon="PAUSE")
 
+    if is_initializing:
+        notice = controls.box()
+        notice.label(text="Initializing Flow GPU...", icon="INFO")
+        notice.label(text="First run compiles GPU shaders")
+        notice.label(text="This may take several minutes")
+
     preview = controls.row(align=True)
     play = preview.row(align=True)
     play.enabled = mode is None and props.simulation_state != "baked"
-    play.operator("plume_forge.preview_play", icon="PLAY", text="Play")
+    play.operator("fumaris.preview_play", icon="PLAY", text="Play")
     preview_stop = preview.row(align=True)
     preview_stop.enabled = is_previewing
-    preview_stop.operator("plume_forge.preview_stop", icon="CANCEL", text="Stop")
+    preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
 
     settings = controls.column(align=True)
     settings.enabled = not is_baking
@@ -355,12 +363,13 @@ def _draw_domain(layout, scene, props):
         advanced.prop(props, "allocation_speed_threshold")
         advanced.prop(props, "allocation_speed_min_smoke")
         advanced.prop(props, "allocate_neighbor_blocks")
+        advanced.prop(props, "boundary_safe_advection")
 
-class PLUMEFORGE_PT_main(Panel):
-    """PlumeForge object settings in the Physics Properties editor."""
+class FUMARIS_PT_main(Panel):
+    """Fumaris object settings in the Physics Properties editor."""
 
-    bl_label = "PlumeForge"
-    bl_idname = "PLUMEFORGE_PT_main"
+    bl_label = "Fumaris"
+    bl_idname = "FUMARIS_PT_main"
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
     bl_context = "physics"
@@ -372,7 +381,7 @@ class PLUMEFORGE_PT_main(Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.object
-        props = obj.plume_forge
+        props = obj.fumaris
 
         header = layout.box()
         if props.smoke_object_type != "domain":
@@ -394,10 +403,10 @@ class PLUMEFORGE_PT_main(Panel):
             elif props.smoke_object_type == "outflow":
                 _draw_outflow(content, props)
             elif props.smoke_object_type == "none":
-                content.label(text="Excluded from Plume Forge simulations")
+                content.label(text="Excluded from Fumaris simulations")
 
 
-CLASSES = (PLUMEFORGE_PT_main,)
+CLASSES = (FUMARIS_PT_main,)
 
 
 def register():

@@ -1,0 +1,96 @@
+FUMARIS COMMERCIAL RUNTIME LICENSE
+Version 1.0, July 23, 2026
+
+This license is an agreement between the purchaser ("you") and the seller
+identified as the licensor on the applicable storefront listing or purchase
+receipt ("Licensor").
+
+1. COVERED RUNTIME
+
+"Runtime" means the original proprietary portions of the Fumaris native
+simulation bridge executable supplied with a valid purchase. It excludes the
+Blender Python integration and all third-party or open-source components.
+Those components remain governed solely by their respective licenses.
+
+2. LICENSE GRANT
+
+Subject to payment and compliance with this license, Licensor grants you a
+limited, non-exclusive, non-transferable license to:
+
+  a. install and use the Runtime for personal or commercial content creation;
+  b. use it on the number of seats stated on your purchase receipt, or one
+     seat if the receipt does not state a quantity; and
+  c. make reasonable backup copies solely for your own licensed use.
+
+A seat may be used by one individual on that individual's workstations, but
+may not be shared concurrently with another individual. Businesses must
+purchase enough seats for the people using the Runtime.
+
+3. OUTPUT
+
+As between you and Licensor, you retain your rights in original rendered
+images, animations, OpenVDB caches, and other content you create with the
+Runtime, subject to any rights in your input materials and third-party
+components. No royalty is owed to Licensor for ordinary content output.
+
+4. RESTRICTIONS
+
+Except where applicable law expressly permits otherwise, you may not:
+
+  a. distribute, sublicense, sell, rent, lease, or share the Runtime;
+  b. publish the Runtime or make it available as part of another download;
+  c. provide hosted, service-bureau, or software-as-a-service access to the
+     Runtime for unlicensed third parties;
+  d. reverse engineer, decompile, or disassemble the proprietary Runtime;
+  e. remove or alter copyright, license, or attribution notices; or
+  f. use the Runtime or its non-public implementation to create a directly
+     competing smoke or fire simulation product.
+
+These restrictions do not limit rights that cannot lawfully be waived, and
+they do not apply to GPL or third-party components beyond their own licenses.
+
+5. OWNERSHIP
+
+Licensor and its suppliers retain all rights in the Runtime not expressly
+granted here. This license grants no ownership of the Runtime and no right to
+use the Fumaris name or branding except to identify compatible output or
+truthfully describe use of the product.
+
+6. UPDATES, SUPPORT, AND REFUNDS
+
+Access to updates, support, and refunds is governed by the terms displayed at
+the time of purchase and by mandatory consumer law. An update may require a
+newer version of Blender, drivers, or operating system.
+
+7. TERMINATION
+
+This license terminates automatically if you materially breach it and do not
+cure the breach within 14 days after notice, where a cure is possible. Upon
+termination, you must stop using and delete the Runtime. Sections concerning
+ownership, restrictions, warranty, and liability survive termination.
+
+8. WARRANTY DISCLAIMER
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE RUNTIME IS PROVIDED "AS IS" AND
+WITHOUT WARRANTIES, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR
+A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR UNINTERRUPTED OPERATION. BETA
+SOFTWARE MAY CONTAIN DEFECTS AND SHOULD NOT BE THE SOLE COPY OF PRODUCTION DATA.
+MANDATORY CONSUMER RIGHTS ARE NOT EXCLUDED.
+
+9. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR WILL NOT BE LIABLE FOR
+INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, LOSS OF
+DATA, LOSS OF PROFITS, OR BUSINESS INTERRUPTION. LICENSOR'S TOTAL LIABILITY
+ARISING FROM THE RUNTIME WILL NOT EXCEED THE AMOUNT YOU PAID FOR THE AFFECTED
+LICENSE DURING THE 12 MONTHS BEFORE THE CLAIM. THIS LIMIT DOES NOT APPLY WHERE
+LIABILITY CANNOT LAWFULLY BE LIMITED.
+
+10. GENERAL
+
+If any provision is unenforceable, it will be limited to the minimum extent
+necessary and the remaining provisions will continue. Failure to enforce a
+provision is not a waiver. Storefront terms control payment, delivery, and
+refund administration; this license controls use of the proprietary Runtime.
+In a conflict with an open-source or third-party license, that component's
+license controls for that component.

@@ -1,38 +1,23 @@
+import ctypes
 import os
 import shutil
-import ctypes
 
-from .utils import output_directory_for_object
-
-MANIFEST = "plume_forge_cache.json"
-PREVIEW_DIRECTORY = ".plume_forge_preview_cache"
-LOCK_FILE = ".plume_forge.lock"
-
-
-def manifest_path(domain):
-    return os.path.join(output_directory_for_object(domain), MANIFEST)
+LOCK_FILE = ".fumaris.lock"
+_OBSOLETE_FILES = ("fumaris_cache.json", "plume_forge_cache.json")
+_OBSOLETE_DIRECTORIES = (
+    ".fumaris_preview_cache",
+    ".plume_forge_preview_cache",
+)
 
 
-def preview_directory(domain):
-    return os.path.join(output_directory_for_object(domain), PREVIEW_DIRECTORY)
-
-
-def invalidate_cache(domain):
-    path = manifest_path(domain)
-    if os.path.isfile(path):
+def delete_obsolete_cache_state(directory):
+    for name in _OBSOLETE_FILES:
         try:
-            os.remove(path)
+            os.remove(os.path.join(directory, name))
         except OSError:
             pass
-
-
-def invalidate_preview_cache(domain):
-    directory = preview_directory(domain)
-    if os.path.isdir(directory):
-        try:
-            shutil.rmtree(directory)
-        except OSError:
-            pass
+    for name in _OBSOLETE_DIRECTORIES:
+        shutil.rmtree(os.path.join(directory, name), ignore_errors=True)
 
 
 class CacheLock:
@@ -56,7 +41,7 @@ class CacheLock:
                     pass
                 return self.acquire()
             raise RuntimeError(
-                f"Plume Forge cache is already in use: {self.directory}"
+                f"Fumaris cache is already in use: {self.directory}"
             )
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write(str(os.getpid()))
@@ -83,22 +68,31 @@ def cache_lock(directory):
     return CacheLock(directory)
 
 
-def recover_cache_lock(directory):
+def recover_cache_lock(directory, *, owner_pid=None):
     path = os.path.join(os.path.normpath(directory), LOCK_FILE)
-    if os.path.isfile(path) and _lock_is_stale(path):
+    if not os.path.isfile(path):
+        return False
+    lock_pid = _lock_owner(path)
+    if lock_pid is None or not _pid_is_alive(lock_pid) or lock_pid == owner_pid:
         try:
             os.remove(path)
         except FileNotFoundError:
             pass
+        return True
+    return False
 
 
 def _lock_is_stale(path):
+    pid = _lock_owner(path)
+    return pid is None or not _pid_is_alive(pid)
+
+
+def _lock_owner(path):
     try:
         with open(path, encoding="utf-8") as stream:
-            pid = int(stream.read().strip())
-        return not _pid_is_alive(pid)
+            return int(stream.read().strip())
     except (FileNotFoundError, ValueError):
-        return True
+        return None
 
 
 def _pid_is_alive(pid):

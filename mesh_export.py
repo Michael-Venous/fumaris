@@ -2,8 +2,6 @@ from array import array
 
 from mathutils import Vector
 
-from .participants import is_geometry_nodes as _is_geometry_nodes
-from .participants import is_particles as _is_particles
 from .runtime import geometry_revision
 
 

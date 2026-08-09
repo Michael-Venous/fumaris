@@ -3,8 +3,9 @@ import time
 import bpy
 import gpu
 
-PREVIEW_MARKER = "plume_forge_preview"
-PREVIEW_NAME = "PlumeForge Preview"
+PREVIEW_MARKER = "fumaris_preview"
+LEGACY_PREVIEW_MARKER = "plume_forge_preview"
+PREVIEW_NAME = "Fumaris Preview"
 _PREVIEWS = {}
 _DRAW_HANDLE = None
 _SHADER = None
@@ -45,13 +46,8 @@ def update_density_points(domain, data, payload):
     return (time.perf_counter() - started) * 1000.0
 
 
-def show_preview_payload(context, domain, data, payload):
-    selected = list(context.selected_objects)
-    active = context.view_layer.objects.active
-    try:
-        return update_density_points(domain, data, payload)
-    finally:
-        _restore_selection(context, domain, selected, active)
+def show_preview_payload(domain, data, payload):
+    return update_density_points(domain, data, payload)
 
 
 def clear_preview(domain):
@@ -66,7 +62,7 @@ def clear_all_previews():
     _PREVIEWS.clear()
     _remove_draw_handler()
     for obj in list(bpy.data.objects):
-        if obj.get(PREVIEW_MARKER):
+        if obj.get(PREVIEW_MARKER) or obj.get(LEGACY_PREVIEW_MARKER):
             _remove_object(obj)
     _tag_viewports()
 
@@ -177,32 +173,23 @@ def _vertex_format():
 
 
 def _world_point_size(domain, preview):
-    scale = max(0.05, float(getattr(domain.plume_forge, "preview_dot_size", 1.0)))
+    scale = max(0.05, float(getattr(domain.fumaris, "preview_dot_size", 1.0)))
     return preview["point_size"] * scale * 0.1
 
 
 def _point_color(domain):
-    props = domain.plume_forge
+    props = domain.fumaris
     color = tuple(float(value) for value in getattr(props, "preview_color", (0.35, 0.65, 1.0)))
     opacity = max(0.0, min(1.0, float(getattr(props, "preview_opacity", 0.65))))
     return (*color[:3], opacity)
 
 
-def _restore_selection(context, domain, selected, active):
-    for obj in context.selected_objects:
-        obj.select_set(False)
-    for obj in selected:
-        if bpy.data.objects.get(obj.name):
-            obj.select_set(True)
-    if active and bpy.data.objects.get(active.name):
-        context.view_layer.objects.active = active
-    elif domain and bpy.data.objects.get(domain.name):
-        context.view_layer.objects.active = domain
-
-
 def _remove_legacy_preview_objects(domain_name):
     for obj in list(bpy.data.objects):
-        if obj.get(PREVIEW_MARKER) == domain_name:
+        if (
+            obj.get(PREVIEW_MARKER) == domain_name
+            or obj.get(LEGACY_PREVIEW_MARKER) == domain_name
+        ):
             _remove_object(obj)
 
 

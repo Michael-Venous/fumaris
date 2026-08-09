@@ -1,10 +1,10 @@
 bl_info = {
-    "name": "PlumeForge",
-    "author": "PlumeForge",
-    "version": (0, 1, 0),
+    "name": "Fumaris",
+    "author": "Fumaris",
+    "version": (0, 2, 0),
     "blender": (5, 1, 0),
     "location": "Properties > Physics",
-    "description": "PhysX Flow smoke simulation addon",
+    "description": "Interactive GPU smoke and fire simulation",
     "category": "Physics",
 }
 

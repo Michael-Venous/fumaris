@@ -1,6 +1,10 @@
 _ACTIVE_JOB = None
 _GEOMETRY_REVISIONS = {}
 
+GPU_INITIALIZATION_MESSAGE = (
+    "Initializing Flow GPU; first-run shader compilation may take several minutes"
+)
+
 
 def active_job():
     return _ACTIVE_JOB
@@ -11,15 +15,10 @@ def active_mode():
     return getattr(job, "_job_mode", None) if job else None
 
 
-def active_domain_name():
-    job = active_job()
-    return getattr(job, "_domain_name", "") if job else ""
-
-
 def claim_job(job, mode):
     global _ACTIVE_JOB
     if _ACTIVE_JOB is not None and _ACTIVE_JOB is not job:
-        raise RuntimeError(f"Plume Forge is already {active_mode()}")
+        raise RuntimeError(f"Fumaris is already {active_mode()}")
     job._job_mode = mode
     _ACTIVE_JOB = job
 
@@ -28,24 +27,6 @@ def release_job(job):
     global _ACTIVE_JOB
     if _ACTIVE_JOB is job:
         _ACTIVE_JOB = None
-
-
-def clear_job():
-    global _ACTIVE_JOB
-    job = _ACTIVE_JOB
-    _ACTIVE_JOB = None
-    return job
-
-
-def is_active(*, mode=None, domain=None):
-    job = active_job()
-    if job is None:
-        return False
-    if mode is not None and getattr(job, "_job_mode", None) != mode:
-        return False
-    if domain is not None and getattr(job, "_domain_name", "") != domain.name:
-        return False
-    return True
 
 
 def geometry_revision(mesh):

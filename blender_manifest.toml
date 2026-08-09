@@ -1,10 +1,10 @@
 schema_version = "1.0.0"
 
-id = "plume_forge"
-version = "0.1.0"
-name = "Plume Forge"
+id = "fumaris"
+version = "0.2.0"
+name = "Fumaris"
 tagline = "Interactive GPU smoke and fire simulation"
-maintainer = "Plume Forge"
+maintainer = "Fumaris"
 type = "add-on"
 
 blender_version_min = "5.1.0"
@@ -12,7 +12,7 @@ license = ["SPDX:GPL-3.0-or-later"]
 platforms = ["linux-x64", "windows-x64"]
 
 [permissions]
-files = "Write OpenVDB caches and run the bundled simulation bridge"
+files = "Write OpenVDB caches and run the bundled Fumaris simulation bridge"
 
 [build]
 paths_exclude_pattern = [

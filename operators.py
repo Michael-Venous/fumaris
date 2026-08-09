@@ -8,10 +8,10 @@ from bpy.types import Operator
 from .bake_state import mark_bake_cancelled, mark_bake_complete, mark_bake_running
 from .cache import (
     cache_lock,
-    invalidate_cache,
-    invalidate_preview_cache,
+    delete_obsolete_cache_state,
     recover_cache_lock,
 )
+from .diagnostics import console_log
 from .exporters import build_session, session_structure_signature
 from .importers import (
     VOLUME_MARKER,
@@ -23,11 +23,12 @@ from .importers import (
 from .jobs import FrameRangeJob
 from .preview import clear_all_previews, clear_preview, show_preview_payload
 from .utils import (
-    base_output_directory_for_object,
+    legacy_output_directories_for_object,
     output_directory_for_object,
     simulation_frame_range,
 )
 from .runtime import (
+    GPU_INITIALIZATION_MESSAGE,
     active_job,
     active_mode,
     claim_job,
@@ -37,10 +38,10 @@ from .runtime import (
 )
 
 
-class PLUME_FORGE_OT_bake(FrameRangeJob, Operator):
-    bl_idname = "plume_forge.bake"
+class FUMARIS_OT_bake(FrameRangeJob, Operator):
+    bl_idname = "fumaris.bake"
     bl_label = "Bake"
-    bl_description = "Bake the Plume Forge simulation range to an imported VDB sequence"
+    bl_description = "Bake the Fumaris simulation range to an imported VDB sequence"
 
     _timer = None
     _worker = None
@@ -51,7 +52,7 @@ class PLUME_FORGE_OT_bake(FrameRangeJob, Operator):
     _original_frame = 0
     _restore_frame = True
     _participants = ()
-    _prefix = "plume_forge_"
+    _prefix = "fumaris_"
     _started_at = 0.0
     _submitted = False
     _completed_frames = ()
@@ -65,20 +66,18 @@ class PLUME_FORGE_OT_bake(FrameRangeJob, Operator):
     def execute(self, context):
         domain = _active_domain(context)
         if not domain:
-            self.report({"ERROR"}, "Select a Plume Forge domain")
+            self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
 
         self._domain_name = domain.name
         try:
             claim_job(self, "baking")
-            invalidate_cache(domain)
-            invalidate_preview_cache(domain)
             self._configure_job(
                 context,
                 domain,
                 clear_cache=True,
                 write_vdb=True,
-                preview_enabled=bool(domain.plume_forge.preview_bake),
+                preview_enabled=bool(domain.fumaris.preview_bake),
                 show_progress=True,
             )
         except Exception as error:
@@ -89,16 +88,16 @@ class PLUME_FORGE_OT_bake(FrameRangeJob, Operator):
             return {"CANCELLED"}
 
         mark_bake_running(domain)
-        domain.plume_forge.baked_frames = 0
-        domain.plume_forge.bake_elapsed = 0.0
-        domain.plume_forge.bake_peak_vram_mb = 0.0
-        domain.plume_forge.bake_peak_ram_mb = 0.0
+        domain.fumaris.baked_frames = 0
+        domain.fumaris.bake_elapsed = 0.0
+        domain.fumaris.bake_peak_vram_mb = 0.0
+        domain.fumaris.bake_peak_ram_mb = 0.0
+        self.report({"INFO"}, GPU_INITIALIZATION_MESSAGE)
         return self._start_modal(context)
 
     def _after_frame_complete(self, context, domain, completed, data, payload):
         if domain:
             data["blender_preview_upload_ms"] = show_preview_payload(
-                context,
                 domain,
                 data,
                 payload,
@@ -123,13 +122,12 @@ class PLUME_FORGE_OT_bake(FrameRangeJob, Operator):
                 mark_bake_complete(domain)
             self._store_bake_stats(domain)
             _activate(context, domain)
-        self.report({"INFO"}, "Plume Forge bake stopped" if self._stop_requested else "Plume Forge bake complete")
+        self.report({"INFO"}, "Fumaris bake stopped" if self._stop_requested else "Fumaris bake complete")
         return {"FINISHED"}
 
     def _cancelled(self, context, data):
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
-            invalidate_cache(domain)
             clear_preview(domain)
             mark_bake_cancelled(domain)
         self._finish(context)
@@ -139,22 +137,22 @@ class PLUME_FORGE_OT_bake(FrameRangeJob, Operator):
         stderr = data.get("stderr") or self._worker.stderr()
         if stderr:
             message = f"{message}: {stderr}"
-        print(f"Plume Forge bake stopped: {message}")
+        console_log(f"Fumaris bake stopped: {message}")
         self.report({"ERROR"}, message)
         return {"CANCELLED"}
 
     def _store_bake_stats(self, domain):
         self._sample_memory(force=True)
-        props = domain.plume_forge
+        props = domain.fumaris
         props.bake_elapsed = time.monotonic() - self._started_at
         props.bake_peak_vram_mb = self._peak_vram_bytes / (1024.0 * 1024.0)
         props.bake_peak_ram_mb = self._peak_ram_bytes / (1024.0 * 1024.0)
 
 
-class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
-    bl_idname = "plume_forge.preview_play"
+class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
+    bl_idname = "fumaris.preview_play"
     bl_label = "Preview Play"
-    bl_description = "Play a looping live Flow preview over the Plume Forge simulation range without writing VDB files"
+    bl_description = "Play a looping live Flow preview over the Fumaris simulation range without writing VDB files"
 
     _timer = None
     _worker = None
@@ -165,7 +163,7 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
     _original_frame = 0
     _restore_frame = False
     _participants = ()
-    _prefix = "plume_forge_"
+    _prefix = "fumaris_"
     _started_at = 0.0
     _submitted = False
     _completed_frames = ()
@@ -179,16 +177,16 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
         return bool(
             domain
             and not active_job()
-            and domain.plume_forge.simulation_state not in {"baking", "baked"}
+            and domain.fumaris.simulation_state not in {"baking", "baked"}
         )
 
     def execute(self, context):
         domain = _active_domain(context)
         if not domain:
-            self.report({"ERROR"}, "Select a Plume Forge domain")
+            self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
         if _is_playing(context):
-            self.report({"WARNING"}, "Stop Blender playback before starting Plume Forge preview")
+            self.report({"WARNING"}, "Stop Blender playback before starting Fumaris preview")
             return {"CANCELLED"}
 
         self._domain_name = domain.name
@@ -202,8 +200,9 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
-        domain.plume_forge.baked_frames = 0
-        print(f"Plume Forge preview started for {domain.name} frame {self._frame}")
+        domain.fumaris.baked_frames = 0
+        self.report({"INFO"}, GPU_INITIALIZATION_MESSAGE)
+        console_log(f"Fumaris preview started for {domain.name} frame {self._frame}")
         return self._start_modal(context)
 
     def _start_preview_session(self, context, domain, *, clear_preview_points=False):
@@ -239,7 +238,7 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
         self._ending_session = False
         self._completed_frames = []
         self._resolution_scale = _preview_resolution_scale(domain)
-        domain.plume_forge.baked_frames = 0
+        domain.fumaris.baked_frames = 0
         session, self._participants = build_session(
             context,
             start_frame=start,
@@ -262,10 +261,13 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
     def _submit_frame(self, context):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
-            raise RuntimeError("The active Plume Forge domain was deleted")
+            raise RuntimeError("The active Fumaris domain was deleted")
         signature = session_structure_signature(domain)
         if signature != self._session_signature:
-            print(f"Plume Forge preview restarted for {domain.name}: session structure changed")
+            console_log(
+                f"Fumaris preview restarted for {domain.name}: "
+                "session structure changed"
+            )
             if getattr(self, "_worker", None):
                 self._worker.close()
             self._restore_imported_volumes()
@@ -280,15 +282,12 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
             return
         super()._submit_frame(context)
 
-    def _preview_start_frame(self, context, domain):
-        start, end = simulation_frame_range(domain)
-        current = int(context.scene.frame_current)
-        return current if start <= current <= end else start
+    def _preview_start_frame(self, _context, domain):
+        return simulation_frame_range(domain)[0]
 
     def _after_frame_complete(self, context, domain, completed, data, payload):
         if domain:
             data["blender_preview_upload_ms"] = show_preview_payload(
-                context,
                 domain,
                 data,
                 payload,
@@ -300,15 +299,15 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         self._finish(context)
         if domain:
-            domain.plume_forge.simulation_state = "idle"
-            domain.plume_forge.bake_elapsed = time.monotonic() - self._started_at
-        print(f"Plume Forge preview complete for {self._domain_name}")
+            domain.fumaris.simulation_state = "idle"
+            domain.fumaris.bake_elapsed = time.monotonic() - self._started_at
+        console_log(f"Fumaris preview complete for {self._domain_name}")
         return {"FINISHED"}
 
     def _end_of_range(self, context, completed):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
-            return self._cancelled(context, {"message": "The active Plume Forge domain was deleted"})
+            return self._cancelled(context, {"message": "The active Fumaris domain was deleted"})
         try:
             self._restart_preview_session(context, domain)
         except Exception as error:
@@ -318,21 +317,21 @@ class PLUME_FORGE_OT_preview_play(FrameRangeJob, Operator):
     def _cancelled(self, context, data):
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
-            domain.plume_forge.simulation_state = "idle"
-            domain.plume_forge.bake_elapsed = time.monotonic() - self._started_at
+            domain.fumaris.simulation_state = "idle"
+            domain.fumaris.bake_elapsed = time.monotonic() - self._started_at
         self._finish(context)
         message = data.get("message", "Preview stopped")
         stderr = data.get("stderr") or self._worker.stderr()
         if stderr:
             message = f"{message}: {stderr}"
-        print(f"Plume Forge preview stopped: {message}")
+        console_log(f"Fumaris preview stopped: {message}")
         return {"CANCELLED"}
 
 
-class PLUME_FORGE_OT_preview_stop(Operator):
-    bl_idname = "plume_forge.preview_stop"
+class FUMARIS_OT_preview_stop(Operator):
+    bl_idname = "fumaris.preview_stop"
     bl_label = "Preview Stop"
-    bl_description = "Stop the active Plume Forge live preview and close its bridge process"
+    bl_description = "Stop the active Fumaris live preview and close its bridge process"
 
     @classmethod
     def poll(cls, context):
@@ -351,7 +350,7 @@ def _cancel_job(context, job):
     job._finished = True
     domain = bpy.data.objects.get(getattr(job, "_domain_name", ""))
     if domain:
-        domain.plume_forge.simulation_state = "idle"
+        domain.fumaris.simulation_state = "idle"
     job.request_cancel()
     if getattr(job, "_worker", None):
         job._worker.close()
@@ -376,7 +375,7 @@ def _import_cache(context, domain, directory, prefix):
     selected = list(context.selected_objects)
     active = context.view_layer.objects.active
     clear_preview(domain)
-    props = domain.plume_forge
+    props = domain.fumaris
     import_sequence(
         directory,
         simulation_frame_range(domain)[0],
@@ -393,10 +392,10 @@ def _stop_active_job():
         _cancel_job(bpy.context, job)
 
 
-class PLUME_FORGE_OT_delete(Operator):
-    bl_idname = "plume_forge.delete"
+class FUMARIS_OT_delete(Operator):
+    bl_idname = "fumaris.delete"
     bl_label = "Delete Baked"
-    bl_description = "Delete Plume Forge VDB cache files, imported volumes, and live preview dots for this domain"
+    bl_description = "Delete Fumaris VDB cache files, imported volumes, and live preview dots for this domain"
 
     @classmethod
     def poll(cls, context):
@@ -406,28 +405,33 @@ class PLUME_FORGE_OT_delete(Operator):
     def execute(self, context):
         domain = _active_domain(context)
         if not domain:
-            self.report({"ERROR"}, "Select a Plume Forge domain")
+            self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
-        prefix = domain.plume_forge.output_prefix or "plume_forge_"
+        if active_job():
+            self.report({"ERROR"}, "Stop the active Fumaris simulation first")
+            return {"CANCELLED"}
+        prefix = domain.fumaris.output_prefix or "fumaris_"
         directory = output_directory_for_object(domain)
         try:
-            legacy_directory = base_output_directory_for_object(domain)
-            if os.path.normpath(legacy_directory) != os.path.normpath(directory):
+            for legacy_directory in legacy_output_directories_for_object(domain):
+                recover_cache_lock(legacy_directory, owner_pid=os.getpid())
                 with cache_lock(legacy_directory):
                     migrate_legacy_cache(legacy_directory, directory, prefix)
+                    delete_generated_data(legacy_directory, prefix)
+                    delete_obsolete_cache_state(legacy_directory)
+            recover_cache_lock(directory, owner_pid=os.getpid())
             with cache_lock(directory):
-                invalidate_cache(domain)
-                invalidate_preview_cache(domain)
                 clear_preview(domain)
                 delete_generated_data(directory, prefix)
+                delete_obsolete_cache_state(directory)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
-        domain.plume_forge.simulation_state = "idle"
-        domain.plume_forge.baked_frames = 0
-        domain.plume_forge.bake_elapsed = 0.0
-        domain.plume_forge.bake_peak_vram_mb = 0.0
-        domain.plume_forge.bake_peak_ram_mb = 0.0
+        domain.fumaris.simulation_state = "idle"
+        domain.fumaris.baked_frames = 0
+        domain.fumaris.bake_elapsed = 0.0
+        domain.fumaris.bake_peak_vram_mb = 0.0
+        domain.fumaris.bake_peak_ram_mb = 0.0
         return {"FINISHED"}
 
 
@@ -440,8 +444,8 @@ class _ActiveBakeOperator:
         return active_job() if active_mode() == "baking" else None
 
 
-class PLUME_FORGE_OT_stop(_ActiveBakeOperator, Operator):
-    bl_idname = "plume_forge.stop"
+class FUMARIS_OT_stop(_ActiveBakeOperator, Operator):
+    bl_idname = "fumaris.stop"
     bl_label = "Stop"
     bl_description = "Stop the active bake and import the frames written so far"
 
@@ -457,7 +461,7 @@ class PLUME_FORGE_OT_stop(_ActiveBakeOperator, Operator):
             if domain:
                 mark_bake_cancelled(domain)
                 job._store_bake_stats(domain)
-            self.report({"INFO"}, "Plume Forge bake stopped before simulation started")
+            self.report({"INFO"}, "Fumaris bake stopped before simulation started")
             return {"FINISHED"}
         job.request_stop(context)
         return {"FINISHED"}
@@ -478,8 +482,8 @@ def _active_domain(context):
     obj = context.object
     if (
         obj
-        and hasattr(obj, "plume_forge")
-        and obj.plume_forge.smoke_object_type == "domain"
+        and hasattr(obj, "fumaris")
+        and obj.fumaris.smoke_object_type == "domain"
         and not _is_imported_volume(obj)
     ):
         return obj
@@ -487,11 +491,11 @@ def _active_domain(context):
 
 
 CLASSES = (
-    PLUME_FORGE_OT_bake,
-    PLUME_FORGE_OT_preview_play,
-    PLUME_FORGE_OT_preview_stop,
-    PLUME_FORGE_OT_delete,
-    PLUME_FORGE_OT_stop,
+    FUMARIS_OT_bake,
+    FUMARIS_OT_preview_play,
+    FUMARIS_OT_preview_stop,
+    FUMARIS_OT_delete,
+    FUMARIS_OT_stop,
 )
 
 
@@ -505,17 +509,18 @@ def _recover_orphaned_bakes():
     objects = getattr(bpy.data, "objects", None)
     if objects is None:
         return
+    owner_pid = os.getpid() if not active_job() else None
     for obj in objects:
-        if not hasattr(obj, "plume_forge"):
+        if not hasattr(obj, "fumaris"):
             continue
-        props = obj.plume_forge
+        props = obj.fumaris
         if props.smoke_object_type != "domain":
             continue
         directory = output_directory_for_object(obj)
-        recover_cache_lock(directory)
+        recover_cache_lock(directory, owner_pid=owner_pid)
         delete_temporary_writes(
             directory,
-            props.output_prefix or "plume_forge_",
+            props.output_prefix or "fumaris_",
         )
         if props.simulation_state == "baking":
             props.simulation_state = "stopped"
@@ -551,7 +556,7 @@ def _scene_frame_duration(scene):
 
 
 def _preview_resolution_scale(domain):
-    percent = float(getattr(domain.plume_forge, "preview_resolution_percent", 100.0))
+    percent = float(getattr(domain.fumaris, "preview_resolution_percent", 100.0))
     return max(0.0, min(100.0, percent)) / 100.0
 
 
@@ -559,7 +564,7 @@ def _preview_resolution_scale(domain):
 def _cancel_preview_before_native_playback(_scene=None, _depsgraph=None):
     if active_mode() != "previewing":
         return
-    print("Plume Forge preview stopped because Blender playback started")
+    console_log("Fumaris preview stopped because Blender playback started")
     _cancel_job(bpy.context, active_job())
 
 

@@ -9,10 +9,16 @@ try:
 except ImportError:
     openvdb = None
 
-PREFIX = "plume_forge_"
-IMPORT_DIRECTORY = ".plume_forge_import"
-VOLUME_MARKER = "plume_forge_volume"
-VOLUME_PREFIX_MARKER = "plume_forge_volume_prefix"
+from .diagnostics import console_log
+
+PREFIX = "fumaris_"
+LEGACY_PREFIX = "plume_forge_"
+IMPORT_DIRECTORY = ".fumaris_import"
+VOLUME_MARKER = "fumaris_volume"
+VOLUME_PREFIX_MARKER = "fumaris_volume_prefix"
+LEGACY_IMPORT_DIRECTORY = ".plume_forge_import"
+LEGACY_VOLUME_MARKER = "plume_forge_volume"
+LEGACY_VOLUME_PREFIX_MARKER = "plume_forge_volume_prefix"
 
 
 def hide_generated_volumes(directory, prefix=PREFIX):
@@ -41,16 +47,22 @@ def restore_generated_volumes(directory, prefix, states):
 def delete_generated_data(directory, prefix=PREFIX):
     normalized = os.path.normpath(directory)
     for obj in list(bpy.data.objects):
-        if obj.get(VOLUME_MARKER) == normalized:
+        if (
+            obj.get(VOLUME_MARKER) == normalized
+            or obj.get(LEGACY_VOLUME_MARKER) == normalized
+        ):
             volume = obj.data if obj.type == "VOLUME" else None
             bpy.data.objects.remove(obj, do_unlink=True)
             if volume and volume.users == 0:
                 bpy.data.volumes.remove(volume)
 
     if os.path.isdir(directory):
-        for path in glob.glob(os.path.join(directory, f"{prefix}*.vdb")):
-            os.remove(path)
-        delete_temporary_writes(directory, prefix)
+        for candidate_prefix in {prefix, LEGACY_PREFIX}:
+            for path in glob.glob(
+                os.path.join(directory, f"{candidate_prefix}*.vdb")
+            ):
+                os.remove(path)
+            delete_temporary_writes(directory, candidate_prefix)
         _delete_import_copies(directory)
 
 
@@ -70,6 +82,14 @@ def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
     legacy_files = sorted(
         glob.glob(os.path.join(legacy_directory, f"{prefix}*.vdb"))
     )
+    source_prefix = prefix
+    if not legacy_files and prefix != LEGACY_PREFIX:
+        legacy_files = sorted(
+            glob.glob(
+                os.path.join(legacy_directory, f"{LEGACY_PREFIX}*.vdb")
+            )
+        )
+        source_prefix = LEGACY_PREFIX
     if not legacy_files:
         return False
     if glob.glob(os.path.join(directory, f"{prefix}*.vdb")):
@@ -77,17 +97,20 @@ def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
 
     os.makedirs(directory, exist_ok=True)
     for source in legacy_files:
-        os.replace(source, os.path.join(directory, os.path.basename(source)))
+        name = os.path.basename(source)
+        if source_prefix != prefix:
+            name = prefix + name[len(source_prefix):]
+        os.replace(source, os.path.join(directory, name))
     _remove_volume_for_directory(legacy_directory, prefix)
-    print(
-        f"Plume Forge migrated {len(legacy_files)} legacy VDB frame(s) to "
+    console_log(
+        f"Fumaris migrated {len(legacy_files)} legacy VDB frame(s) to "
         f"{directory}"
     )
     return True
 
 
 def add_density_material(volume_object):
-    material = bpy.data.materials.new("PlumeForge Material")
+    material = bpy.data.materials.new("Fumaris Material")
     material.use_nodes = True
     nodes = material.node_tree.nodes
     links = material.node_tree.links
@@ -131,7 +154,7 @@ def import_sequence(directory, frame_start, prefix=PREFIX, material=None, select
         raise RuntimeError("Blender did not create a Volume object")
 
     volume_object = created[0]
-    volume_object.name = "PlumeForge Volume"
+    volume_object.name = "Fumaris Volume"
     volume_object.location = (0.0, 0.0, 0.0)
     volume_object[VOLUME_MARKER] = os.path.normpath(directory)
     volume_object[VOLUME_PREFIX_MARKER] = prefix
@@ -158,12 +181,12 @@ def _files_with_grids(files):
         except Exception:
             skipped.append(path)
     if skipped:
-        print(
-            f"Plume Forge skipped {len(skipped)} unreadable VDB frame(s): "
+        console_log(
+            f"Fumaris skipped {len(skipped)} unreadable VDB frame(s): "
             + ", ".join(os.path.basename(path) for path in skipped)
         )
-    print(
-        "Plume Forge VDB metadata validation: "
+    console_log(
+        "Fumaris VDB metadata validation: "
         f"{len(valid)}/{len(files)} frames in "
         f"{(time.perf_counter() - started) * 1000.0:.3f}ms"
     )
@@ -173,7 +196,7 @@ def _files_with_grids(files):
 def _grid_metadata(path):
     if openvdb is not None:
         return openvdb.readAllGridMetadata(path)
-    volume = bpy.data.volumes.new("PlumeForge VDB Probe")
+    volume = bpy.data.volumes.new("Fumaris VDB Probe")
     try:
         volume.filepath = path
         volume.grids.load()
@@ -212,9 +235,10 @@ def _stage_import_sequence(directory, files):
 
 
 def _delete_import_copies(directory):
-    root = os.path.join(directory, IMPORT_DIRECTORY)
-    if os.path.isdir(root):
-        shutil.rmtree(root, ignore_errors=True)
+    for name in (IMPORT_DIRECTORY, LEGACY_IMPORT_DIRECTORY):
+        root = os.path.join(directory, name)
+        if os.path.isdir(root):
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def _prune_import_copies(root, keep):
@@ -260,6 +284,9 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start):
             scene.frame_set(current_frame)
     if len(volume.grids) == 0:
         volume.grids.load()
+    if any(grid.name == "velocity" for grid in volume.grids):
+        volume.velocity_grid = "velocity"
+        volume.velocity_unit = "SECOND"
     volume.update_tag()
     volume_object.update_tag()
 
@@ -276,11 +303,15 @@ def _remove_volume_for_directory(directory, prefix=PREFIX):
 
 
 def _is_generated_volume(obj, directory, prefix):
-    marker = obj.get(VOLUME_MARKER)
+    marker = obj.get(VOLUME_MARKER) or obj.get(LEGACY_VOLUME_MARKER)
     if marker:
+        marker_prefix = obj.get(
+            VOLUME_PREFIX_MARKER,
+            obj.get(LEGACY_VOLUME_PREFIX_MARKER, prefix),
+        )
         return (
             os.path.normpath(marker) == directory
-            and obj.get(VOLUME_PREFIX_MARKER, prefix) == prefix
+            and marker_prefix in {prefix, LEGACY_PREFIX}
         )
     if obj.type != "VOLUME":
         return False
@@ -288,9 +319,18 @@ def _is_generated_volume(obj, directory, prefix):
     if not filepath:
         return False
     absolute = os.path.normpath(bpy.path.abspath(filepath))
-    import_root = os.path.normpath(os.path.join(directory, IMPORT_DIRECTORY))
-    in_import_root = os.path.commonpath((absolute, import_root)) == import_root
+    import_roots = (
+        os.path.normpath(os.path.join(directory, IMPORT_DIRECTORY)),
+        os.path.normpath(os.path.join(directory, LEGACY_IMPORT_DIRECTORY)),
+    )
+    try:
+        in_import_root = any(
+            os.path.commonpath((absolute, root)) == root
+            for root in import_roots
+        )
+    except ValueError:
+        in_import_root = False
     return (
         (os.path.dirname(absolute) == directory or in_import_root)
-        and os.path.basename(absolute).startswith(prefix)
+        and os.path.basename(absolute).startswith((prefix, LEGACY_PREFIX))
     )

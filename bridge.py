@@ -43,6 +43,7 @@ class BridgeWorker:
         self._session = session
         self._keep_alive = keep_alive
         self._process = None
+        self._process_lock = threading.Lock()
         self._stderr = []
         self._cancel_requested = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -66,7 +67,8 @@ class BridgeWorker:
             self._requests.put_nowait((CANCEL, {}, b""))
         except queue.Full:
             pass
-        process = self._process
+        with self._process_lock:
+            process = self._process
         if process and process.poll() is None:
             try:
                 process.terminate()
@@ -76,7 +78,8 @@ class BridgeWorker:
     def close(self, timeout=0.5):
         self.cancel()
         self._thread.join(timeout=timeout)
-        process = self._process
+        with self._process_lock:
+            process = self._process
         if self._thread.is_alive() and process and process.poll() is None:
             try:
                 process.kill()
@@ -101,14 +104,17 @@ class BridgeWorker:
 
     def _run(self):
         try:
-            self._process = subprocess.Popen(
-                [self._executable],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=process_environment(),
-                **_popen_options(),
-            )
+            with self._process_lock:
+                if self._cancel_requested.is_set():
+                    return
+                self._process = subprocess.Popen(
+                    [self._executable],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=process_environment(),
+                    **_popen_options(),
+                )
             threading.Thread(target=self._drain_stderr, daemon=True).start()
 
             self._receive()
@@ -116,7 +122,12 @@ class BridgeWorker:
             self._receive()
 
             while True:
-                message_type, data, payload = self._requests.get()
+                try:
+                    message_type, data, payload = self._requests.get(timeout=0.1)
+                except queue.Empty:
+                    if self._process.poll() is not None:
+                        raise RuntimeError("Bridge exited while waiting for the next frame")
+                    continue
                 if self._process.poll() is not None:
                     raise RuntimeError("Bridge exited before the next frame was sent")
                 write_message(self._process.stdin, message_type, data, payload)

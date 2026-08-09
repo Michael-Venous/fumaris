@@ -6,6 +6,7 @@ import bpy
 
 from .bridge import BridgeWorker, process_memory_bytes
 from .cache import cache_lock
+from .diagnostics import console_log
 from .exporters import bridge_executable, build_frame, build_session
 from .importers import (
     delete_generated_data,
@@ -23,7 +24,7 @@ from .protocol import (
 )
 from .runtime import release_job
 from .utils import (
-    base_output_directory_for_object,
+    legacy_output_directories_for_object,
     output_directory_for_object,
     runtime_validation_error,
     simulation_frame_range,
@@ -97,10 +98,12 @@ class FrameRangeJob:
             )
 
         os.makedirs(self._directory, exist_ok=True)
-        legacy_directory = base_output_directory_for_object(domain)
-        if os.path.normpath(legacy_directory) != os.path.normpath(self._directory):
+        self._legacy_directories = legacy_output_directories_for_object(domain)
+        for legacy_directory in self._legacy_directories:
             with cache_lock(legacy_directory):
                 migrate_legacy_cache(legacy_directory, self._directory, self._prefix)
+                if clear_cache:
+                    delete_generated_data(legacy_directory, self._prefix)
         if write_vdb:
             self._cache_lock = cache_lock(self._directory).acquire()
         try:
@@ -110,7 +113,7 @@ class FrameRangeJob:
             self._release_cache_lock()
             raise
         self._volume_staging = tempfile.TemporaryDirectory(
-            prefix="plume_forge_volume_"
+            prefix="fumaris_volume_"
         )
 
         self._worker = BridgeWorker(executable, session, keep_alive=keep_alive)
@@ -155,8 +158,8 @@ class FrameRangeJob:
                     flow_ms = float(data.get("session_reset_ms", 0.0))
                     self._last_loop_reset_ms = total_ms
                     self._last_loop_flow_reset_ms = flow_ms
-                    print(
-                        "Plume Forge preview loop reset: "
+                    console_log(
+                        "Fumaris preview loop reset: "
                         f"total={total_ms:.3f}ms flow={flow_ms:.3f}ms"
                     )
                     self._loop_reset_started = None
@@ -185,8 +188,8 @@ class FrameRangeJob:
                     data.get("bridge_vdb_final_flush_ms", 0.0)
                 )
                 if self._final_flush_ms > 0.0:
-                    print(
-                        "Plume Forge VDB final flush: "
+                    console_log(
+                        "Fumaris VDB final flush: "
                         f"{self._final_flush_ms:.3f}ms"
                     )
                 return self._complete(context)
@@ -212,13 +215,13 @@ class FrameRangeJob:
             self._worker.end_session()
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
-            domain.plume_forge.simulation_state = "stopped"
-        print(f"Plume Forge stop requested for {self._domain_name}")
+            domain.fumaris.simulation_state = "stopped"
+        console_log(f"Fumaris stop requested for {self._domain_name}")
 
     def _submit_frame(self, context):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
-            raise RuntimeError("The active Plume Forge domain was deleted")
+            raise RuntimeError("The active Fumaris domain was deleted")
 
         self._last_frame_submit_started = time.monotonic()
         timing_start = time.perf_counter()
@@ -260,7 +263,7 @@ class FrameRangeJob:
         )
         self._sample_memory(force=True)
         if domain:
-            domain.plume_forge.baked_frames = len(self._completed_frames)
+            domain.fumaris.baked_frames = len(self._completed_frames)
             if self._show_progress:
                 context.window_manager.progress_update(len(self._completed_frames))
 
@@ -278,15 +281,18 @@ class FrameRangeJob:
             submit.get("send_ms", 0.0),
             handler_ms,
         ))
-        print(
-            f"Plume Forge frame {completed}: "
+        console_log(
+            f"Fumaris frame {completed}: "
             f"total={blender_ms + bridge_ms:.3f}ms "
             f"blender={blender_ms:.3f}ms bridge={bridge_ms:.3f}ms "
             f"flow={flow_ms:.3f}ms "
             f"vdb={float(data.get('bridge_vdb_write_ms', 0.0)):.3f}ms "
+            f"volume={float(data.get('bridge_volume_load_ms', 0.0)):.3f}ms "
+            f"volume_cache={int(data.get('bridge_volume_cache_hits', 0))}/"
+            f"{int(data.get('bridge_volume_cache_misses', 0))} "
             f"payload={int(data.get('payload_bytes', 0))} bytes"
         )
-        print(
+        console_log(
             "  timings: "
             f"eval={submit.get('evaluate_ms', 0.0):.3f}ms "
             f"packet={submit.get('packet_ms', 0.0):.3f}ms "
@@ -310,13 +316,19 @@ class FrameRangeJob:
             f"vdb_convert={float(data.get('bridge_vdb_convert_ms', 0.0)):.3f}ms "
             f"vdb_file={float(data.get('bridge_vdb_file_write_ms', 0.0)):.3f}ms "
             f"vdb_mem={int(data.get('bridge_vdb_in_flight_bytes', 0)) / (1024 * 1024):.1f}MiB "
-            f"blocks={int(data.get('flow_active_blocks', 0))} "
+            f"substeps={int(data.get('flow_effective_substeps', 1))} "
+            f"voxel=({float(data.get('flow_density_voxel_size_x', 0.0)):.6g},"
+            f"{float(data.get('flow_density_voxel_size_y', 0.0)):.6g},"
+            f"{float(data.get('flow_density_voxel_size_z', 0.0)):.6g}) "
+            f"effective_res={float(data.get('flow_effective_resolution', 0.0)):.1f} "
+            f"blocks={int(data.get('flow_active_blocks', 0))}/"
+            f"{int(data.get('flow_active_block_capacity', 0))} "
             f"flow_mem={int(data.get('flow_device_memory_bytes', 0)) / (1024 * 1024):.1f}MiB "
             f"post={handler_ms:.3f}ms"
         )
         profile_frame = int(data.get("flow_gpu_profile_frame", -1))
         if profile_frame >= 0:
-            print(
+            console_log(
                 f"  flow gpu frame {profile_frame}: "
                 f"total={float(data.get('flow_gpu_total_ms', 0.0)):.3f}ms "
                 f"alloc={float(data.get('flow_gpu_allocation_ms', 0.0)):.3f}ms "
@@ -397,18 +409,24 @@ class FrameRangeJob:
     def _hide_imported_volumes(self):
         if getattr(self, "_hidden_imported_volumes", None) is not None:
             return
-        self._hidden_imported_volumes = (
-            self._directory,
-            self._prefix,
-            hide_generated_volumes(self._directory, self._prefix),
+        self._hidden_imported_volumes = tuple(
+            (
+                directory,
+                self._prefix,
+                hide_generated_volumes(directory, self._prefix),
+            )
+            for directory in (
+                self._directory,
+                *getattr(self, "_legacy_directories", ()),
+            )
         )
 
     def _restore_imported_volumes(self):
         states = getattr(self, "_hidden_imported_volumes", None)
         if states is None:
             return
-        directory, prefix, volume_states = states
-        restore_generated_volumes(directory, prefix, volume_states)
+        for directory, prefix, volume_states in states:
+            restore_generated_volumes(directory, prefix, volume_states)
         self._hidden_imported_volumes = None
 
     def _cleanup_volume_staging(self):

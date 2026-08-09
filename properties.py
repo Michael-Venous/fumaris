@@ -17,19 +17,19 @@ def _preview_display_updated(_self, _context):
     refresh_preview_display()
 
 
-class PlumeForgeSettings(PropertyGroup):
-    """Custom PropertyGroup storing all simulation parameters for PlumeForge smoke simulation."""
+class FumarisSettings(PropertyGroup):
+    """Custom PropertyGroup storing all simulation parameters for Fumaris smoke simulation."""
 
     smoke_object_type: EnumProperty(
         name="Type",
-        description="PlumeForge smoke role for this object",
+        description="Fumaris smoke role for this object",
         items=[
             ("domain", "Domain", "Bake an isolated simulation domain"),
             ("emitter", "Emitter", "Emit smoke into a domain that references this object"),
             ("collider", "Collider", "Collide with smoke in a domain that references this object"),
             ("effector", "Effector", "Apply velocity forces to smoke in a domain"),
             ("outflow", "Outflow", "Remove smoke, fire, and fuel inside this object"),
-            ("none", "None", "Exclude this object from Plume Forge simulations"),
+            ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
     )
@@ -103,7 +103,7 @@ class PlumeForgeSettings(PropertyGroup):
     emitter_temperature: FloatProperty(
         name="Emitter Temperature",
         description="Source temperature before the domain Temperature Input Scale is applied",
-        default=1.0,
+        default=2.0,
         min=0.0,
         soft_max=5.0,
     )
@@ -111,7 +111,7 @@ class PlumeForgeSettings(PropertyGroup):
     emitter_smoke: FloatProperty(
         name="Smoke Density",
         description="Density of emitted smoke",
-        default=1.0,
+        default=5.0,
         min=0.0,
         soft_max=5.0,
     )
@@ -143,7 +143,7 @@ class PlumeForgeSettings(PropertyGroup):
     # Flow exposes an independent coupling rate for every emitted channel.
     couple_rate_velocity: FloatProperty(
         name="Velocity",
-        description="How strongly emitter velocity replaces or drives grid velocity",
+        description="How strongly explicit or participant motion drives grid velocity; stationary emitters do not damp the flow",
         default=200.0,
         min=0.0,
         soft_max=200.0,
@@ -242,7 +242,7 @@ class PlumeForgeSettings(PropertyGroup):
 
     sim_start_frame: IntProperty(
         name="Start Frame",
-        description="First Plume Forge simulation frame; can be below 0 for warmup before the visible timeline",
+        description="First Fumaris simulation frame; can be below 0 for warmup before the visible timeline",
         default=1,
         soft_min=-250,
         soft_max=250,
@@ -250,8 +250,8 @@ class PlumeForgeSettings(PropertyGroup):
 
     sim_end_frame: IntProperty(
         name="End Frame",
-        description="Last Plume Forge simulation frame, independent from the Blender timeline end frame",
-        default=60,
+        description="Last Fumaris simulation frame, independent from the Blender timeline end frame",
+        default=250,
         soft_min=-250,
         soft_max=250,
     )
@@ -276,7 +276,7 @@ class PlumeForgeSettings(PropertyGroup):
     preview_resolution_percent: FloatProperty(
         name="Preview Resolution",
         description="Percentage of the domain resolution used for live preview simulation; bake always uses full resolution",
-        default=50.0,
+        default=100.0,
         min=0.0,
         max=100.0,
         subtype="PERCENTAGE",
@@ -346,7 +346,7 @@ class PlumeForgeSettings(PropertyGroup):
     small_sparse_blocks: BoolProperty(
         name="Small Sparse Blocks",
         description="Use smaller Flow allocation blocks for tighter sparse coverage at the cost of more block-management overhead",
-        default=True,
+        default=False,
     )
 
 
@@ -394,6 +394,12 @@ class PlumeForgeSettings(PropertyGroup):
         default=True,
     )
 
+    boundary_safe_advection: BoolProperty(
+        name="Boundary-Safe Advection",
+        description="Allow fast smoke to advect across sparse block boundaries without Flow's local displacement clamp; costs some simulation performance",
+        default=True,
+    )
+
     simulation_speed: FloatProperty(
         name="Simulation Speed",
         description="Multiplier for simulation time step; keyframe this for speed ramps",
@@ -432,13 +438,13 @@ class PlumeForgeSettings(PropertyGroup):
 
     volume_material: PointerProperty(
         name="Volume Material",
-        description="Optional material assigned to imported PlumeForge volume objects",
+        description="Optional material assigned to imported Fumaris volume objects",
         type=bpy.types.Material,
     )
 
     volume_selectable: BoolProperty(
         name="Selectable Volume",
-        description="Allow imported PlumeForge volume objects to be selectable in the viewport",
+        description="Allow imported Fumaris volume objects to be selectable in the viewport",
         default=False,
     )
 
@@ -446,7 +452,7 @@ class PlumeForgeSettings(PropertyGroup):
         name="VDB Compression",
         description="Compression mode used for written OpenVDB files; Active Mask was fastest in local testing and imports in Blender",
         items=[
-            ("active_mask", "Active Mask", "Fast Plume Forge default; stores active masks without value compression"),
+            ("active_mask", "Active Mask", "Fast Fumaris default; stores active masks without value compression"),
             ("none", "None", "No OpenVDB compression"),
             ("zip", "ZIP", "ZIP value compression"),
             ("zip_active_mask", "ZIP + Active Mask", "ZIP value compression with active mask compression"),
@@ -498,7 +504,7 @@ class PlumeForgeSettings(PropertyGroup):
 
     effector_collection: PointerProperty(
         name="Effector Collection",
-        description="Collection of PlumeForge Smoke effector objects for this simulation",
+        description="Collection of Fumaris Smoke effector objects for this simulation",
         type=bpy.types.Collection,
     )
 
@@ -846,7 +852,7 @@ class PlumeForgeSettings(PropertyGroup):
     divergence_per_burn: FloatProperty(
         name="Expansion Per Burn",
         description="Divergence/expansion generated per unit burn",
-        default=0.0,
+        default=1.0,
         soft_min=-20.0,
         soft_max=20.0,
     )
@@ -862,7 +868,7 @@ class PlumeForgeSettings(PropertyGroup):
     vorticity: FloatProperty(
         name="Vorticity",
         description="Vorticity confinement strength",
-        default=0.6,
+        default=0.5,
         min=0.0,
         max=10.0,
     )
@@ -870,15 +876,15 @@ class PlumeForgeSettings(PropertyGroup):
     dissipation: FloatProperty(
         name="Dissipation",
         description="Smoke dissipation rate",
-        default=0.0,
+        default=0.05,
         min=0.0,
         max=1.0,
     )
 
-    # Diagnostic / Advanced Controls
+    # VDB export controls
     export_velocity_vdb: BoolProperty(
         name="Export Velocity VDB",
-        description="Export velocity field alongside density (diagnostic)",
+        description="Export velocity for motion blur and downstream volume effects",
         default=False,
     )
 
@@ -932,10 +938,10 @@ class PlumeForgeSettings(PropertyGroup):
 
     num_sub_steps: IntProperty(
         name="Sub-Steps",
-        description="Number of emitter/collider sub-steps per frame",
-        default=1,
+        description="Complete simulation steps per frame; increase for fast motion or stability, up to 20",
+        default=2,
         min=1,
-        max=8,
+        max=20,
     )
 
     velocity_scale: FloatProperty(
@@ -1040,17 +1046,17 @@ class PlumeForgeSettings(PropertyGroup):
 
 def register():
     try:
-        bpy.utils.unregister_class(PlumeForgeSettings)
+        bpy.utils.unregister_class(FumarisSettings)
     except RuntimeError:
         pass
-    bpy.utils.register_class(PlumeForgeSettings)
-    bpy.types.Object.plume_forge = PointerProperty(type=PlumeForgeSettings)
+    bpy.utils.register_class(FumarisSettings)
+    bpy.types.Object.fumaris = PointerProperty(type=FumarisSettings)
 
 
 def unregister():
-    if hasattr(bpy.types.Object, 'plume_forge'):
-        del bpy.types.Object.plume_forge
+    if hasattr(bpy.types.Object, 'fumaris'):
+        del bpy.types.Object.fumaris
     try:
-        bpy.utils.unregister_class(PlumeForgeSettings)
+        bpy.utils.unregister_class(FumarisSettings)
     except RuntimeError:
         pass

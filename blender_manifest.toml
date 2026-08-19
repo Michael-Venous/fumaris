@@ -12,7 +12,7 @@ license = ["SPDX:GPL-3.0-or-later"]
 platforms = ["linux-x64", "windows-x64"]
 
 [permissions]
-files = "Write OpenVDB caches and run the bundled Fumaris simulation bridge"
+files = "Write caches and run the bundled Fumaris simulation bridge"
 
 [build]
 paths_exclude_pattern = [

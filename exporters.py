@@ -217,7 +217,6 @@ def _domain_state(props, resolution_scale=1.0):
         "divergence_per_burn": props.divergence_per_burn,
         "cooling_rate": props.cooling_rate,
         "export_temperature_vdb": props.export_temperature_vdb,
-        "temperature_vdb_scale": props.temperature_vdb_scale,
         "export_fuel_vdb": props.export_fuel_vdb,
         "export_burn_vdb": props.export_burn_vdb,
         "export_flame_vdb": props.export_flame_vdb,
@@ -316,6 +315,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
         "is_outflow": participant["role"] == "outflow",
         "motion_velocity_scale": 0.0 if participant["role"] != "emitter" else props.motion_velocity_scale,
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
+        "motion_substeps": props.motion_substeps,
         **channels,
         "positions": {**position_section, "version": position_version},
         "indices": {**index_section, "version": topology_version},
@@ -359,6 +359,7 @@ def _sphere_state(participant, depsgraph):
         "radius": max(radius, 0.001),
         "is_collision": participant["role"] == "collider",
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
+        "motion_substeps": props.motion_substeps,
         "multisample": props.sphere_multisample,
         "trace_samples": props.sphere_trace_samples,
         **channels,
@@ -368,7 +369,13 @@ def _sphere_state(participant, depsgraph):
 def _box_state(participant, depsgraph):
     obj = participant["object"]
     props = obj.fumaris
-    matrix = obj.evaluated_get(depsgraph).matrix_world
+    matrix, half_size = _evaluated_box(obj.evaluated_get(depsgraph))
+    if participant["role"] == "collider":
+        scales = [max(abs(value), 1e-6) for value in matrix.to_scale()]
+        half_size = [
+            value + props.collider_margin / scale
+            for value, scale in zip(half_size, scales)
+        ]
     enabled = bool(props.participant_enabled)
     channels = (
         _participant_channels(
@@ -387,11 +394,24 @@ def _box_state(participant, depsgraph):
         "role": participant["role"],
         "enabled": enabled,
         "local_to_world": [value for row in matrix for value in row],
-        "half_size": [1.0, 1.0, 1.0],
+        "half_size": half_size,
         "is_collision": participant["role"] == "collider",
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
         **channels,
     }
+
+
+def _evaluated_box(obj):
+    corners = [Vector(corner) for corner in obj.bound_box]
+    if not corners:
+        return obj.matrix_world.copy(), [1.0, 1.0, 1.0]
+    minimum = Vector(tuple(min(corner[axis] for corner in corners) for axis in range(3)))
+    maximum = Vector(tuple(max(corner[axis] for corner in corners) for axis in range(3)))
+    if (maximum - minimum).length_squared <= 1e-12:
+        return obj.matrix_world.copy(), [1.0, 1.0, 1.0]
+    center = (minimum + maximum) * 0.5
+    half_size = [max(0.001, value) for value in ((maximum - minimum) * 0.5)]
+    return obj.matrix_world @ Matrix.Translation(center), half_size
 
 
 def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
@@ -549,6 +569,7 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
             _is_particles(props, "point_cloud") and props.point_enable_interpolation
         ),
         "trace_samples": props.sphere_trace_samples,
+        "motion_substeps": props.motion_substeps,
         "apply_post_pressure": props.emitter_apply_post_pressure,
         **sections,
     }

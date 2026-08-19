@@ -2,7 +2,7 @@
 
 All notable customer-facing changes are recorded here.
 
-## 0.2.0 Beta - Unreleased
+## 0.2.0 Beta - 2026-08-19
 
 ### Added
 
@@ -13,6 +13,7 @@ All notable customer-facing changes are recorded here.
 - First-run GPU shader-compilation notice.
 - Multiple independent cache slots for preserving separate bakes.
 - Detailed Flow, preview, readback, and OpenVDB timing diagnostics.
+- Convex filled-volume collision mode and participant motion sub-steps.
 
 ### Improved
 
@@ -22,12 +23,16 @@ All notable customer-facing changes are recorded here.
 - Boundary-safe sparse advection for fast smoke and corrected full-solver
   substep semantics.
 - Linux release compatibility through an Ubuntu 22.04 build baseline.
+- Kelvin-like temperature output and a smoother burn/temperature flame mask
+  for direct, predictable fire shading.
+- Stronger pre/post-pressure collider constraints and interior density cleanup.
 
 ### Fixed
 
 - Relative cache failures for unsaved Windows projects.
 - Stale preview and bake state after stopping, loading files, or bridge errors.
 - Runtime metric persistence and bake cleanup.
+- Add-on startup migration during Blender's restricted registration phase.
 
 ### Known Limitations
 

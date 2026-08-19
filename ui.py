@@ -29,13 +29,6 @@ def _nested_foldout(layout, props, property_name, label):
     return column, opened
 
 
-def _is_gn_point_cloud(props):
-    return (
-        props.participant_type == "geometry_nodes"
-        and props.gn_subtype == "point_cloud"
-    )
-
-
 def _is_particle_point_cloud(props):
     return (
         props.participant_type == "particles"
@@ -141,6 +134,14 @@ def _draw_emitter(layout, obj, props):
     box = layout.box()
     column, opened = _nested_foldout(box, props, "show_emitter_advanced", "Advanced")
     if opened:
+        if not (
+            props.participant_type in {"box", "openvdb"}
+            or (
+                props.participant_type == "geometry_nodes"
+                and props.gn_subtype == "volume"
+            )
+        ):
+            column.prop(props, "motion_substeps")
         column.prop(props, "emitter_apply_post_pressure")
         if props.participant_type == "sphere":
             column.prop(props, "sphere_multisample")
@@ -148,8 +149,6 @@ def _draw_emitter(layout, obj, props):
                 column.prop(props, "sphere_trace_samples")
         if _is_particle_point_cloud(props):
             column.prop(props, "point_enable_interpolation")
-        if _is_particle_point_cloud(props) or _is_gn_point_cloud(props):
-            column.prop(props, "velocity_scale")
 
 
 def _draw_collider(layout, props):
@@ -157,7 +156,7 @@ def _draw_collider(layout, props):
     box.label(text="Collider", icon="MOD_PHYSICS")
     box.prop(props, "participant_enabled")
     box.prop(props, "collider_type", text="Shape")
-    if props.collider_type == "mesh":
+    if props.collider_type in {"mesh", "box"}:
         box.prop(props, "collider_margin")
     elif props.collider_type == "sphere":
         box.prop(props, "collider_radius")
@@ -288,7 +287,7 @@ def _draw_domain(layout, scene, props):
     row.prop(props, "sim_start_frame")
     row.prop(props, "sim_end_frame")
     settings.prop(props, "resolution")
-    settings.prop(props, "simulation_speed")
+    settings.prop(props, "sparse_block_capacity")
     settings.prop(props, "num_sub_steps")
 
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
@@ -301,8 +300,6 @@ def _draw_domain(layout, scene, props):
         output.prop(props, "volume_selectable")
         output.separator()
         output.prop(props, "export_temperature_vdb")
-        if props.export_temperature_vdb:
-            output.prop(props, "temperature_vdb_scale")
         output.prop(props, "export_fuel_vdb")
         output.prop(props, "export_burn_vdb")
         output.prop(props, "export_flame_vdb")
@@ -354,7 +351,7 @@ def _draw_domain(layout, scene, props):
     advanced = layout.box()
     advanced.enabled = not is_baking
     if _foldout(advanced, props, "show_panel_advanced", "Advanced"):
-        advanced.prop(props, "sparse_block_capacity")
+        advanced.prop(props, "simulation_speed")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "small_sparse_blocks")
         advanced.prop(props, "physics_convex_collision")

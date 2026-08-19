@@ -38,6 +38,13 @@ volume and cache files.
 Stopping a bake imports all valid frames already written. A stopped Flow state
 cannot be resumed in this beta, so another Bake starts a fresh simulation.
 
+Temperature is exported in a fixed Kelvin-like `0-5000` range so it can feed a
+Blackbody node directly. Negative simulated temperatures are stored as zero.
+Raw `burn` remains available for custom materials; the render-ready `flame`
+grid combines timestep-normalized burn with the configured temperature window
+and smoothly compresses extreme values. Fuel is unburned potential and should
+not normally drive emission.
+
 ## Emitters
 
 Supported sources include:
@@ -62,6 +69,19 @@ Collider velocity influence transfers collider motion into smoke. Effectors
 support force settings, noise, and distance falloff. Outflows remove channels
 inside their region.
 
+Box colliders use the evaluated object's actual bounds. `Convex Collision`
+turns a closed convex mesh collider into a filled clipping-plane volume;
+concave, open, or overly complex meshes log a warning and use the regular mesh
+shell instead. Fumaris applies collider velocity before and after pressure and
+clears leaked density inside the obstacle. This is substantially stronger than
+Flow's stock collision emitter, but it is not a mathematically sealed pressure
+boundary, so very fast smoke can still require a larger Collider Margin.
+
+Emitter `Motion Sub-Steps` sample intermediate poses for moving meshes,
+spheres, particles, and Geometry Nodes points. They do not improve a static
+source or the fluid solve itself, and they multiply emitter work inside each
+domain Sub-Step.
+
 ## Resolution And Memory
 
 Resolution controls the domain grid. Sparse block capacity limits how much of
@@ -69,10 +89,11 @@ that grid may become active. High resolution, combustion channels, exact point
 spheres, velocity output, and large preview-dot limits all increase memory use.
 
 Leave `Boundary-Safe Advection` and `Allocate Neighbor Blocks` enabled for fast
-smoke. Sub-Steps are complete solver steps from 1 to 20: use 1 for moderate
+smoke. Sub-Steps are complete solver steps from 1 to 40: use 1 for moderate
 motion, start at 2 for energetic pyro, and increase it for extreme velocities,
 combustion, or high-resolution detail. Higher values increase simulation time
-roughly linearly.
+roughly linearly. Expansion Per Burn is normalized across substeps, although a
+very coarse 1-2 step result can still differ from a converged high-step result.
 `Small Sparse Blocks` is faster and more memory efficient, while disabling it
 can improve continuity in demanding simulations at a substantial cost.
 

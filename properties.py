@@ -1,4 +1,5 @@
 import bpy
+from bpy.app.handlers import persistent
 from bpy.props import (
     BoolProperty,
     EnumProperty,
@@ -9,6 +10,11 @@ from bpy.props import (
     StringProperty,
 )
 from bpy.types import PropertyGroup
+
+
+LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
+TEMPERATURE_EXPORT_SCALE = 5000.0
+TEMPERATURE_MAPPING_VERSION = 2
 
 
 def _preview_display_updated(_self, _context):
@@ -240,6 +246,15 @@ class FumarisSettings(PropertyGroup):
         soft_max=25.0,
     )
 
+    motion_substeps: IntProperty(
+        name="Motion Sub-Steps",
+        description="Intermediate source poses sampled between Blender frames; only affects moving or deforming geometry, is capped by domain Sub-Steps, and increases emitter work",
+        default=8,
+        min=1,
+        max=40,
+        soft_max=16,
+    )
+
     sim_start_frame: IntProperty(
         name="Start Frame",
         description="First Fumaris simulation frame; can be below 0 for warmup before the visible timeline",
@@ -352,7 +367,7 @@ class FumarisSettings(PropertyGroup):
 
     physics_convex_collision: BoolProperty(
         name="Convex Collision",
-        description="Use Flow's convex collision path for physics colliders",
+        description="Treat closed convex mesh colliders as filled solids using Flow clipping planes; unsuitable meshes fall back to the shell defined by Collider Margin",
         default=True,
     )
 
@@ -477,7 +492,7 @@ class FumarisSettings(PropertyGroup):
 
     collider_margin: FloatProperty(
         name="Collider Margin",
-        description="Distance around collider meshes that participates in the smoke collision solve",
+        description="World-space padding around mesh and box colliders that participates in the smoke collision solve",
         default=0.3,
         min=0.0,
         soft_max=5.0,
@@ -851,7 +866,7 @@ class FumarisSettings(PropertyGroup):
 
     divergence_per_burn: FloatProperty(
         name="Expansion Per Burn",
-        description="Divergence/expansion generated per unit burn",
+        description="Expansion generated per unit burn, normalized across simulation sub-steps",
         default=1.0,
         soft_min=-20.0,
         soft_max=20.0,
@@ -890,16 +905,8 @@ class FumarisSettings(PropertyGroup):
 
     export_temperature_vdb: BoolProperty(
         name="Export Temperature VDB",
-        description="Export temperature field alongside density",
+        description="Export nonnegative Flow temperature in a fixed Kelvin-like 0 to 5000 range for direct Blackbody shading",
         default=False,
-    )
-
-    temperature_vdb_scale: FloatProperty(
-        name="Max Export Temperature",
-        description="Kelvin VDB value exported when native Flow temperature is 1; no adaptive scaling is applied",
-        default=2200.0,
-        min=0.0,
-        soft_max=8000.0,
     )
 
     export_fuel_vdb: BoolProperty(
@@ -910,40 +917,46 @@ class FumarisSettings(PropertyGroup):
 
     export_burn_vdb: BoolProperty(
         name="Export Burn VDB",
-        description="Export burn/flame field alongside density",
+        description="Export Flow's raw timestep-dependent combustion amount for custom shading",
         default=False,
     )
 
     export_flame_vdb: BoolProperty(
         name="Export Flame VDB",
-        description="Export flame as positive burn masked by the simulated temperature range",
+        description="Export a render-ready flame mask from timestep-normalized burn and Kelvin-like temperature",
         default=False,
     )
 
     flame_temperature_min: FloatProperty(
         name="Flame Temperature Min",
-        description="Normalized Flow temperature where the exported flame mask begins",
-        default=0.08,
+        description="Kelvin-like exported temperature where the flame mask begins",
+        default=800.0,
         min=0.0,
-        max=1.0,
+        soft_max=5000.0,
     )
 
     flame_temperature_max: FloatProperty(
         name="Flame Temperature Max",
-        description="Normalized Flow temperature where the exported flame mask reaches full strength",
-        default=0.5,
-        min=0.001,
-        max=1.0,
+        description="Kelvin-like exported temperature where the flame temperature gate reaches full strength",
+        default=3000.0,
+        min=1.0,
+        soft_max=5000.0,
+    )
+
+    temperature_mapping_version: IntProperty(
+        default=0,
+        options={"HIDDEN"},
     )
 
     num_sub_steps: IntProperty(
         name="Sub-Steps",
-        description="Complete simulation steps per frame; increase for fast motion or stability, up to 20",
+        description="Complete simulation steps per frame; increase for fast motion or stability, up to 40",
         default=2,
         min=1,
-        max=20,
+        max=40,
     )
 
+    # Hidden compatibility multiplier for existing point-emitter .blend files.
     velocity_scale: FloatProperty(
         name="Velocity Scale",
         description="Multiplier for point/particle velocity influence",
@@ -1044,6 +1057,42 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
+def _migrate_temperature_mapping():
+    for obj in bpy.data.objects:
+        props = getattr(obj, "fumaris", None)
+        if props is None or props.temperature_mapping_version >= TEMPERATURE_MAPPING_VERSION:
+            continue
+        if props.temperature_mapping_version == 0:
+            if 0.0 <= props.flame_temperature_max <= 1.0:
+                props.flame_temperature_min *= TEMPERATURE_EXPORT_SCALE
+                props.flame_temperature_max *= TEMPERATURE_EXPORT_SCALE
+        elif props.flame_temperature_max <= LEGACY_TEMPERATURE_EXPORT_SCALE:
+            # Correct values produced by the short-lived development migration.
+            correction = (
+                TEMPERATURE_EXPORT_SCALE / LEGACY_TEMPERATURE_EXPORT_SCALE
+            )
+            props.flame_temperature_min *= correction
+            props.flame_temperature_max *= correction
+        props.temperature_mapping_version = TEMPERATURE_MAPPING_VERSION
+
+
+@persistent
+def _migrate_temperature_mapping_after_load(_unused):
+    _migrate_temperature_mapping()
+
+
+def _migrate_temperature_mapping_deferred():
+    """Run after add-on registration, when Blender exposes normal datablocks."""
+    _migrate_temperature_mapping()
+    return None
+
+
+def _remove_handler_named(handlers, name):
+    for handler in list(handlers):
+        if handler.__name__ == name:
+            handlers.remove(handler)
+
+
 def register():
     try:
         bpy.utils.unregister_class(FumarisSettings)
@@ -1051,9 +1100,19 @@ def register():
         pass
     bpy.utils.register_class(FumarisSettings)
     bpy.types.Object.fumaris = PointerProperty(type=FumarisSettings)
+    _remove_handler_named(
+        bpy.app.handlers.load_post,
+        "_migrate_temperature_mapping_after_load",
+    )
+    bpy.app.handlers.load_post.append(_migrate_temperature_mapping_after_load)
+    bpy.app.timers.register(_migrate_temperature_mapping_deferred, first_interval=0.0)
 
 
 def unregister():
+    _remove_handler_named(
+        bpy.app.handlers.load_post,
+        "_migrate_temperature_mapping_after_load",
+    )
     if hasattr(bpy.types.Object, 'fumaris'):
         del bpy.types.Object.fumaris
     try:

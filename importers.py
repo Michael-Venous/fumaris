@@ -119,11 +119,25 @@ def add_density_material(volume_object):
     volume_info = nodes.new("ShaderNodeVolumeInfo")
     shader = nodes.new("ShaderNodeVolumePrincipled")
     output = nodes.new("ShaderNodeOutputMaterial")
-    volume_info.location = (-360, 0)
-    shader.location = (-100, 0)
-    output.location = (180, 0)
+    blackbody = nodes.new("ShaderNodeBlackbody")
+    fire_intensity = nodes.new("ShaderNodeMath")
+    fire_intensity.operation = "MULTIPLY"
+    fire_intensity.name = "Fumaris Fire Intensity"
+    fire_intensity.label = "Fire Intensity"
+    fire_intensity.inputs[1].default_value = 1.0
+
+    volume_info.location = (-520, 0)
+    blackbody.location = (-300, -160)
+    fire_intensity.location = (-300, 40)
+    shader.location = (-60, 0)
+    output.location = (220, 0)
 
     links.new(volume_info.outputs["Density"], shader.inputs["Density"])
+    links.new(volume_info.outputs["Temperature"], blackbody.inputs["Temperature"])
+    links.new(blackbody.outputs["Color"], shader.inputs["Emission Color"])
+    links.new(volume_info.outputs["Flame"], fire_intensity.inputs[0])
+    links.new(fire_intensity.outputs[0], shader.inputs["Emission Strength"])
+    shader.inputs["Blackbody Intensity"].default_value = 0.0
     links.new(shader.outputs["Volume"], output.inputs["Volume"])
     volume_object.data.materials.append(material)
 

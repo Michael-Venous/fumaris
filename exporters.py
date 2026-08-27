@@ -238,18 +238,20 @@ def _mesh_state(participant, depsgraph, payload, frame):
         positions = array("f")
         indices = array("i")
         velocities = array("f")
+        emission_weights = array("f")
         reuse_geometry = False
     elif _is_particles(props, "mesh"):
         track_deformation = False
         matrix = Matrix.Identity(4)
         positions, indices, velocities = _particle_mesh(obj, depsgraph, props)
+        emission_weights = array("f")
         position_version = frame
         topology_version = frame
         reuse_geometry = False
     elif _is_geometry_nodes(props, "mesh"):
         track_deformation = True
         matrix = Matrix.Identity(4)
-        positions, indices, velocities = _geometry_nodes_mesh(
+        positions, indices, velocities, emission_weights = _geometry_nodes_mesh(
             obj,
             depsgraph,
             props,
@@ -260,13 +262,16 @@ def _mesh_state(participant, depsgraph, payload, frame):
     else:
         track_deformation = _static_mesh_cache_key(obj, depsgraph, props) is None
         matrix = obj.evaluated_get(depsgraph).matrix_world.copy()
-        positions, indices, velocities, position_version, topology_version, reuse_geometry = _cached_or_evaluated_mesh(
-            participant,
-            obj,
-            depsgraph,
-            props,
-            matrix,
-            frame,
+        (
+            positions,
+            indices,
+            velocities,
+            emission_weights,
+            position_version,
+            topology_version,
+            reuse_geometry,
+        ) = _cached_or_evaluated_mesh(
+            participant, obj, depsgraph, props, matrix, frame
         )
     if not enabled:
         position_version = frame
@@ -290,9 +295,17 @@ def _mesh_state(participant, depsgraph, payload, frame):
             f"{obj.name} produced {len(velocities) // 3} mesh velocities "
             f"for {len(positions) // 3} vertices"
         )
+    if emission_weights and len(emission_weights) != len(indices):
+        raise RuntimeError(
+            f"{obj.name} produced {len(emission_weights)} mesh emission weights "
+            f"for {len(indices)} face corners"
+        )
     position_section = _reuse_section() if reuse_geometry else _append_array(payload, positions)
     index_section = _reuse_section() if reuse_geometry else _append_array(payload, indices)
     velocity_section = _append_array(payload, velocities) if velocities else None
+    weight_section = (
+        _append_array(payload, emission_weights) if emission_weights else None
+    )
     minimum, maximum = _mesh_distances(props, participant["role"])
     channels = (
         _participant_channels(
@@ -322,6 +335,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
     }
     if velocity_section:
         state["velocities"] = {**velocity_section, "version": position_version}
+    if weight_section:
+        state["emission_weights"] = {**weight_section, "version": frame}
     return state
 
 

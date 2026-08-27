@@ -30,8 +30,8 @@ not affiliated with or endorsed by Blender Foundation or NVIDIA.
 
 ## Documentation
 
-- `INSTALL.md`: installation, updates, and first-run troubleshooting
-- `USER_GUIDE.md`: preview, baking, participants, caching, and memory guidance
+- `DOCUMENTATION.md`: installation, workflow, settings, shading, performance,
+  troubleshooting, and beta limitations
 - `CHANGELOG.md`: customer-visible changes by version
 
 ## Support

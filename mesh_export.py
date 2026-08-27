@@ -14,10 +14,18 @@ def _evaluated_mesh(obj, depsgraph, props, matrix):
         mesh.vertices.foreach_get("co", positions)
 
         raw_indices = []
+        emission_weights = array("f")
+        mask = _mesh_emission_mask(obj, mesh, props)
         for triangle in mesh.loop_triangles:
-            if _triangle_mask_value(obj, mesh, triangle, props) < props.mesh_emission_mask_threshold:
+            weights = _triangle_mask_weights(mask, triangle)
+            if (
+                weights
+                and sum(weights) / len(weights)
+                < props.mesh_emission_mask_threshold
+            ):
                 continue
             raw_indices.extend(triangle.vertices)
+            emission_weights.extend(weights)
         indices = array("i", raw_indices)
         velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
     finally:
@@ -25,7 +33,7 @@ def _evaluated_mesh(obj, depsgraph, props, matrix):
 
     if not positions or not indices:
         raise RuntimeError(f"{obj.name} evaluated to an empty mesh")
-    return positions, indices, velocities
+    return positions, indices, velocities, emission_weights
 
 
 def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame):
@@ -35,9 +43,14 @@ def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame)
         if cached is not None:
             positions, indices = cached
             version = int(participant.get("static_mesh_version", frame))
-            return positions, indices, array("f"), version, version, True
+            return positions, indices, array("f"), array("f"), version, version, True
 
-    positions, indices, velocities = _evaluated_mesh(obj, depsgraph, props, matrix)
+    positions, indices, velocities, emission_weights = _evaluated_mesh(
+        obj,
+        depsgraph,
+        props,
+        matrix,
+    )
     if key is not None:
         participant["static_mesh_key"] = key
         participant["static_mesh"] = (positions, indices)
@@ -50,7 +63,15 @@ def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame)
         participant.pop("static_mesh_version", None)
         position_version = frame
         topology_version = frame
-    return positions, indices, velocities, position_version, topology_version, False
+    return (
+        positions,
+        indices,
+        velocities,
+        emission_weights,
+        position_version,
+        topology_version,
+        False,
+    )
 
 
 def _static_mesh_cache_key(obj, depsgraph, props):
@@ -80,16 +101,17 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
     positions = array("f")
     indices = array("i")
     velocities = array("f")
+    emission_weights = array("f")
     evaluated = obj.evaluated_get(depsgraph)
     matrix = evaluated.matrix_world.copy()
 
     try:
-        direct_positions, direct_indices, direct_velocities = _evaluated_mesh(
-            obj,
-            depsgraph,
-            props,
-            matrix,
-        )
+        (
+            direct_positions,
+            direct_indices,
+            direct_velocities,
+            direct_weights,
+        ) = _evaluated_mesh(obj, depsgraph, props, matrix)
     except RuntimeError:
         direct_positions = direct_indices = direct_velocities = None
     if direct_positions:
@@ -98,6 +120,7 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
             positions.extend((position.x, position.y, position.z))
         indices.extend(direct_indices)
         velocities.extend(direct_velocities)
+        emission_weights.extend(direct_weights)
 
     try:
         instance_positions, instance_indices, _instance_velocities = _instance_mesh(
@@ -114,10 +137,12 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
         indices.extend(index_offset + index for index in instance_indices)
         if velocities:
             velocities.extend((0.0 for _ in range(len(instance_positions))))
+        if str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip():
+            emission_weights.extend((1.0 for _ in range(len(instance_indices))))
 
     if not positions or not indices:
         raise RuntimeError(f"{obj.name} did not provide Geometry Nodes mesh geometry")
-    return positions, indices, velocities
+    return positions, indices, velocities, emission_weights
 
 
 def _instance_mesh(obj, depsgraph, label, *, allow_self):
@@ -153,32 +178,46 @@ def _instance_mesh(obj, depsgraph, label, *, allow_self):
     return positions, indices, velocities
 
 
-def _triangle_mask_value(obj, mesh, triangle, props):
+def _mesh_emission_mask(obj, mesh, props):
     name = str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip()
     if not name:
-        return 1.0
+        return None
 
     attribute = mesh.attributes.get(name)
     if attribute is not None:
         if attribute.domain == "FACE":
-            return _attribute_scalar(attribute.data[triangle.polygon_index], 1.0)
+            return "FACE", array("f", (_mask_weight(value) for value in attribute.data))
         if attribute.domain in {"POINT", "VERTEX"}:
-            values = [_attribute_scalar(attribute.data[index], 1.0) for index in triangle.vertices]
-            return max(values) if values else 0.0
+            return "POINT", array("f", (_mask_weight(value) for value in attribute.data))
         if attribute.domain == "CORNER":
-            values = [_attribute_scalar(attribute.data[index], 1.0) for index in triangle.loops]
-            return max(values) if values else 0.0
+            return "CORNER", array("f", (_mask_weight(value) for value in attribute.data))
 
     group = obj.vertex_groups.get(name)
     if group is None:
-        return 1.0
-    weights = []
-    for vertex_index in triangle.vertices:
-        for membership in mesh.vertices[vertex_index].groups:
+        raise RuntimeError(f'{obj.name} has no mesh attribute or vertex group named "{name}"')
+    weights = array("f", [0.0]) * len(mesh.vertices)
+    for vertex in mesh.vertices:
+        weight = 0.0
+        for membership in vertex.groups:
             if membership.group == group.index:
-                weights.append(membership.weight)
+                weight = membership.weight
                 break
-    return max(weights) if weights else 0.0
+        weights[vertex.index] = max(0.0, min(1.0, weight))
+    return "POINT", weights
+
+
+def _triangle_mask_weights(mask, triangle):
+    if mask is None:
+        return ()
+    domain, values = mask
+    if domain == "FACE":
+        return (values[triangle.polygon_index],) * len(triangle.vertices)
+    indices = triangle.loops if domain == "CORNER" else triangle.vertices
+    return tuple(values[index] for index in indices)
+
+
+def _mask_weight(value):
+    return max(0.0, min(1.0, _attribute_scalar(value, 1.0)))
 
 
 def _attribute_scalar(value, default):

@@ -2,7 +2,7 @@
 
 All notable customer-facing changes are recorded here.
 
-## 0.2.0 Beta - 2026-08-19
+## 0.2.0 Beta - 2026-08-20
 
 ### Added
 
@@ -17,6 +17,8 @@ All notable customer-facing changes are recorded here.
 
 ### Improved
 
+- Consolidated installation, workflow, shading, performance, and
+  troubleshooting guidance into one customer manual.
 - Faster bounded asynchronous OpenVDB conversion and writing.
 - Lower-memory density readback and output-channel handling.
 - Preview loop reset, point scaling, cache paths, and lifecycle cleanup.
@@ -39,7 +41,7 @@ All notable customer-facing changes are recorded here.
 - Geometry Nodes Volume emission is experimental.
 - Preview is temporary feedback and does not create a durable cache.
 - Stopped bakes import completed frames but cannot resume solver state.
-- AMD GPUs and macOS are not qualified for this release.
+- AMD GPUs are unqualified; macOS and Apple Silicon are unsupported.
 
 ## 0.1.0 Beta - 2026-07-12
 

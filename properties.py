@@ -651,14 +651,14 @@ class FumarisSettings(PropertyGroup):
 
     mesh_emission_mask_attribute: StringProperty(
         name="Emission Mask Attribute",
-        description="Optional vertex group or evaluated mesh attribute used to limit mesh emission",
+        description="Optional vertex group or evaluated mesh attribute whose 0 to 1 weights scale emission strength",
         default="",
     )
 
     mesh_emission_mask_threshold: FloatProperty(
         name="Mask Threshold",
-        description="Minimum face-average mask value required for mesh emission",
-        default=0.5,
+        description="Skip triangles whose average emission weight is below this value",
+        default=0.001,
         min=0.0,
         max=1.0,
     )

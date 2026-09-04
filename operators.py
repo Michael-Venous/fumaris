@@ -21,7 +21,13 @@ from .importers import (
     migrate_legacy_cache,
 )
 from .jobs import FrameRangeJob
-from .preview import clear_all_previews, clear_preview, show_preview_payload
+from .preview import (
+    capture_volume_preview,
+    clear_all_previews,
+    clear_preview,
+    show_preview_payload,
+    volume_preview_signature,
+)
 from .utils import (
     legacy_output_directories_for_object,
     output_directory_for_object,
@@ -190,6 +196,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return {"CANCELLED"}
 
         self._domain_name = domain.name
+        self._pause_requested = False
+        self._loop_reset_pending = False
         try:
             claim_job(self, "previewing")
             self._start_preview_session(context, domain, clear_preview_points=True)
@@ -225,6 +233,12 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._hide_imported_volumes()
         self._session_signature = signature
         self._next_submit_at = 0.0
+        self._preview_render_submitted = False
+        self._preview_rerendered_since_frame = False
+        self._has_volume_preview_frame = False
+        self._last_preview_signature = None
+        self._next_preview_capture_at = 0.0
+        self._preview_render_count = 0
 
     def _restart_preview_session(self, context, domain):
         signature = session_structure_signature(domain)
@@ -252,11 +266,49 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._prefix = session["output_prefix"]
         self._session_signature = signature
         self._next_submit_at = 0.0
+        self._preview_render_submitted = False
+        self._preview_rerendered_since_frame = False
+        self._has_volume_preview_frame = False
+        self._last_preview_signature = None
+        self._next_preview_capture_at = 0.0
+        self._loop_reset_pending = False
         self._loop_reset_started = time.perf_counter()
         self._worker.reset_session(session)
 
     def _ready_to_submit(self, context):
+        if getattr(self, "_preview_render_submitted", False):
+            return False
+        if self._submit_changed_volume_preview(context):
+            return False
+        if getattr(self, "_pause_requested", False):
+            return False
         return time.monotonic() >= getattr(self, "_next_submit_at", 0.0)
+
+    def _submit_changed_volume_preview(self, context):
+        if not getattr(self, "_has_volume_preview_frame", False):
+            return False
+        if (
+            getattr(self, "_preview_rerendered_since_frame", False)
+            and not getattr(self, "_pause_requested", False)
+        ):
+            return False
+        now = time.monotonic()
+        if now < getattr(self, "_next_preview_capture_at", 0.0):
+            return False
+        self._next_preview_capture_at = now + (1.0 / 30.0)
+
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None or domain.fumaris.preview_mode != "volume":
+            return False
+        preview = capture_volume_preview(context, domain)
+        signature = volume_preview_signature(preview)
+        if signature is None or signature == self._last_preview_signature:
+            return False
+        self._worker.send_preview(preview)
+        self._preview_render_submitted = True
+        self._preview_rerendered_since_frame = True
+        self._last_preview_signature = signature
+        return True
 
     def _submit_frame(self, context):
         domain = bpy.data.objects.get(self._domain_name)
@@ -286,28 +338,72 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         return simulation_frame_range(domain)[0]
 
     def _after_frame_complete(self, context, domain, completed, data, payload):
+        self._preview_rerendered_since_frame = False
         if domain:
             data["blender_preview_upload_ms"] = show_preview_payload(
                 domain,
                 data,
                 payload,
             )
+        preview = data.get("preview") or {}
+        self._has_volume_preview_frame = preview.get("type") == "volume_rgba8"
+        if self._has_volume_preview_frame:
+            self._last_preview_signature = volume_preview_signature(
+                getattr(self, "_last_submitted_volume_preview", None)
+            )
         started = getattr(self, "_last_frame_submit_started", time.monotonic())
         self._next_submit_at = started + _scene_frame_duration(context.scene)
+
+    def _after_preview_complete(self, _context, domain, data, payload):
+        if domain:
+            data["blender_preview_upload_ms"] = show_preview_payload(
+                domain,
+                data,
+                payload,
+            )
+        self._preview_render_count = getattr(self, "_preview_render_count", 0) + 1
+        console_log(
+            "Fumaris viewport rerender: "
+            f"total={float(data.get('preview_render_ms', 0.0)):.3f}ms "
+            f"submit={float(data.get('flow_submit_ms', 0.0)):.3f}ms "
+            f"wait={float(data.get('flow_wait_ms', 0.0)):.3f}ms"
+        )
 
     def _complete(self, context):
         domain = bpy.data.objects.get(self._domain_name)
         self._finish(context)
         if domain:
+            clear_preview(domain)
             domain.fumaris.simulation_state = "idle"
             domain.fumaris.bake_elapsed = time.monotonic() - self._started_at
         console_log(f"Fumaris preview complete for {self._domain_name}")
         return {"FINISHED"}
 
+    def set_paused(self, context, paused):
+        paused = bool(paused)
+        if paused == getattr(self, "_pause_requested", False):
+            return
+        self._pause_requested = paused
+        if paused:
+            console_log(f"Fumaris preview paused for {self._domain_name}")
+            return
+
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None:
+            raise RuntimeError("The active Fumaris domain was deleted")
+        self._next_submit_at = 0.0
+        if getattr(self, "_loop_reset_pending", False):
+            self._restart_preview_session(context, domain)
+        console_log(f"Fumaris preview resumed for {self._domain_name}")
+
     def _end_of_range(self, context, completed):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
             return self._cancelled(context, {"message": "The active Fumaris domain was deleted"})
+        if getattr(self, "_pause_requested", False):
+            self._submitted = False
+            self._loop_reset_pending = True
+            return None
         try:
             self._restart_preview_session(context, domain)
         except Exception as error:
@@ -317,6 +413,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     def _cancelled(self, context, data):
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
+            clear_preview(domain)
             domain.fumaris.simulation_state = "idle"
             domain.fumaris.bake_elapsed = time.monotonic() - self._started_at
         self._finish(context)
@@ -346,11 +443,40 @@ class FUMARIS_OT_preview_stop(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_preview_pause(Operator):
+    bl_idname = "fumaris.preview_pause"
+    bl_label = "Pause or Resume Preview"
+    bl_description = "Freeze or resume simulation while keeping the Flow volume available for viewport rerenders"
+
+    @classmethod
+    def poll(cls, context):
+        return active_mode() == "previewing"
+
+    def execute(self, context):
+        job = active_job() if active_mode() == "previewing" else None
+        if job is None:
+            self.report({"WARNING"}, "This domain has no active preview")
+            return {"CANCELLED"}
+        try:
+            job.set_paused(
+                context,
+                not getattr(job, "_pause_requested", False),
+            )
+        except Exception as error:
+            _cancel_job(context, job)
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        for area in context.screen.areas:
+            area.tag_redraw()
+        return {"FINISHED"}
+
+
 def _cancel_job(context, job):
     job._finished = True
     domain = bpy.data.objects.get(getattr(job, "_domain_name", ""))
     if domain:
         domain.fumaris.simulation_state = "idle"
+        clear_preview(domain)
     job.request_cancel()
     if getattr(job, "_worker", None):
         job._worker.close()
@@ -376,12 +502,23 @@ def _import_cache(context, domain, directory, prefix):
     active = context.view_layer.objects.active
     clear_preview(domain)
     props = domain.fumaris
+    fps = float(context.scene.render.fps) / max(
+        1e-6,
+        float(context.scene.render.fps_base),
+    )
+    flame_rate_scale = (
+        fps
+        * float(props.num_sub_steps)
+        / max(1e-6, float(props.simulation_speed))
+    )
     import_sequence(
         directory,
         simulation_frame_range(domain)[0],
         prefix,
         material=props.volume_material,
         selectable=props.volume_selectable,
+        appearance=props,
+        flame_rate_scale=flame_rate_scale,
     )
     _restore_selection(context, domain, selected, active)
 
@@ -493,6 +630,7 @@ def _active_domain(context):
 CLASSES = (
     FUMARIS_OT_bake,
     FUMARIS_OT_preview_play,
+    FUMARIS_OT_preview_pause,
     FUMARIS_OT_preview_stop,
     FUMARIS_OT_delete,
     FUMARIS_OT_stop,

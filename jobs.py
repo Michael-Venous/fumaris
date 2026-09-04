@@ -18,10 +18,12 @@ from .protocol import (
     CANCELLED,
     FAILED,
     FRAME_COMPLETE,
+    PREVIEW_COMPLETE,
     READY,
     SESSION_ACCEPTED,
     SESSION_COMPLETE,
 )
+from .preview import capture_volume_preview
 from .runtime import release_job
 from .utils import (
     legacy_output_directories_for_object,
@@ -78,6 +80,7 @@ class FrameRangeJob:
         self._peak_vram_bytes = 0
         self._next_memory_sample = 0.0
         self._track_metrics = bool(write_vdb)
+        self._preview_enabled = bool(preview_enabled)
 
         session, self._participants = build_session(
             context,
@@ -180,6 +183,11 @@ class FrameRangeJob:
                 if result:
                     return result
                 continue
+            if message_type == PREVIEW_COMPLETE:
+                self._preview_render_submitted = False
+                domain = bpy.data.objects.get(self._domain_name)
+                self._after_preview_complete(context, domain, data, payload)
+                continue
             if message_type == SESSION_COMPLETE:
                 if getattr(self, "_ignore_session_complete", False):
                     self._ignore_session_complete = False
@@ -227,6 +235,12 @@ class FrameRangeJob:
         timing_start = time.perf_counter()
         self._evaluate_frame(context)
         timing_evaluated = time.perf_counter()
+        preview_request = (
+            capture_volume_preview(context, domain)
+            if getattr(self, "_preview_enabled", True)
+            else {"valid": False}
+        )
+        self._last_submitted_volume_preview = preview_request
         packet = build_frame(
             context,
             self._frame,
@@ -234,6 +248,8 @@ class FrameRangeJob:
             domain=domain,
             resolution_scale=getattr(self, "_resolution_scale", 1.0),
             volume_stage_dir=self._volume_staging.name,
+            preview_enabled=getattr(self, "_preview_enabled", True),
+            volume_preview=preview_request,
         )
         timing_packet = time.perf_counter()
         self._worker.send_frame(packet)
@@ -290,6 +306,9 @@ class FrameRangeJob:
             f"volume={float(data.get('bridge_volume_load_ms', 0.0)):.3f}ms "
             f"volume_cache={int(data.get('bridge_volume_cache_hits', 0))}/"
             f"{int(data.get('bridge_volume_cache_misses', 0))} "
+            f"effector={float(data.get('bridge_effector_setup_ms', 0.0)):.3f}ms "
+            f"effector_cache={int(data.get('bridge_effector_cache_hits', 0))}/"
+            f"{int(data.get('bridge_effector_cache_misses', 0))} "
             f"payload={int(data.get('payload_bytes', 0))} bytes"
         )
         console_log(
@@ -365,6 +384,9 @@ class FrameRangeJob:
         return None
 
     def _after_frame_complete(self, _context, _domain, _completed, _data, _payload):
+        pass
+
+    def _after_preview_complete(self, _context, _domain, _data, _payload):
         pass
 
     def _next_frame_after_complete(self, _context, completed):

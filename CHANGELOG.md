@@ -14,6 +14,11 @@ All notable customer-facing changes are recorded here.
 - Multiple independent cache slots for preserving separate bakes.
 - Detailed Flow, preview, readback, and OpenVDB timing diagnostics.
 - Convex filled-volume collision mode and participant motion sub-steps.
+- Raymarched live volume preview with shared smoke and fire Appearance controls.
+- Animatable fourth-dimensional Noise W control for effectors.
+- Cylindrical vortex fields with core radius, height, inflow, and updraft controls.
+- Pause/Resume for freezing live simulation while retaining interactive camera
+  and Appearance rerenders.
 
 ### Improved
 
@@ -25,9 +30,11 @@ All notable customer-facing changes are recorded here.
 - Boundary-safe sparse advection for fast smoke and corrected full-solver
   substep semantics.
 - Linux release compatibility through an Ubuntu 22.04 build baseline.
-- Kelvin-like temperature output and a smoother burn/temperature flame mask
-  for direct, predictable fire shading.
+- Kelvin-like temperature output and generated burn/temperature fire shading
+  that can be adjusted without rebaking or exporting a derived flame grid.
 - Stronger pre/post-pressure collider constraints and interior density cleanup.
+- Reused static effector textures, parallel dynamic-noise generation, and
+  sparse-bounded non-allocating effector dispatches.
 
 ### Fixed
 
@@ -35,6 +42,8 @@ All notable customer-facing changes are recorded here.
 - Stale preview and bake state after stopping, loading files, or bridge errors.
 - Runtime metric persistence and bake cleanup.
 - Add-on startup migration during Blender's restricted registration phase.
+- Live self-shadowing that could uniformly darken dense simulations because
+  camera and shadow rays used different density ranges and stale shader layouts.
 
 ### Known Limitations
 

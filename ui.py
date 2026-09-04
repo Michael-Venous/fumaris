@@ -168,32 +168,44 @@ def _draw_effector(layout, props):
     box.label(text="Effector", icon="FORCE_FORCE")
     box.prop(props, "participant_enabled")
     box.prop(props, "effector_type")
-    box.prop(props, "effector_strength")
+    strength_label = "Swirl" if props.effector_type == "vortex" else "Strength"
+    box.prop(props, "effector_strength", text=strength_label)
     box.prop(props, "effector_radius")
+    if props.effector_type == "vortex":
+        box.prop(props, "effector_vortex_height")
+        box.prop(props, "effector_vortex_core_radius")
+        box.prop(props, "effector_vortex_inflow")
+        box.prop(props, "effector_vortex_lift")
     box.prop(props, "effector_coupling")
     box.prop(props, "effector_samples")
 
     if props.effector_type in {"force", "wind", "vortex", "turbulence"}:
         noise, noise_open = _nested_foldout(box, props, "show_panel_noise", "Noise")
         if noise_open:
-            noise.prop(props, "effector_noise_amount")
+            if props.effector_type != "turbulence":
+                noise.prop(props, "effector_noise_amount")
             noise.prop(props, "effector_noise_size")
+            noise.prop(props, "effector_noise_w")
             noise.prop(props, "effector_noise_seed")
 
     falloff, falloff_open = _nested_foldout(box, props, "show_panel_falloff", "Falloff")
     if falloff_open:
-        falloff.prop(props, "effector_z_direction")
-        falloff.prop(props, "effector_falloff_power")
-        row = falloff.row(align=True)
-        row.prop(props, "effector_use_min_distance", text="")
-        sub = row.row(align=True)
-        sub.enabled = props.effector_use_min_distance
-        sub.prop(props, "effector_min_distance")
-        row = falloff.row(align=True)
-        row.prop(props, "effector_use_max_distance", text="")
-        sub = row.row(align=True)
-        sub.enabled = props.effector_use_max_distance
-        sub.prop(props, "effector_max_distance")
+        if props.effector_type == "vortex":
+            falloff.prop(props, "effector_z_direction")
+            falloff.prop(props, "effector_falloff_power", text="Edge Power")
+        else:
+            falloff.prop(props, "effector_z_direction")
+            falloff.prop(props, "effector_falloff_power")
+            row = falloff.row(align=True)
+            row.prop(props, "effector_use_min_distance", text="")
+            sub = row.row(align=True)
+            sub.enabled = props.effector_use_min_distance
+            sub.prop(props, "effector_min_distance")
+            row = falloff.row(align=True)
+            row.prop(props, "effector_use_max_distance", text="")
+            sub = row.row(align=True)
+            sub.enabled = props.effector_use_max_distance
+            sub.prop(props, "effector_max_distance")
 
 
 def _draw_outflow(layout, props):
@@ -244,6 +256,9 @@ def _draw_domain(layout, scene, props):
     mode = active_mode()
     is_baking = mode == "baking"
     is_previewing = mode == "previewing"
+    is_preview_paused = is_previewing and bool(
+        getattr(job, "_pause_requested", False)
+    )
     is_initializing = job is not None and not getattr(job, "_accepted", False)
 
     controls = layout.box()
@@ -276,6 +291,13 @@ def _draw_domain(layout, scene, props):
     play = preview.row(align=True)
     play.enabled = mode is None and props.simulation_state != "baked"
     play.operator("fumaris.preview_play", icon="PLAY", text="Play")
+    pause = preview.row(align=True)
+    pause.enabled = is_previewing and not is_initializing
+    pause.operator(
+        "fumaris.preview_pause",
+        icon="PLAY" if is_preview_paused else "PAUSE",
+        text="Resume" if is_preview_paused else "Pause",
+    )
     preview_stop = preview.row(align=True)
     preview_stop.enabled = is_previewing
     preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
@@ -290,6 +312,31 @@ def _draw_domain(layout, scene, props):
     settings.prop(props, "sparse_block_capacity")
     settings.prop(props, "num_sub_steps")
 
+    appearance, appearance_open = _nested_foldout(
+        settings,
+        props,
+        "show_appearance",
+        "Appearance",
+    )
+    if appearance_open:
+        appearance.label(text="Smoke")
+        appearance.prop(props, "shader_smoke_density")
+        appearance.prop(props, "shader_smoke_color", text="Color")
+        appearance.separator()
+        appearance.prop(props, "shader_flame_enabled")
+        fire = appearance.column(align=True)
+        fire.enabled = props.shader_flame_enabled
+        fire.prop(props, "shader_flame_brightness")
+        row = fire.row(align=True)
+        row.prop(props, "flame_temperature_min", text="Start")
+        row.prop(props, "flame_temperature_max", text="Full")
+        fire.prop(props, "shader_temperature_multiplier")
+        if props.volume_material is not None:
+            appearance.label(
+                text="Custom Volume Material overrides baked appearance",
+                icon="INFO",
+            )
+
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
     if output_open:
         output.prop(props, "output_dir")
@@ -302,23 +349,31 @@ def _draw_domain(layout, scene, props):
         output.prop(props, "export_temperature_vdb")
         output.prop(props, "export_fuel_vdb")
         output.prop(props, "export_burn_vdb")
-        output.prop(props, "export_flame_vdb")
-        if props.export_flame_vdb:
-            output.prop(props, "flame_temperature_min")
-            output.prop(props, "flame_temperature_max")
         output.prop(props, "export_velocity_vdb")
+        if props.volume_material is None:
+            output.label(
+                text="Generated material always includes temperature and burn",
+                icon="INFO",
+            )
 
     preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
     if preview_open:
         preview.prop(props, "preview_bake")
+        preview.prop(props, "preview_mode")
         preview.prop(props, "preview_resolution_percent", slider=True)
-        preview.prop(props, "preview_dot_resolution")
-        preview.prop(props, "preview_max_points")
-        if props.preview_max_points > 4_000_000:
-            preview.label(text="High dot limits use substantial transfer and GPU memory", icon="ERROR")
-        preview.prop(props, "preview_dot_size")
-        preview.prop(props, "preview_color")
-        preview.prop(props, "preview_opacity")
+        if props.preview_mode == "volume":
+            preview.prop(props, "preview_image_scale", slider=True)
+            preview.prop(props, "preview_max_ray_steps")
+            preview.prop(props, "preview_shadows")
+            preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
+        else:
+            preview.prop(props, "preview_dot_resolution")
+            preview.prop(props, "preview_max_points")
+            if props.preview_max_points > 4_000_000:
+                preview.label(text="High dot limits use substantial transfer and GPU memory", icon="ERROR")
+            preview.prop(props, "preview_dot_size")
+            preview.prop(props, "preview_color")
+            preview.prop(props, "preview_opacity")
 
     participants = layout.box()
     participants.enabled = not is_baking

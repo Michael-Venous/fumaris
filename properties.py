@@ -23,6 +23,19 @@ def _preview_display_updated(_self, _context):
     refresh_preview_display()
 
 
+def _appearance_updated(self, _context):
+    from .importers import update_generated_materials
+    from .preview import refresh_preview_display
+
+    domain = getattr(self, "id_data", None)
+    if domain is not None:
+        try:
+            update_generated_materials(domain, self)
+        except (AttributeError, ReferenceError, RuntimeError) as error:
+            print(f"Fumaris material update failed: {error}")
+    refresh_preview_display()
+
+
 class FumarisSettings(PropertyGroup):
     """Custom PropertyGroup storing all simulation parameters for Fumaris smoke simulation."""
 
@@ -273,10 +286,9 @@ class FumarisSettings(PropertyGroup):
 
     resolution: IntProperty(
         name="Resolution",
-        description="Simulation detail; maps to cell size as 32 divided by this value and does not define a fixed domain",
+        description="Simulation detail; maps to cell size as 32 divided by this value and is limited in practice by sparse capacity and GPU memory",
         default=256,
         min=16,
-        max=4096,
         soft_max=4096,
     )
 
@@ -286,6 +298,16 @@ class FumarisSettings(PropertyGroup):
         default=1.0,
         min=0.05,
         soft_max=4.0,
+    )
+
+    preview_mode: EnumProperty(
+        name="Preview Mode",
+        description="Volume raymarch is the normal interactive preview; points remain available as a lightweight diagnostic fallback",
+        items=[
+            ("volume", "Volume", "Raymarch the live sparse Flow grid"),
+            ("points", "Points", "Draw sampled active voxels as points"),
+        ],
+        default="volume",
     )
 
     preview_resolution_percent: FloatProperty(
@@ -329,7 +351,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_opacity: FloatProperty(
         name="Preview Opacity",
-        description="Opacity of live preview dots",
+        description="Opacity multiplier for the live preview",
         default=0.65,
         min=0.0,
         max=1.0,
@@ -337,9 +359,33 @@ class FumarisSettings(PropertyGroup):
         update=_preview_display_updated,
     )
 
+    preview_image_scale: FloatProperty(
+        name="Viewport Scale",
+        description="Fraction of the 3D viewport resolution used by the volume raymarch; doubling it renders and transfers four times as many pixels",
+        default=50.0,
+        min=25.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+    )
+
+    preview_max_ray_steps: IntProperty(
+        name="Ray Steps",
+        description="Approximate samples across Fumaris's 32-meter resolution reference; values beyond one sample per 0.75 voxel stop adding work because the source grid has no finer detail",
+        default=192,
+        min=32,
+        max=1024,
+        soft_max=384,
+    )
+
+    preview_shadows: BoolProperty(
+        name="Self Shadows",
+        description="Calculate directional self-shadowing through the visible smoke density",
+        default=True,
+    )
+
     preview_bake: BoolProperty(
         name="Preview Bake",
-        description="Show live preview dots while baking; disabling this keeps bake as fast as possible",
+        description="Show the selected live preview while baking; disabling this keeps bake as fast as possible",
         default=False,
     )
 
@@ -677,7 +723,11 @@ class FumarisSettings(PropertyGroup):
         items=[
             ("force", "Force", "Spherical force away from or toward the object origin"),
             ("wind", "Wind", "Directional force along the object's local Z axis"),
-            ("vortex", "Vortex", "Tangential force around the object's local Z axis"),
+            (
+                "vortex",
+                "Vortex",
+                "Axial vortex with optional inward pull and updraft along local Z",
+            ),
             ("turbulence", "Turbulence", "Deterministic noisy force inside the radius"),
             ("drag", "Drag", "Damp velocity toward zero inside the radius"),
         ],
@@ -694,11 +744,45 @@ class FumarisSettings(PropertyGroup):
 
     effector_radius: FloatProperty(
         name="Radius",
-        description="Spherical area influenced by this effector",
+        description="Radial area influenced by this effector",
         default=4.0,
         min=0.01,
         soft_max=20.0,
         subtype="DISTANCE",
+    )
+
+    effector_vortex_height: FloatProperty(
+        name="Height",
+        description="Total height of the cylindrical vortex field along local Z",
+        default=20.0,
+        min=0.01,
+        soft_max=100.0,
+        subtype="DISTANCE",
+    )
+
+    effector_vortex_core_radius: FloatProperty(
+        name="Core Radius",
+        description="Radius of peak rotation; velocity rises inside the core and falls outside it",
+        default=1.0,
+        min=0.01,
+        soft_max=10.0,
+        subtype="DISTANCE",
+    )
+
+    effector_vortex_inflow: FloatProperty(
+        name="Inflow",
+        description="Inward velocity that confines smoke around the rotating core",
+        default=0.0,
+        min=0.0,
+        soft_max=100.0,
+    )
+
+    effector_vortex_lift: FloatProperty(
+        name="Updraft",
+        description="Velocity along local +Z; negative values pull toward local -Z",
+        default=0.0,
+        soft_min=-100.0,
+        soft_max=100.0,
     )
 
     effector_falloff_power: FloatProperty(
@@ -752,7 +836,7 @@ class FumarisSettings(PropertyGroup):
 
     effector_noise_amount: FloatProperty(
         name="Noise Amount",
-        description="Amount of directional noise mixed into the force",
+        description="Amount of smooth directional noise mixed into force, wind, or vortex direction",
         default=0.0,
         min=0.0,
         soft_max=10.0,
@@ -760,11 +844,21 @@ class FumarisSettings(PropertyGroup):
 
     effector_noise_size: FloatProperty(
         name="Noise Size",
-        description="World-space size of the noise pattern",
+        description="Approximate local-space feature size of the smooth noise pattern",
         default=1.0,
         min=0.001,
         soft_max=20.0,
         subtype="DISTANCE",
+    )
+
+    effector_noise_w: FloatProperty(
+        name="W",
+        description="Fourth-dimensional noise coordinate; animate this value to art-direct the noise evolution",
+        default=0.0,
+        min=-10000.0,
+        max=10000.0,
+        soft_min=-10.0,
+        soft_max=10.0,
     )
 
     effector_noise_seed: IntProperty(
@@ -785,10 +879,10 @@ class FumarisSettings(PropertyGroup):
 
     effector_samples: IntProperty(
         name="Samples",
-        description="Texture samples per axis used to rasterize the effector field",
+        description="Minimum texture samples per axis; small noise and vortex cores raise this automatically up to 64",
         default=8,
-        min=2,
-        max=16,
+        min=8,
+        max=64,
     )
 
     # Advanced Settings
@@ -921,26 +1015,70 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    export_flame_vdb: BoolProperty(
-        name="Export Flame VDB",
-        description="Export a render-ready flame mask from timestep-normalized burn and Kelvin-like temperature",
-        default=False,
-    )
-
     flame_temperature_min: FloatProperty(
-        name="Flame Temperature Min",
-        description="Kelvin-like exported temperature where the flame mask begins",
+        name="Start Temperature",
+        description="Kelvin-like temperature where generated fire emission begins",
         default=800.0,
         min=0.0,
         soft_max=5000.0,
+        update=_appearance_updated,
     )
 
     flame_temperature_max: FloatProperty(
-        name="Flame Temperature Max",
-        description="Kelvin-like exported temperature where the flame temperature gate reaches full strength",
+        name="Full Temperature",
+        description="Kelvin-like temperature where generated fire emission reaches full strength",
         default=3000.0,
         min=1.0,
         soft_max=5000.0,
+        update=_appearance_updated,
+    )
+
+    shader_smoke_density: FloatProperty(
+        name="Density",
+        description="Density multiplier used by the generated volume material and live volume preview",
+        default=2.0,
+        min=0.0,
+        max=100.0,
+        soft_max=10.0,
+        update=_appearance_updated,
+    )
+
+    shader_smoke_color: FloatVectorProperty(
+        name="Color",
+        description="Smoke color used by the generated volume material and live volume preview",
+        default=(0.6, 0.6, 0.6),
+        min=0.0,
+        max=1.0,
+        size=3,
+        subtype="COLOR",
+        update=_appearance_updated,
+    )
+
+    shader_flame_enabled: BoolProperty(
+        name="Flame",
+        description="Show burn-driven fire in the generated material and live volume preview",
+        default=True,
+        update=_appearance_updated,
+    )
+
+    shader_flame_brightness: FloatProperty(
+        name="Brightness",
+        description="Emission strength multiplier for generated fire",
+        default=1.0,
+        min=0.0,
+        max=100.0,
+        soft_max=10.0,
+        update=_appearance_updated,
+    )
+
+    shader_temperature_multiplier: FloatProperty(
+        name="Blackbody Scale",
+        description="Multiplier applied to Kelvin-like temperature before Blackbody color; 1.0 preserves the baked temperature",
+        default=1.0,
+        min=0.01,
+        max=10.0,
+        soft_max=2.0,
+        update=_appearance_updated,
     )
 
     temperature_mapping_version: IntProperty(
@@ -1015,6 +1153,11 @@ class FumarisSettings(PropertyGroup):
     show_preview_display: BoolProperty(
         name="Preview Settings",
         default=False,
+    )
+
+    show_appearance: BoolProperty(
+        name="Appearance",
+        default=True,
     )
 
     show_cache_location: BoolProperty(

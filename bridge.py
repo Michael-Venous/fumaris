@@ -26,6 +26,7 @@ from .protocol import (
     CANCELLED,
     FAILED,
     FRAME,
+    PREVIEW_RENDER,
     SESSION_BEGIN,
     SESSION_END,
     SESSION_RESET,
@@ -53,6 +54,9 @@ class BridgeWorker:
 
     def send_frame(self, frame):
         self._requests.put_nowait((FRAME, frame.header, frame.payload))
+
+    def send_preview(self, preview):
+        self._requests.put_nowait((PREVIEW_RENDER, preview, b""))
 
     def end_session(self):
         self._requests.put_nowait((SESSION_END, {}, b""))

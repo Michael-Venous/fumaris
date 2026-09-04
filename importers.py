@@ -19,6 +19,13 @@ VOLUME_PREFIX_MARKER = "fumaris_volume_prefix"
 LEGACY_IMPORT_DIRECTORY = ".plume_forge_import"
 LEGACY_VOLUME_MARKER = "plume_forge_volume"
 LEGACY_VOLUME_PREFIX_MARKER = "plume_forge_volume_prefix"
+GENERATED_MATERIAL_MARKER = "fumaris_generated_material"
+
+NODE_VOLUME_SHADER = "Fumaris Volume Shader"
+NODE_FIRE_INTENSITY = "Fumaris Fire Intensity"
+NODE_FIRE_TEMPERATURE = "Fumaris Fire Temperature"
+NODE_TEMPERATURE_MULTIPLIER = "Fumaris Color Temperature"
+NODE_TIMESTEP_NORMALIZATION = "Fumaris Timestep Normalization"
 
 
 def hide_generated_volumes(directory, prefix=PREFIX):
@@ -109,40 +116,185 @@ def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
     return True
 
 
-def add_density_material(volume_object):
+def _socket(sockets, *names):
+    for name in names:
+        socket = sockets.get(name)
+        if socket is not None:
+            return socket
+    raise KeyError(f"Missing node socket: {', '.join(names)}")
+
+
+def _appearance_value(settings, name, default):
+    return getattr(settings, name, default) if settings is not None else default
+
+
+def apply_generated_material_settings(material, settings):
+    if material is None or not material.use_nodes or material.node_tree is None:
+        return False
+    nodes = material.node_tree.nodes
+    shader = nodes.get(NODE_VOLUME_SHADER)
+    fire_intensity = nodes.get(NODE_FIRE_INTENSITY)
+    fire_temperature = nodes.get(NODE_FIRE_TEMPERATURE)
+    temperature_multiplier = nodes.get(NODE_TEMPERATURE_MULTIPLIER)
+    if not all((shader, fire_intensity, fire_temperature, temperature_multiplier)):
+        return False
+
+    smoke_color = tuple(
+        float(value)
+        for value in _appearance_value(
+            settings,
+            "shader_smoke_color",
+            (0.6, 0.6, 0.6),
+        )
+    )
+    shader.inputs["Color"].default_value = (*smoke_color[:3], 1.0)
+    shader.inputs["Density"].default_value = max(
+        0.0,
+        float(_appearance_value(settings, "shader_smoke_density", 2.0)),
+    )
+    enabled = bool(_appearance_value(settings, "shader_flame_enabled", True))
+    brightness = max(
+        0.0,
+        float(_appearance_value(settings, "shader_flame_brightness", 1.0)),
+    )
+    fire_intensity.inputs[1].default_value = brightness if enabled else 0.0
+    start_temperature = max(
+        0.0,
+        float(_appearance_value(settings, "flame_temperature_min", 800.0)),
+    )
+    full_temperature = max(
+        start_temperature + 1e-5,
+        float(_appearance_value(settings, "flame_temperature_max", 3000.0)),
+    )
+    fire_temperature.inputs[1].default_value = start_temperature
+    fire_temperature.inputs[2].default_value = full_temperature
+    temperature_multiplier.inputs[1].default_value = max(
+        0.01,
+        float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)),
+    )
+    material.diffuse_color = (*smoke_color[:3], 1.0)
+    material.node_tree.update_tag()
+    return True
+
+
+def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     material = bpy.data.materials.new("Fumaris Material")
     material.use_nodes = True
+    material[GENERATED_MATERIAL_MARKER] = True
     nodes = material.node_tree.nodes
     links = material.node_tree.links
     nodes.clear()
 
     volume_info = nodes.new("ShaderNodeVolumeInfo")
+    burn = nodes.new("ShaderNodeAttribute")
+    burn.attribute_name = "burn"
+    burn.label = "Raw Burn"
+    positive_burn = nodes.new("ShaderNodeMath")
+    positive_burn.operation = "MAXIMUM"
+    positive_burn.inputs[1].default_value = 0.0
+    positive_burn.label = "Positive Burn"
+    fire_temperature = nodes.new("ShaderNodeMapRange")
+    fire_temperature.data_type = "FLOAT"
+    fire_temperature.interpolation_type = "SMOOTHSTEP"
+    fire_temperature.name = NODE_FIRE_TEMPERATURE
+    fire_temperature.label = "Flame Temperature"
+    fire_temperature.inputs[3].default_value = 0.0
+    fire_temperature.inputs[4].default_value = 1.0
+    burn_heat = nodes.new("ShaderNodeMath")
+    burn_heat.operation = "MULTIPLY"
+    burn_heat.label = "Burn x Heat"
+    timestep = nodes.new("ShaderNodeMath")
+    timestep.operation = "MULTIPLY"
+    timestep.name = NODE_TIMESTEP_NORMALIZATION
+    timestep.label = "Timestep Normalization"
+    timestep.inputs[1].default_value = max(0.0, float(flame_rate_scale))
+    negate = nodes.new("ShaderNodeMath")
+    negate.operation = "MULTIPLY"
+    negate.inputs[1].default_value = -1.0
+    exponential = nodes.new("ShaderNodeMath")
+    exponential.operation = "EXPONENT"
+    smooth_flame = nodes.new("ShaderNodeMath")
+    smooth_flame.operation = "SUBTRACT"
+    smooth_flame.inputs[0].default_value = 1.0
+    smooth_flame.label = "Smooth Flame"
     shader = nodes.new("ShaderNodeVolumePrincipled")
+    shader.name = NODE_VOLUME_SHADER
     output = nodes.new("ShaderNodeOutputMaterial")
     blackbody = nodes.new("ShaderNodeBlackbody")
+    temperature_multiplier = nodes.new("ShaderNodeMath")
+    temperature_multiplier.operation = "MULTIPLY"
+    temperature_multiplier.name = NODE_TEMPERATURE_MULTIPLIER
+    temperature_multiplier.label = "Blackbody Scale"
     fire_intensity = nodes.new("ShaderNodeMath")
     fire_intensity.operation = "MULTIPLY"
-    fire_intensity.name = "Fumaris Fire Intensity"
+    fire_intensity.name = NODE_FIRE_INTENSITY
     fire_intensity.label = "Fire Intensity"
+    fire_intensity.use_clamp = True
     fire_intensity.inputs[1].default_value = 1.0
 
-    volume_info.location = (-520, 0)
-    blackbody.location = (-300, -160)
-    fire_intensity.location = (-300, 40)
-    shader.location = (-60, 0)
-    output.location = (220, 0)
+    burn.location = (-1080, 300)
+    positive_burn.location = (-880, 300)
+    volume_info.location = (-1080, -120)
+    fire_temperature.location = (-880, 80)
+    burn_heat.location = (-650, 300)
+    timestep.location = (-450, 300)
+    negate.location = (-250, 300)
+    exponential.location = (-50, 300)
+    smooth_flame.location = (150, 300)
+    fire_intensity.location = (350, 300)
+    temperature_multiplier.location = (-650, -120)
+    blackbody.location = (-430, -120)
+    shader.location = (590, 40)
+    output.location = (850, 40)
 
-    links.new(volume_info.outputs["Density"], shader.inputs["Density"])
-    links.new(volume_info.outputs["Temperature"], blackbody.inputs["Temperature"])
+    links.new(_socket(burn.outputs, "Factor", "Fac"), positive_burn.inputs[0])
+    links.new(positive_burn.outputs[0], burn_heat.inputs[0])
+    links.new(volume_info.outputs["Temperature"], fire_temperature.inputs[0])
+    links.new(_socket(fire_temperature.outputs, "Result"), burn_heat.inputs[1])
+    links.new(burn_heat.outputs[0], timestep.inputs[0])
+    links.new(timestep.outputs[0], negate.inputs[0])
+    links.new(negate.outputs[0], exponential.inputs[0])
+    links.new(exponential.outputs[0], smooth_flame.inputs[1])
+    links.new(smooth_flame.outputs[0], fire_intensity.inputs[0])
+    links.new(volume_info.outputs["Temperature"], temperature_multiplier.inputs[0])
+    links.new(temperature_multiplier.outputs[0], blackbody.inputs["Temperature"])
     links.new(blackbody.outputs["Color"], shader.inputs["Emission Color"])
-    links.new(volume_info.outputs["Flame"], fire_intensity.inputs[0])
     links.new(fire_intensity.outputs[0], shader.inputs["Emission Strength"])
+    shader.inputs["Density Attribute"].default_value = "density"
+    shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0
     links.new(shader.outputs["Volume"], output.inputs["Volume"])
+    apply_generated_material_settings(material, settings)
     volume_object.data.materials.append(material)
 
 
-def import_sequence(directory, frame_start, prefix=PREFIX, material=None, selectable=True):
+def update_generated_materials(domain, settings):
+    cache_id = str(getattr(settings, "cache_id", "")).strip()
+    if not cache_id:
+        return 0
+    from .utils import output_directory_for_object
+
+    directory = os.path.normpath(output_directory_for_object(domain))
+    prefix = str(getattr(settings, "output_prefix", PREFIX))
+    updated = 0
+    for obj in bpy.data.objects:
+        if not _is_generated_volume(obj, directory, prefix):
+            continue
+        for material in obj.data.materials:
+            if material and material.get(GENERATED_MATERIAL_MARKER):
+                updated += int(apply_generated_material_settings(material, settings))
+    return updated
+
+
+def import_sequence(
+    directory,
+    frame_start,
+    prefix=PREFIX,
+    material=None,
+    selectable=True,
+    appearance=None,
+    flame_rate_scale=1.0,
+):
     files = sorted(glob.glob(os.path.join(directory, f"{prefix}*.vdb")))
     if not files:
         raise RuntimeError("The bridge completed without writing VDB files")
@@ -179,7 +331,11 @@ def import_sequence(directory, frame_start, prefix=PREFIX, material=None, select
     if material is not None:
         volume_object.data.materials.append(material)
     else:
-        add_density_material(volume_object)
+        add_density_material(
+            volume_object,
+            settings=appearance,
+            flame_rate_scale=flame_rate_scale,
+        )
     _restore_selection(previous_selection, previous_active)
     return volume_object
 

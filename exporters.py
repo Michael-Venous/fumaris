@@ -69,6 +69,11 @@ def build_session(
         "vdb_compression": getattr(domain.fumaris, "vdb_compression", "active_mask"),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
+        "preview_mode": (
+            getattr(domain.fumaris, "preview_mode", "points")
+            if preview_enabled
+            else "none"
+        ),
         "flow_profile_enabled": (
             os.environ.get("FUMARIS_FLOW_PROFILE")
             or os.environ.get("PLUME_FORGE_FLOW_PROFILE", "")
@@ -125,9 +130,19 @@ def build_frame(
     domain=None,
     resolution_scale=1.0,
     volume_stage_dir=None,
+    preview_enabled=True,
+    volume_preview=None,
 ):
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
+    preview_request = volume_preview or {"valid": False}
+    preview_mode = (
+        getattr((domain or context.object).fumaris, "preview_mode", "points")
+        if preview_enabled
+        else "none"
+    )
+    if preview_mode == "volume" and not preview_request.get("valid", False):
+        preview_mode = "points"
     meshes = []
     boxes = []
     spheres = []
@@ -162,6 +177,8 @@ def build_frame(
         {
             "frame": frame,
             "preview_max_points": _preview_max_points((domain or context.object).fumaris),
+            "preview_mode": preview_mode,
+            "volume_preview": preview_request,
             "domain": _domain_state((domain or context.object).fumaris, resolution_scale),
             "meshes": meshes,
             "boxes": boxes,
@@ -189,6 +206,7 @@ def _log_participants(domain, participants):
 
 def _domain_state(props, resolution_scale=1.0):
     resolution = max(1, int(round(props.resolution * max(0.0, float(resolution_scale)))))
+    generated_material = props.volume_material is None
     return {
         "resolution": resolution,
         "sparse_block_capacity": props.sparse_block_capacity,
@@ -216,12 +234,9 @@ def _domain_state(props, resolution_scale=1.0):
         "smoke_per_burn": props.smoke_per_burn,
         "divergence_per_burn": props.divergence_per_burn,
         "cooling_rate": props.cooling_rate,
-        "export_temperature_vdb": props.export_temperature_vdb,
+        "export_temperature_vdb": props.export_temperature_vdb or generated_material,
         "export_fuel_vdb": props.export_fuel_vdb,
-        "export_burn_vdb": props.export_burn_vdb,
-        "export_flame_vdb": props.export_flame_vdb,
-        "flame_temperature_min": props.flame_temperature_min,
-        "flame_temperature_max": props.flame_temperature_max,
+        "export_burn_vdb": props.export_burn_vdb or generated_material,
         "export_velocity_vdb": props.export_velocity_vdb,
     }
 
@@ -347,8 +362,6 @@ def _sphere_state(participant, depsgraph):
     position = matrix.translation
     if participant["role"] == "collider":
         radius = props.collider_radius
-    elif participant["role"] == "effector":
-        radius = props.effector_radius
     else:
         radius = props.emitter_radius
     radius *= max(abs(value) for value in matrix.to_scale())
@@ -510,34 +523,41 @@ def _effector_state(participant, depsgraph):
     props = obj.fumaris
     matrix = obj.evaluated_get(depsgraph).matrix_world
     position = matrix.translation
-    axis = matrix.to_quaternion() @ Vector((0.0, 0.0, 1.0))
-    if axis.length < 1e-6:
-        axis = Vector((0.0, 0.0, 1.0))
-    axis.normalize()
+    local_to_world = matrix.to_quaternion().to_matrix().to_4x4()
+    local_to_world.translation = position
 
     radius = max(0.001, props.effector_radius)
-    if props.effector_use_max_distance and props.effector_max_distance > 0.0:
+    is_vortex = props.effector_type == "vortex"
+    if (
+        not is_vortex
+        and props.effector_use_max_distance
+        and props.effector_max_distance > 0.0
+    ):
         radius = max(0.001, props.effector_max_distance)
     minimum = 0.0
-    if props.effector_use_min_distance:
+    if not is_vortex and props.effector_use_min_distance:
         minimum = min(radius, max(0.0, props.effector_min_distance))
 
     return {
         "id": participant["id"],
         "enabled": bool(props.participant_enabled),
         "type": _effector_type_id(props.effector_type),
-        "origin": [position.x, position.y, position.z],
-        "axis": [axis.x, axis.y, axis.z],
+        "local_to_world": [value for row in local_to_world for value in row],
         "strength": props.effector_strength,
         "radius": radius,
+        "height": max(0.001, props.effector_vortex_height),
+        "core_radius": min(radius, max(0.001, props.effector_vortex_core_radius)),
+        "inflow": max(0.0, props.effector_vortex_inflow),
+        "lift": props.effector_vortex_lift,
         "coupling": max(0.0, props.effector_coupling),
         "falloff_power": max(0.0, props.effector_falloff_power),
         "min_distance": minimum,
         "z_direction": _effector_z_direction_id(props.effector_z_direction),
         "noise_amount": max(0.0, props.effector_noise_amount),
         "noise_size": max(0.001, props.effector_noise_size),
+        "noise_w": props.effector_noise_w,
         "noise_seed": props.effector_noise_seed,
-        "samples": max(2, min(16, props.effector_samples)),
+        "samples": max(8, min(64, props.effector_samples)),
     }
 
 
@@ -583,7 +603,9 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
         "multisample": bool(
             _is_particles(props, "point_cloud") and props.point_enable_interpolation
         ),
-        "trace_samples": props.sphere_trace_samples,
+        # Flow's sphere trace follows the velocity field and is not a visible
+        # point-cloud control. Point motion is carried explicitly per point.
+        "trace_samples": 0,
         "motion_substeps": props.motion_substeps,
         "apply_post_pressure": props.emitter_apply_post_pressure,
         **sections,
@@ -623,21 +645,6 @@ def _channels(props, role, matrix=None):
             couple_rate_temperature=props.outflow_coupling,
             couple_rate_fuel=props.outflow_coupling,
             couple_rate_burn=props.outflow_coupling,
-        )
-    if role == "effector":
-        velocity = _effector_velocity(props, matrix)
-        return _channel_values(
-            props,
-            smoke=0.0,
-            temperature=0.0,
-            fuel=0.0,
-            burn=0.0,
-            velocity=velocity,
-            couple_rate_velocity=props.effector_coupling,
-            couple_rate_smoke=0.0,
-            couple_rate_temperature=0.0,
-            couple_rate_fuel=0.0,
-            couple_rate_burn=0.0,
         )
     if matrix is not None:
         return _channel_values(props, velocity=_world_vector(matrix, props.velocity))
@@ -712,18 +719,6 @@ def _effective_divergence_coupling(props, divergence):
     if coupling == 0.0 and abs(divergence) > 1e-6:
         return max(2.0, props.couple_rate_smoke)
     return coupling
-
-
-def _effector_velocity(props, matrix):
-    if matrix is None:
-        return [0.0, 0.0, props.effector_strength]
-    direction = matrix.to_quaternion() @ Vector((0.0, 0.0, 1.0))
-    direction.normalize()
-    return [
-        direction.x * props.effector_strength,
-        direction.y * props.effector_strength,
-        direction.z * props.effector_strength,
-    ]
 
 
 def _mesh_distances(props, role):

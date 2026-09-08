@@ -19,7 +19,7 @@ details requested at the end of this document.
 Fumaris has been exercised on NVIDIA GPUs under Windows and Linux and Intel
 Arc GPUs under Windows and Linux. Recorded release testing includes an NVIDIA
 RTX 3090 on Linux and an Intel Arc 140V on Windows. AMD hardware has not yet
-been qualified. It may work through the same Vulkan path, but this beta does
+been qualified. It may work through the same Vulkan path, but this release does
 not promise AMD compatibility. macOS and Apple Silicon are unsupported.
 
 GPU and driver combinations vary considerably. If Fumaris cannot create a
@@ -59,7 +59,7 @@ boundaries as smoke hides the flame behind it. Preview shading is approximate;
 check final appearance with a short VDB bake in your intended render engine.
 
 Stop active Fumaris jobs, close Blender, and install the newer ZIP from disk.
-Back up production `.blend` files before moving between beta versions.
+Back up production `.blend` files before moving between versions.
 
 Fumaris replaces the former Plume Forge extension ID. Do not enable both
 extensions at once. Files made with development versions of Plume Forge may
@@ -347,7 +347,7 @@ For a faster or more memory-efficient simulation:
 7. Split point clouds with widely different radii and reduce excessive point
    counts when point emission dominates a frame.
 
-## Known Beta Limitations
+## Known Limitations
 
 - Hardware coverage is limited and AMD GPUs are currently unqualified.
 - Geometry Nodes Volume emission is experimental.

@@ -112,7 +112,7 @@ Useful preview controls:
 - `Preview Resolution` scales simulation resolution for preview only.
 - `Viewport Scale` controls output pixels. Doubling the value renders, reads
   back, transfers, and uploads four times as many pixels.
-- `Ray Steps` controls sampling through active sparse blocks. It stops adding
+- `Ray Steps` accepts up to 4096 and controls sampling through active sparse blocks. It stops adding
   work once spacing reaches 0.75 simulation voxel because finer samples cannot
   recover detail absent from the grid.
 - `Tone Mapping` defaults to `Filmic`, which softens bright highlights instead
@@ -126,6 +126,10 @@ Useful preview controls:
 - `Self Shadows` traces directional light through the visible smoke density at
   additional GPU cost. Changing Appearance Density also rebuilds this field so
   light and camera attenuation stay consistent.
+- `Shadow` sets the minimum light reaching smoke: zero permits deep shadows;
+  raising it fills them in. `Azimuth` rotates light around world Z without
+  changing its height; `Elevation` sets that height (0 degrees horizontal,
+  +90 overhead). These controls do not move Blender scene lights.
 - Point mode exposes dot budget, size, color, and opacity controls.
 - `Preview Bake` shows the selected preview during a final bake, with some
   performance cost.
@@ -166,6 +170,29 @@ the next Bake starts from the beginning. `Delete` removes the selected cache
 slot and its imported volume. It is unavailable while a job is active.
 
 ## Domain Settings
+
+### Smoke Upres (Experimental)
+
+Optional smoke upres adds an advected detail field to density. It affects the
+live volume and baked smoke but does not increase the resolution of fire or
+the underlying velocity/pressure solve. Restart the simulation after enabling
+or disabling it.
+
+- Start with Detail Strength 1 and Detail Size 4. Strength 0 uses original smoke.
+- Detail Size is measured in base cells, not an output-resolution multiplier.
+  Larger values make broader swirls; values below 2 share a minimum sampling size.
+- Strength and size accept typed values beyond their slider ranges. Large values
+  can distort the smoke or expose patterns; more is not always better.
+- Detail Memory Limit defaults to 4096 MiB (4 GiB). Its slider reaches 32768 MiB;
+  larger values can be typed, but this does not create additional VRAM.
+- The limit checks estimated peak allocation, not the current total shown by a
+  GPU monitor. The base solver, temporary resources, and Blender also need room.
+  System RAM does not replace GPU memory. Lower resolution or disable upres if
+  the budget is reached; raise it only when the GPU has sufficient headroom.
+
+Compare a short bake with upres disabled and with a higher base resolution.
+Depending on the effect, higher base resolution can be the better tradeoff.
+Upres is not a fix for sparse-boundary stepping or insufficient solver substeps.
 
 ### Resolution And Sparse Capacity
 

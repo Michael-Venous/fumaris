@@ -2,6 +2,24 @@
 
 All notable customer-facing changes are recorded here.
 
+## 1.0.0 - 2026-09-08
+
+- Optional smoke detail/upres with an explicit GPU-memory budget.
+- Preview light azimuth/elevation, shadow floor, exposure, and up to 4096 ray steps.
+- More compact diagnostics and improved GPU/memory reporting.
+- Faster native point-cloud emission, reused resources, and bounded cache writing.
+- Improved preview pause/resume, collection visibility, cleanup, and loop handling.
+- Fixed equal/reversed flame temperature controls rejecting preview requests.
+- Cache locks now use OS-held guards to prevent concurrent writers and safely
+  release after process crashes. Avoid sharing a cache with older Fumaris versions.
+- Read-only cache recovery no longer interrupts scene loading.
+
+- Geometry Nodes mesh errors now identify masks that exclude every face or
+  reference missing attributes, instead of incorrectly reporting missing geometry.
+- Filmic tone mapping in Preview Settings, with adjustable exposure and an
+  Off (Legacy) option. Works on paused volumes, preserves smoke opacity and
+  smoke-free fire, and does not change baked materials or simulation data.
+
 ## 0.2.0 Beta - 2026-08-20
 
 ### Added

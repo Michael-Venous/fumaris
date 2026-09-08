@@ -3,8 +3,27 @@ import sys
 import hashlib
 import stat
 import tempfile
+import math
+import struct
 
 import bpy
+
+
+def flame_temperature_range(start, full):
+    """Keep the range ordered after Blender/native float32 conversion."""
+    if not math.isfinite(start) or not math.isfinite(full):
+        raise ValueError("Flame temperatures must be finite")
+    maximum = struct.unpack("<f", struct.pack("<I", 0x7f7fffff))[0]
+    start = struct.unpack("<f", struct.pack("<f", min(maximum, max(0.0, start))))[0]
+    full = struct.unpack("<f", struct.pack("<f", min(maximum, max(0.0, full))))[0]
+    if full <= start:
+        bits = struct.unpack("<I", struct.pack("<f", start))[0]
+        if bits == 0x7f7fffff:
+            start = struct.unpack("<f", struct.pack("<I", bits - 1))[0]
+            full = maximum
+        else:
+            full = struct.unpack("<f", struct.pack("<I", bits + 1))[0]
+    return start, full
 
 
 def addon_directory():
@@ -63,10 +82,14 @@ def _repair_bundled_executable(executable):
     return ""
 
 
-def process_environment():
+def process_environment(executable=None):
     env = os.environ.copy()
-    binary = os.path.join(addon_directory(), "bin")
-    libs = os.path.join(addon_directory(), "bin", "libs")
+    binary = (
+        os.path.dirname(os.path.abspath(executable))
+        if executable
+        else os.path.join(addon_directory(), "bin")
+    )
+    libs = os.path.join(binary, "libs")
     variable = "PATH" if sys.platform == "win32" else "LD_LIBRARY_PATH"
     previous = env.get(variable, "")
     paths = os.pathsep.join((libs, binary))
@@ -169,6 +192,6 @@ def simulation_frame_range(domain):
 
 
 def get_addon_preferences():
-    addon_name = __package__.split(".")[0]
+    addon_name = __package__
     addon = bpy.context.preferences.addons.get(addon_name)
     return addon.preferences if addon else None

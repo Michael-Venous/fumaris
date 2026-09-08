@@ -7,6 +7,7 @@ import bpy
 from .bridge import BridgeWorker, process_memory_bytes
 from .cache import cache_lock
 from .diagnostics import console_log
+from . import diagnostics
 from .exporters import bridge_executable, build_frame, build_session
 from .importers import (
     delete_generated_data,
@@ -23,7 +24,7 @@ from .protocol import (
     SESSION_ACCEPTED,
     SESSION_COMPLETE,
 )
-from .preview import capture_volume_preview
+from .preview import capture_volume_preview, clear_preview
 from .runtime import release_job
 from .utils import (
     legacy_output_directories_for_object,
@@ -72,6 +73,7 @@ class FrameRangeJob:
         self._ending_session = False
         self._show_progress = bool(show_progress)
         self._finished = False
+        self._failed = False
         self._resolution_scale = resolution_scale
         self._progress_start_frame = self._frame
         self._completed_frames = list(completed_frames or [])
@@ -79,7 +81,8 @@ class FrameRangeJob:
         self._peak_ram_bytes = 0
         self._peak_vram_bytes = 0
         self._next_memory_sample = 0.0
-        self._track_metrics = bool(write_vdb)
+        self._track_metrics = True
+        self._diagnostic_key = diagnostics.begin(domain, "Bake" if write_vdb else "Preview")
         self._preview_enabled = bool(preview_enabled)
 
         session, self._participants = build_session(
@@ -115,12 +118,11 @@ class FrameRangeJob:
         except Exception:
             self._release_cache_lock()
             raise
-        self._volume_staging = tempfile.TemporaryDirectory(
-            prefix="fumaris_volume_"
-        )
-
-        self._worker = BridgeWorker(executable, session, keep_alive=keep_alive)
         try:
+            self._volume_staging = tempfile.TemporaryDirectory(
+                prefix="fumaris_volume_"
+            )
+            self._worker = BridgeWorker(executable, session, keep_alive=keep_alive)
             self._worker.start()
         except Exception:
             self._cleanup_volume_staging()
@@ -130,31 +132,70 @@ class FrameRangeJob:
     def _start_modal(self, context):
         window_manager = context.window_manager
         interval = getattr(self, "_timer_interval", 0.001)
-        self._timer = window_manager.event_timer_add(
-            interval,
-            window=context.window,
-        )
-        if self._show_progress:
-            window_manager.progress_begin(
-                0,
-                self._end_frame - self._progress_start_frame + 1,
+        self._next_modal_tick = 0.0
+        try:
+            self._timer = window_manager.event_timer_add(
+                interval,
+                window=context.window,
             )
-        window_manager.modal_handler_add(self)
+            if self._show_progress:
+                window_manager.progress_begin(
+                    0,
+                    self._end_frame - self._progress_start_frame + 1,
+                )
+            window_manager.modal_handler_add(self)
+        except Exception as error:
+            self._record_failure(str(error))
+            self.cancel(context)
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
         return {"RUNNING_MODAL"}
+
+    def cancel(self, context):
+        """Blender-driven cancellation must release the same resources as Stop."""
+        try:
+            domain = bpy.data.objects.get(getattr(self, "_domain_name", ""))
+            if domain:
+                domain.fumaris.simulation_state = (
+                    "stopped" if getattr(self, "_job_mode", None) == "baking" else "idle"
+                )
+            if getattr(self, "_worker", None):
+                self.request_cancel()
+        finally:
+            self._finish(context)
 
     def modal(self, context, event):
         if getattr(self, "_finished", False):
             return {"FINISHED"}
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
+        # Blender's public Event API does not expose the originating timer.
+        # Filter it when available, otherwise throttle shared TIMER events.
+        event_timer = getattr(event, "timer", None)
+        if event_timer is not None and event_timer != self._timer:
+            return {"PASS_THROUGH"}
+        now = time.monotonic()
+        if now < getattr(self, "_next_modal_tick", 0.0):
+            return {"PASS_THROUGH"}
+        self._next_modal_tick = now + getattr(self, "_timer_interval", 0.001)
 
+        try:
+            return self._modal_tick(context)
+        except Exception as error:
+            self.request_cancel()
+            return self._cancelled(context, {"message": str(error)})
+
+    def _modal_tick(self, context):
         self._sample_memory()
+        self._update_diagnostics(context)
 
         for message_type, data, payload in self._worker.poll():
             if message_type == READY:
                 continue
             if message_type == SESSION_ACCEPTED:
                 self._accepted = True
+                diagnostics.record(getattr(self, "_diagnostic_key", None), data)
+                diagnostics.set_status(getattr(self, "_diagnostic_key", None), "Running")
                 reset_started = getattr(self, "_loop_reset_started", None)
                 if reset_started is not None:
                     total_ms = (time.perf_counter() - reset_started) * 1000.0
@@ -185,6 +226,7 @@ class FrameRangeJob:
                 continue
             if message_type == PREVIEW_COMPLETE:
                 self._preview_render_submitted = False
+                diagnostics.record(getattr(self, "_diagnostic_key", None), data)
                 domain = bpy.data.objects.get(self._domain_name)
                 self._after_preview_complete(context, domain, data, payload)
                 continue
@@ -204,7 +246,13 @@ class FrameRangeJob:
             if message_type in {CANCELLED, FAILED}:
                 return self._cancelled(context, data)
 
-        if self._accepted and not self._submitted and self._ready_to_submit(context):
+        if (
+            self._accepted
+            and not self._submitted
+            and not self._stop_requested
+            and not self._ending_session
+            and self._ready_to_submit(context)
+        ):
             try:
                 self._submit_frame(context)
             except Exception as error:
@@ -215,6 +263,13 @@ class FrameRangeJob:
     def request_cancel(self):
         if self._worker:
             self._worker.cancel()
+
+    def _record_failure(self, message):
+        self._failed = True
+        key = getattr(self, "_diagnostic_key", None)
+        diagnostics.add_log(key, "Error: " + message)
+        diagnostics.set_status(key, "Failed")
+        diagnostics.finish(key)
 
     def request_stop(self, _context=None):
         self._stop_requested = True
@@ -261,6 +316,12 @@ class FrameRangeJob:
             "send_ms": (timing_sent - timing_packet) * 1000.0,
             "payload_bytes": len(packet.payload),
         }
+        diagnostics.record(getattr(self, "_diagnostic_key", None), {
+            "blender_evaluate_ms": self._last_submit_timing["evaluate_ms"],
+            "blender_packet_ms": self._last_submit_timing["packet_ms"],
+            "blender_send_ms": self._last_submit_timing["send_ms"],
+            "payload_bytes": len(packet.payload),
+        })
         self._submitted = True
 
     def _ready_to_submit(self, _context):
@@ -286,6 +347,10 @@ class FrameRangeJob:
         handler_start = time.perf_counter()
         self._after_frame_complete(context, domain, completed, data, payload)
         handler_ms = (time.perf_counter() - handler_start) * 1000.0
+        data["blender_round_trip_ms"] = 1000.0 * (
+            time.monotonic() - getattr(self, "_last_frame_submit_started", time.monotonic())
+        )
+        diagnostics.record(getattr(self, "_diagnostic_key", None), data)
         submit = getattr(self, "_last_submit_timing", {})
         flow_ms = float(data.get("flow_submit_ms", 0.0)) + float(
             data.get("flow_wait_ms", 0.0)
@@ -398,28 +463,45 @@ class FrameRangeJob:
 
     def _finish(self, context):
         self._finished = True
-        if self._timer:
-            context.window_manager.event_timer_remove(self._timer)
-            self._timer = None
-        if self._show_progress:
-            context.window_manager.progress_end()
-        self._sample_memory(force=True)
-        if getattr(self, "_worker", None):
-            self._worker.close()
-        self._restore_imported_volumes()
-        self._cleanup_volume_staging()
-        self._release_cache_lock()
         release_job(self)
-        if self._restore_frame and context.scene.frame_current != self._original_frame:
-            context.scene.frame_set(self._original_frame)
+
+        # An already-removed timer or failed restoration must not strand the
+        # bridge, cache lock, or active-job reference during operator teardown.
+        def cleanup(action, *args, **kwargs):
+            try:
+                return action(*args, **kwargs)
+            except Exception as error:
+                console_log(f"Fumaris cleanup warning: {error}")
+                return None
+
+        cleanup(diagnostics.finish, getattr(self, "_diagnostic_key", None))
+        cleanup(clear_preview, getattr(self, "_domain_name", ""))
+        timer = getattr(self, "_timer", None)
+        self._timer = None
+        if timer:
+            cleanup(context.window_manager.event_timer_remove, timer)
+        if getattr(self, "_show_progress", False):
+            cleanup(context.window_manager.progress_end)
+        if getattr(self, "_track_metrics", False):
+            cleanup(self._sample_memory, force=True)
+        worker = getattr(self, "_worker", None)
+        if worker:
+            cleanup(worker.close, timeout=0.0 if getattr(self, "_failed", False) else 0.5)
+            for line in cleanup(worker.poll_stderr) or ():
+                diagnostics.add_log(getattr(self, "_diagnostic_key", None), line)
+        cleanup(self._restore_imported_volumes)
+        cleanup(self._cleanup_volume_staging)
+        cleanup(self._release_cache_lock)
+        if getattr(self, "_restore_frame", False) and context.scene.frame_current != self._original_frame:
+            cleanup(context.scene.frame_set, self._original_frame)
 
     def _sample_memory(self, *, force=False):
         if not self._track_metrics:
             return
         now = time.monotonic()
-        if not force and now < self._next_memory_sample:
+        if now < self._next_memory_sample:
             return
-        self._next_memory_sample = now + 0.1
+        self._next_memory_sample = now + 0.5
         blender_bytes = process_memory_bytes(os.getpid())
         worker = getattr(self, "_worker", None)
         bridge_bytes = worker.memory_bytes() if worker else 0
@@ -427,6 +509,24 @@ class FrameRangeJob:
             self._peak_ram_bytes,
             blender_bytes + bridge_bytes,
         )
+        diagnostics.record(getattr(self, "_diagnostic_key", None), {
+            "blender_rss_bytes": blender_bytes,
+            "bridge_rss_bytes": bridge_bytes,
+        })
+
+    def _update_diagnostics(self, context):
+        now = time.monotonic()
+        if now < getattr(self, "_next_diagnostic_update", 0.0):
+            return
+        self._next_diagnostic_update = now + 0.25
+        worker = getattr(self, "_worker", None)
+        if worker:
+            for line in worker.poll_stderr():
+                diagnostics.add_log(getattr(self, "_diagnostic_key", None), line)
+        if context and context.screen:
+            for area in context.screen.areas:
+                if area.type == "PROPERTIES":
+                    area.tag_redraw()
 
     def _hide_imported_volumes(self):
         if getattr(self, "_hidden_imported_volumes", None) is not None:
@@ -468,3 +568,17 @@ class FrameRangeJob:
 
     def _cancelled(self, _context, _data):
         raise NotImplementedError
+
+
+def recover_removed_job(operator):
+    # Bypass bpy.types.Operator.__getattribute__, which resolves invalid RNA
+    # even for Python-only fields. Never invoke methods on the removed wrapper.
+    try:
+        state = object.__getattribute__(operator, "__dict__")
+        job = FrameRangeJob()
+        job.__dict__.update(state)
+        job._restore_frame = False
+        job.cancel(bpy.context)
+        console_log("Fumaris recovered a removed simulation operator")
+    except Exception as error:
+        console_log(f"Fumaris removed-operator cleanup warning: {error}")

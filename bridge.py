@@ -2,6 +2,7 @@ import os
 import queue
 import subprocess
 import threading
+from collections import deque
 
 if os.name == "nt":
     import ctypes
@@ -45,7 +46,10 @@ class BridgeWorker:
         self._keep_alive = keep_alive
         self._process = None
         self._process_lock = threading.Lock()
-        self._stderr = []
+        self._stderr = deque(maxlen=200)
+        self._pending_stderr = deque(maxlen=200)
+        self._stderr_lock = threading.Lock()
+        self._stderr_thread = None
         self._cancel_requested = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -100,7 +104,14 @@ class BridgeWorker:
                 return responses
 
     def stderr(self):
-        return "".join(self._stderr).strip()
+        with self._stderr_lock:
+            return "".join(self._stderr).strip()
+
+    def poll_stderr(self):
+        with self._stderr_lock:
+            lines = list(self._pending_stderr)
+            self._pending_stderr.clear()
+        return lines
 
     def memory_bytes(self):
         process = self._process
@@ -116,10 +127,11 @@ class BridgeWorker:
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    env=process_environment(),
+                    env=process_environment(self._executable),
                     **_popen_options(),
                 )
-            threading.Thread(target=self._drain_stderr, daemon=True).start()
+            self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
+            self._stderr_thread.start()
 
             self._receive()
             write_message(self._process.stdin, SESSION_BEGIN, self._session)
@@ -178,9 +190,10 @@ class BridgeWorker:
             chunk = self._process.stderr.readline()
             if not chunk:
                 return
-            self._stderr.append(chunk.decode("utf-8", errors="replace"))
-            if len(self._stderr) > 200:
-                del self._stderr[:50]
+            line = chunk.decode("utf-8", errors="replace")
+            with self._stderr_lock:
+                self._stderr.append(line)
+                self._pending_stderr.append(line)
 
     def _close_process(self):
         process = self._process
@@ -196,6 +209,12 @@ class BridgeWorker:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
+        if self._stderr_thread:
+            self._stderr_thread.join(timeout=1.0)
+        if process.stdout:
+            process.stdout.close()
+        if process.stderr and (not self._stderr_thread or not self._stderr_thread.is_alive()):
+            process.stderr.close()
 
 
 def _popen_options():

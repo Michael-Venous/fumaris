@@ -1,7 +1,9 @@
 import bpy
+import textwrap
 from bpy.types import Panel
 
 from .runtime import active_job, active_mode
+from . import diagnostics
 
 
 def _foldout(layout, props, property_name, label):
@@ -251,6 +253,52 @@ def _bake_summary(props, state):
     )
 
 
+def _draw_diagnostics(layout, props):
+    state = diagnostics.snapshot(props.id_data)
+    box = layout.box()
+    opened = _foldout(box, props, "show_diagnostics", "Diagnostics")
+    if not opened:
+        error = diagnostics.error_summary(state)
+        if error:
+            box.label(text=error, icon="ERROR")
+        return
+    if state:
+        metrics = state["metrics"]
+        number = lambda name: diagnostics.value(state, name)
+        name = metrics.get("flow_device_name")
+        if name:
+            box.label(text=str(name), icon="GRAPH")
+        label = state["status"] if state["active"] else f"Last run: {state['status']}"
+        box.label(text=label)
+        if "flow_device_memory_bytes" in metrics:
+            box.label(text="Flow GPU: " + _compact_memory(number("flow_device_memory_bytes") / 1048576))
+        capacity = number("flow_active_block_capacity")
+        if capacity:
+            box.label(text=f"Sparse blocks: {int(number('flow_active_blocks')):,} / {int(capacity):,}")
+        if opened:
+            box.label(text=f"Effective resolution: {number('flow_effective_resolution'):.0f} / {number('flow_requested_resolution'):.0f}")
+            box.label(text=f"CFL (previous field): {number('flow_previous_courant'):.2f} cells/step")
+            box.label(text=f"Voxel size: {number('flow_density_voxel_size_x'):.5g} m")
+            if number("flow_detail_working_bytes"):
+                box.label(text=f"Derived smoke resolution: {number('flow_detail_effective_resolution'):.0f}")
+                box.label(text="Detail working estimate: " + _compact_memory(number("flow_detail_working_bytes") / 1048576))
+            box.label(text=f"Frame latency: {number('blender_round_trip_ms'):.1f} ms")
+            box.label(text=f"Flow submit / wait: {number('flow_submit_ms'):.1f} / {number('flow_wait_ms'):.1f} ms")
+            box.label(text=f"Last texture upload: {number('blender_texture_upload_ms'):.2f} ms")
+            box.label(text="Bridge RAM: " + _compact_memory(number("bridge_rss_bytes") / 1048576))
+            box.label(text="Blender RAM: " + _compact_memory(number("blender_rss_bytes") / 1048576))
+            transfer = number("flow_upload_memory_bytes") + number("flow_readback_memory_bytes")
+            box.label(text="Flow transfer buffers: " + _compact_memory(transfer / 1048576))
+            box.label(text="Flow allocations, not total/free VRAM", icon="INFO")
+        for warning in diagnostics.warnings(state)[-2:]:
+            for i, line in enumerate(textwrap.wrap(warning, width=48)):
+                box.label(text=line, icon="ERROR" if i == 0 else "NONE")
+    elif opened:
+        box.label(text="Start a bake or preview to collect metrics")
+    if opened:
+        box.operator("fumaris.copy_diagnostics", icon="COPYDOWN")
+
+
 def _draw_domain(layout, scene, props):
     job = active_job()
     mode = active_mode()
@@ -301,6 +349,7 @@ def _draw_domain(layout, scene, props):
     preview_stop = preview.row(align=True)
     preview_stop.enabled = is_previewing
     preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
+    _draw_diagnostics(controls, props)
 
     settings = controls.column(align=True)
     settings.enabled = not is_baking
@@ -364,7 +413,15 @@ def _draw_domain(layout, scene, props):
         if props.preview_mode == "volume":
             preview.prop(props, "preview_image_scale", slider=True)
             preview.prop(props, "preview_max_ray_steps")
+            preview.prop(props, "preview_tone_mapping")
+            preview.prop(props, "preview_exposure", slider=True)
             preview.prop(props, "preview_shadows")
+            light = preview.column()
+            light.enabled = props.preview_shadows
+            light.prop(props, "preview_shadow_min_light", slider=True)
+            light.label(text="Light Direction")
+            light.prop(props, "preview_light_azimuth")
+            light.prop(props, "preview_light_elevation")
             preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
         else:
             preview.prop(props, "preview_dot_resolution")
@@ -386,6 +443,15 @@ def _draw_domain(layout, scene, props):
     behavior = layout.box()
     behavior.enabled = not is_baking
     behavior.label(text="Smoke Behavior", icon="MOD_FLUID")
+    detail_toggle = behavior.row()
+    detail_toggle.enabled = not is_previewing
+    detail_toggle.prop(props, "upres_enabled")
+    if props.upres_enabled:
+        detail = behavior.box()
+        detail.prop(props, "upres_strength")
+        detail.prop(props, "upres_scale")
+        detail.prop(props, "upres_memory_mb")
+        detail.label(text="2x smoke detail; extra VRAM, base fire fields unchanged", icon="INFO")
     behavior.prop(props, "gravity")
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
@@ -415,6 +481,11 @@ def _draw_domain(layout, scene, props):
         advanced.prop(props, "allocation_speed_threshold")
         advanced.prop(props, "allocation_speed_min_smoke")
         advanced.prop(props, "allocate_neighbor_blocks")
+        row = advanced.row()
+        row.enabled = props.allocate_neighbor_blocks
+        row.prop(props, "adaptive_boundary_padding")
+        if props.allocate_neighbor_blocks and props.adaptive_boundary_padding:
+            advanced.label(text="Extra GPU time and memory", icon="INFO")
         advanced.prop(props, "boundary_safe_advection")
 
 class FUMARIS_PT_main(Panel):

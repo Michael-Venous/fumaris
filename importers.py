@@ -10,6 +10,7 @@ except ImportError:
     openvdb = None
 
 from .diagnostics import console_log
+from .utils import flame_temperature_range
 
 PREFIX = "fumaris_"
 LEGACY_PREFIX = "plume_forge_"
@@ -158,12 +159,9 @@ def apply_generated_material_settings(material, settings):
         float(_appearance_value(settings, "shader_flame_brightness", 1.0)),
     )
     fire_intensity.inputs[1].default_value = brightness if enabled else 0.0
-    start_temperature = max(
-        0.0,
+    fire_intensity.use_clamp = False
+    start_temperature, full_temperature = flame_temperature_range(
         float(_appearance_value(settings, "flame_temperature_min", 800.0)),
-    )
-    full_temperature = max(
-        start_temperature + 1e-5,
         float(_appearance_value(settings, "flame_temperature_max", 3000.0)),
     )
     fire_temperature.inputs[1].default_value = start_temperature
@@ -229,7 +227,7 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     fire_intensity.operation = "MULTIPLY"
     fire_intensity.name = NODE_FIRE_INTENSITY
     fire_intensity.label = "Fire Intensity"
-    fire_intensity.use_clamp = True
+    fire_intensity.use_clamp = False
     fire_intensity.inputs[1].default_value = 1.0
 
     burn.location = (-1080, 300)
@@ -295,7 +293,7 @@ def import_sequence(
     appearance=None,
     flame_rate_scale=1.0,
 ):
-    files = sorted(glob.glob(os.path.join(directory, f"{prefix}*.vdb")))
+    files = _sequence_files(directory, prefix)
     if not files:
         raise RuntimeError("The bridge completed without writing VDB files")
     files = _files_with_grids(files)
@@ -305,13 +303,13 @@ def import_sequence(
     previous_active = bpy.context.view_layer.objects.active
     previous_selection = list(bpy.context.selected_objects)
     _remove_volume_for_directory(directory, prefix)
-    import_directory, import_files = _stage_import_sequence(directory, files)
+    import_directory, import_files = _stage_import_sequence(directory, files, prefix)
     existing = set(bpy.data.objects)
     bpy.ops.object.volume_import(
         filepath=import_files[0],
-        files=[{"name": os.path.basename(path)} for path in import_files],
+        files=[{"name": os.path.basename(import_files[0])}],
         directory=import_directory,
-        use_sequence_detection=True,
+        use_sequence_detection=False,
     )
 
     created = [obj for obj in bpy.data.objects if obj not in existing and obj.type == "VOLUME"]
@@ -324,8 +322,14 @@ def import_sequence(
     volume_object.location = (0.0, 0.0, 0.0)
     volume_object[VOLUME_MARKER] = os.path.normpath(directory)
     volume_object[VOLUME_PREFIX_MARKER] = prefix
-    sequence_start = _frame_number(files[0], prefix) or frame_start
-    _configure_volume(volume_object, import_files[0], len(import_files), sequence_start)
+    sequence_start = _frame_number(files[0], prefix)
+    sequence_end = _frame_number(files[-1], prefix)
+    _configure_volume(
+        volume_object,
+        import_files[0],
+        sequence_end - sequence_start + 1,
+        sequence_start,
+    )
     volume_object.select_set(False)
     volume_object.hide_select = not bool(selectable)
     if material is not None:
@@ -385,20 +389,48 @@ def _frame_number(path, prefix):
         return None
 
 
-def _stage_import_sequence(directory, files):
+def _sequence_files(directory, prefix):
+    numbered = []
+    for path in glob.glob(os.path.join(directory, f"{prefix}*.vdb")):
+        frame = _frame_number(path, prefix)
+        if frame is not None:
+            numbered.append((frame, path))
+    return [path for _frame, path in sorted(numbered)]
+
+
+def _stage_import_sequence(directory, files, prefix=PREFIX):
+    first_frame = _frame_number(files[0], prefix)
+    if first_frame is None:
+        raise RuntimeError("Cannot stage an unnumbered Fumaris VDB frame")
     root = os.path.join(directory, IMPORT_DIRECTORY)
     os.makedirs(root, exist_ok=True)
     target = os.path.join(root, str(time.time_ns()))
     os.makedirs(target, exist_ok=False)
 
     staged = []
-    for path in files:
-        destination = os.path.join(target, os.path.basename(path))
-        try:
-            os.symlink(path, destination)
-        except OSError:
-            shutil.copy2(path, destination)
-        staged.append(destination)
+    try:
+        for path in files:
+            frame = _frame_number(path, prefix)
+            if frame is None:
+                raise RuntimeError("Cannot stage an unnumbered Fumaris VDB frame")
+            # Blender treats a minus sign as part of the sequence prefix.
+            # Positive import-only indices keep warmup frames and gaps intact.
+            filename = f"{prefix}{frame - first_frame + 1:04d}.vdb"
+            destination = os.path.join(target, filename)
+            try:
+                os.symlink(os.path.abspath(path), destination)
+            except OSError:
+                try:
+                    # Windows normally needs extra permission for symlinks.
+                    # Cache frames are published by replacement, so hard links
+                    # also preserve the imported version without copying it.
+                    os.link(path, destination)
+                except OSError:
+                    shutil.copy2(path, destination)
+            staged.append(destination)
+    except Exception:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
 
     _prune_import_copies(root, target)
     return target, staged
@@ -434,6 +466,8 @@ def _restore_selection(selected, active):
 def _configure_volume(volume_object, filepath, frame_count, frame_start):
     volume = volume_object.data
     volume.filepath = bpy.path.relpath(filepath) if bpy.data.filepath else filepath
+    volume.is_sequence = True
+    volume.frame_offset = 0
     volume.frame_start = frame_start
     volume.frame_duration = frame_count
     volume.sequence_mode = "EXTEND"

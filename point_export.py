@@ -2,6 +2,11 @@ from array import array
 
 from mathutils import Vector
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 from .participants import is_geometry_nodes as _is_geometry_nodes
 from .participants import is_particles as _is_particles
 
@@ -90,10 +95,32 @@ def _attribute_point_arrays(data, matrix, props):
     if local_positions is None:
         return None
     motion_attr = _find_attr(attrs, props.attr_velocity, ("velocity", "Velocity", "vel", "v"))
-    motions = _bulk_vector_attribute(motion_attr, count) if motion_attr else array("f", [0.0]) * (count * 3)
+    motions = _bulk_vector_attribute(motion_attr, count)
+    if motions is None:
+        motions = array("f", [0.0]) * (count * 3)
     masks = _bulk_scalar_attribute(attrs, props.attr_mask, ("enabled", "mask", "emit"), count, 1.0)
     radii = _bulk_scalar_attribute(attrs, props.attr_radius, ("__physx_radius", "__physx_Radius", "__physx_width", "__physx_pscale", "radius", "Radius", "width", "pscale"), count, 1.0)
     point_values = _bulk_point_values(attrs, props, count)
+
+    if np is not None:
+        # Keep all channels aligned with the same mask and transform in bulk.
+        active = np.logical_not(np.frombuffer(masks, dtype=np.float32) <= 0.0)
+        local = np.frombuffer(local_positions, dtype=np.float32).reshape((-1, 3))[active]
+        motion = np.frombuffer(motions, dtype=np.float32).reshape((-1, 3))[active]
+        transform = np.asarray(matrix, dtype=np.float32)
+        positions = local @ transform[:3, :3].T + transform[:3, 3]
+        motion *= np.float32(props.motion_velocity_scale)
+        motion += np.asarray(props.velocity, dtype=np.float32)
+        velocities = (motion @ transform[:3, :3].T) * np.float32(props.velocity_scale)
+        radii = np.frombuffer(radii, dtype=np.float32)[active]
+        widths = np.maximum(
+            np.fmax(radii, 0.0) * np.float32(props.point_radius), MIN_POINT_RADIUS
+        )
+        values = {
+            name: _float_array(np.frombuffer(data, dtype=np.float32)[active])
+            for name, data in point_values.items()
+        }
+        return _float_array(positions), _float_array(widths), _float_array(velocities), values
 
     positions = array("f")
     widths = array("f")
@@ -116,6 +143,12 @@ def _attribute_point_arrays(data, matrix, props):
         for name, data in point_values.items():
             values[name].append(data[index])
     return positions, widths, velocities, values
+
+
+def _float_array(values):
+    result = array("f")
+    result.frombytes(values.astype(np.float32, copy=False).tobytes())
+    return result
 
 
 def _bulk_vector_attribute(attribute, count):
@@ -163,10 +196,18 @@ def _bulk_point_values(attrs, props, count):
         "couple_rate_burns": array("f", [props.couple_rate_burn]) * count,
         "couple_rate_smokes": _bulk_scalar_attribute(attrs, props.attr_smoke_coupling, ("smoke_coupling", "density_coupling"), count, props.couple_rate_smoke),
     }
-    values["couple_rate_divergences"] = array(
-        "f",
-        (_effective_divergence_coupling(props, value) for value in divergences),
-    )
+    if np is not None:
+        explicit = float(props.couple_rate_divergence)
+        coupling = np.full(count, max(0.0, explicit), dtype=np.float32)
+        if explicit <= 0.0:
+            coupling[np.abs(np.frombuffer(divergences, dtype=np.float32)) > 1e-6] = max(
+                0.0, float(props.couple_rate_smoke)
+            )
+        values["couple_rate_divergences"] = _float_array(coupling)
+    else:
+        values["couple_rate_divergences"] = array(
+            "f", (_effective_divergence_coupling(props, value) for value in divergences),
+        )
     return values
 
 

@@ -4,6 +4,8 @@ from array import array
 import bpy
 import gpu
 from mathutils import Matrix
+from . import diagnostics
+from .utils import flame_temperature_range
 
 try:
     import numpy as np
@@ -20,13 +22,15 @@ _POINT_SHADER = None
 _POINT_VERTEX_FORMAT = None
 _IMAGE_SHADER = None
 _IMAGE_BATCH = None
+_IMAGE_UPLOAD_BUFFER = None
+_IMAGE_UPLOAD_SHAPE = None
 
 
 def capture_volume_preview(context, domain):
     props = domain.fumaris
     if getattr(props, "preview_mode", "points") != "volume":
         return {"valid": False}
-    target = _largest_viewport(context)
+    target = _largest_viewport(context, domain)
     if target is None:
         return {"valid": False}
 
@@ -46,6 +50,8 @@ def capture_volume_preview(context, domain):
     fps = float(context.scene.render.fps) / fps_base
     simulation_speed = max(1e-6, float(props.simulation_speed))
     flame_rate_scale = fps * float(props.num_sub_steps) / simulation_speed
+    flame_start, flame_full = flame_temperature_range(
+        float(props.flame_temperature_min), float(props.flame_temperature_max))
     return {
         "valid": True,
         "width": width,
@@ -58,14 +64,15 @@ def capture_volume_preview(context, domain):
         "smoke_color": [float(value) for value in props.shader_smoke_color],
         "flame_enabled": bool(props.shader_flame_enabled),
         "flame_brightness": float(props.shader_flame_brightness),
-        "flame_temperature_min": float(props.flame_temperature_min),
-        "flame_temperature_max": max(
-            float(props.flame_temperature_min) + 1e-5,
-            float(props.flame_temperature_max),
-        ),
+        "flame_temperature_min": flame_start,
+        "flame_temperature_max": flame_full,
         "flame_rate_scale": flame_rate_scale,
         "temperature_multiplier": float(props.shader_temperature_multiplier),
         "shadows": bool(props.preview_shadows),
+        "shadow_min_light": float(props.preview_shadow_min_light),
+        "exposure": float(props.preview_exposure),
+        "tone_mapping": props.preview_tone_mapping,
+        "light_direction": list(props.preview_light_direction),
     }
 
 
@@ -92,6 +99,10 @@ def volume_preview_signature(preview):
         round(float(preview["flame_rate_scale"]), 7),
         round(float(preview["temperature_multiplier"]), 7),
         bool(preview["shadows"]),
+        round(float(preview.get("shadow_min_light", 0.0)), 7),
+        round(float(preview.get("exposure", 0.0)), 7),
+        preview.get("tone_mapping", "none"),
+        rounded(preview.get("light_direction", (1.0, 1.0, 1.0))),
     )
 
 
@@ -120,6 +131,7 @@ def update_density_points(domain, data, payload):
     batch = gpu.types.GPUBatch(type="POINTS", buf=vertex_buffer)
     _PREVIEWS[domain.name] = {
         "type": "points",
+        "domain": domain,
         "domain_name": domain.name,
         "point_size": max(0.001, float(preview.get("point_size", 0.1))),
         "buffer": vertex_buffer,
@@ -147,6 +159,7 @@ def update_volume_image(domain, data, payload):
 
     _PREVIEWS[domain.name] = {
         "type": "volume",
+        "domain": domain,
         "domain_name": domain.name,
         "view_id": int(preview.get("view_id", 0)),
         "width": width,
@@ -170,8 +183,14 @@ def show_preview_payload(domain, data, payload):
 
 
 def clear_preview(domain):
-    _PREVIEWS.pop(domain.name, None)
-    _remove_legacy_preview_objects(domain.name)
+    # The job's original name remains usable after the object is deleted/renamed.
+    name = domain if isinstance(domain, str) else domain.name
+    _PREVIEWS.pop(name, None)
+    if not isinstance(domain, str):
+        for key, preview in tuple(_PREVIEWS.items()):
+            if preview.get("domain") == domain:
+                _PREVIEWS.pop(key, None)
+    _remove_legacy_preview_objects(name)
     _sync_draw_handlers()
     _tag_viewports()
 
@@ -189,6 +208,29 @@ def clear_all_previews():
 
 def refresh_preview_display():
     _tag_viewports()
+
+
+def _domain_visible(domain, view_layer, viewport=None):
+    if domain is None:
+        return False
+    if viewport is not None and viewport.type != "VIEW_3D":
+        viewport = None
+    try:
+        return (
+            domain.fumaris.smoke_object_type == "domain"
+            and domain.visible_get(view_layer=view_layer, viewport=viewport)
+        )
+    except (ReferenceError, RuntimeError):
+        return False
+
+
+def _visible_preview_domain(preview):
+    # Keep object identity: a replacement object with the same name is not its owner.
+    domain = preview.get("domain")
+    context = bpy.context
+    if _domain_visible(domain, context.view_layer, context.space_data):
+        return domain
+    return None
 
 
 def _draw_point_previews():
@@ -216,7 +258,7 @@ def _draw_point_previews():
         shader.uniform_float("ProjectionMatrix", projection)
         shader.uniform_float("viewportSize", (region.width, region.height))
         for preview in point_previews:
-            domain = bpy.data.objects.get(preview["domain_name"])
+            domain = _visible_preview_domain(preview)
             if domain is None:
                 continue
             shader.uniform_float("worldSize", _world_point_size(domain, preview))
@@ -238,6 +280,7 @@ def _draw_volume_previews():
         if (
             preview["type"] == "volume"
             and preview["view_id"] == view_id
+            and _visible_preview_domain(preview) is not None
         )
     )
     if not previews:
@@ -260,6 +303,7 @@ def _draw_volume_previews():
 
 
 def _volume_texture(preview):
+    global _IMAGE_UPLOAD_BUFFER, _IMAGE_UPLOAD_SHAPE
     texture = preview.get("texture")
     if texture is not None:
         return texture
@@ -269,15 +313,22 @@ def _volume_texture(preview):
     started = time.perf_counter()
     try:
         if np is not None:
-            normalized = np.frombuffer(pixels, dtype=np.uint8).astype(np.float32)
-            normalized *= 1.0 / 255.0
+            shape = (preview["height"], preview["width"], 4)
+            if _IMAGE_UPLOAD_BUFFER is None or _IMAGE_UPLOAD_SHAPE != shape:
+                _IMAGE_UPLOAD_BUFFER = gpu.types.Buffer("FLOAT", shape)
+                _IMAGE_UPLOAD_SHAPE = shape
+            buffer = _IMAGE_UPLOAD_BUFFER
+            # GPUTexture consumes the staging data before returning. Keep one
+            # CPU buffer, not a second float image allocation for every draw.
+            np.multiply(
+                np.frombuffer(pixels, dtype=np.uint8), np.float32(1.0 / 255.0),
+                out=np.frombuffer(buffer, dtype=np.float32),
+            )
         else:
             normalized = array("f", (value / 255.0 for value in pixels))
-        buffer = gpu.types.Buffer(
-            "FLOAT",
-            (preview["height"], preview["width"], 4),
-            normalized,
-        )
+            buffer = gpu.types.Buffer(
+                "FLOAT", (preview["height"], preview["width"], 4), normalized,
+            )
         texture = gpu.types.GPUTexture(
             (preview["width"], preview["height"]),
             format="RGBA8",
@@ -286,22 +337,31 @@ def _volume_texture(preview):
     except Exception as error:
         preview["upload_failed"] = True
         preview["upload_error"] = str(error)
+        diagnostics.add_log(preview.get("domain"), f"Error: preview upload failed: {error}")
         print(f"Fumaris volume preview upload failed: {error}")
         return None
     preview["texture"] = texture
     preview["upload_ms"] = (time.perf_counter() - started) * 1000.0
+    diagnostics.record(preview.get("domain"), {
+        "blender_texture_upload_ms": preview["upload_ms"],
+        "blender_preview_width": preview["width"],
+        "blender_preview_height": preview["height"],
+    })
     preview.pop("pixels", None)
     return texture
 
 
 def _sync_draw_handlers():
-    global _POINT_DRAW_HANDLE, _IMAGE_DRAW_HANDLE
+    global _POINT_DRAW_HANDLE, _IMAGE_DRAW_HANDLE, _IMAGE_UPLOAD_BUFFER, _IMAGE_UPLOAD_SHAPE
     needs_points = any(
         preview["type"] == "points" for preview in _PREVIEWS.values()
     )
     needs_images = any(
         preview["type"] == "volume" for preview in _PREVIEWS.values()
     )
+    if not needs_images:
+        _IMAGE_UPLOAD_BUFFER = None
+        _IMAGE_UPLOAD_SHAPE = None
     if needs_points and _POINT_DRAW_HANDLE is None:
         _POINT_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
             _draw_point_previews,
@@ -439,7 +499,7 @@ def _point_color(domain):
     return (*color[:3], opacity)
 
 
-def _largest_viewport(context):
+def _largest_viewport(context, domain=None):
     candidates = []
     window_manager = getattr(context, "window_manager", None)
     if window_manager is None:
@@ -447,6 +507,10 @@ def _largest_viewport(context):
     for window in window_manager.windows:
         for area in window.screen.areas:
             if area.type != "VIEW_3D":
+                continue
+            if domain is not None and not _domain_visible(
+                domain, window.view_layer, area.spaces.active
+            ):
                 continue
             region = next(
                 (item for item in area.regions if item.type == "WINDOW"),

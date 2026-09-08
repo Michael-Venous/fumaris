@@ -1,10 +1,10 @@
-# Fumaris 0.2.0 Beta Documentation
+# Fumaris 1.0.0 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 0.2.0 is a public beta. Save copies of important project files, keep
+Fumaris 1.0.0 introduces major workflow and rendering changes. Save copies of important project files, keep
 your GPU driver current, and report reproducible problems with the system
 details requested at the end of this document.
 
@@ -47,6 +47,16 @@ initialization notice during this one-time work. Later sessions should start
 much faster.
 
 ### Updating
+
+Stop all Fumaris jobs before updating, then restart Blender. Keep old caches
+and important scenes backed up. Do not share a writable cache directory between
+1.0 and older Fumaris versions; their cache-lock protocols differ. New versions
+can change simulation results, so retain an old installation if exact rebakes
+of a previous project are required.
+
+At high smoke density and flame brightness, the preview can show pronounced
+boundaries as smoke hides the flame behind it. Preview shading is approximate;
+check final appearance with a short VDB bake in your intended render engine.
 
 Stop active Fumaris jobs, close Blender, and install the newer ZIP from disk.
 Back up production `.blend` files before moving between beta versions.
@@ -105,6 +115,11 @@ Useful preview controls:
 - `Ray Steps` controls sampling through active sparse blocks. It stops adding
   work once spacing reaches 0.75 simulation voxel because finer samples cannot
   recover detail absent from the grid.
+- `Tone Mapping` defaults to `Filmic`, which softens bright highlights instead
+  of clipping them to white. `Off (Legacy)` restores the original preview look.
+- `Exposure` adjusts brightness before tone mapping: +1 doubles the incoming
+  light, -1 halves it. Try -1 or -2 if bright fire looks washed out. Both controls
+  update while paused and affect only the preview, not baked grids or materials.
 - The domain's `Appearance` group controls smoke density and color plus fire
   visibility, brightness, temperature range, and Blackbody scale. The same
   values drive the live raymarch and Fumaris's generated Blender material.
@@ -116,7 +131,9 @@ Useful preview controls:
   performance cost.
 
 The live volume preview uses a simple Flow shader and currently does not use
-Blender's scene depth for object occlusion. Final OpenVDB shading and rendering
+Blender's scene depth for object occlusion. Its Filmic option is an ACES-style
+approximation, not Blender's Filmic or AgX view transform. The preview does not
+follow scene color-management settings; final OpenVDB shading and rendering
 inside Blender are unaffected.
 
 Press `Pause` to inspect the frozen live grid from other angles without
@@ -202,6 +219,13 @@ Mesh `Surface` emission follows the evaluated surface and Emission Distance.
 can vary emission strength continuously from 0 to 1. Mask Threshold skips
 triangles whose average weight is too low; keep it near zero for soft painted
 transitions.
+
+Leave `Mask` empty to emit from the whole mesh. The mask must exist on the
+evaluated output: new geometry made by a Geometry Nodes primitive does not
+automatically inherit weights painted on the original object. Use `Store Named
+Attribute` on the generated mesh and enter that attribute's name in `Mask`, or
+clear `Mask`. If every face is below the threshold, Fumaris reports that the
+mask excludes all faces rather than treating the node output as missing.
 
 `Motion Sub-Steps` sample intermediate source poses for moving or deforming
 sources. They do not improve a static emitter or the fluid solve and they

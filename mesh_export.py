@@ -5,34 +5,52 @@ from mathutils import Vector
 from .runtime import geometry_revision
 
 
+class _NoMeshGeometry(RuntimeError):
+    """No direct surface was found; Geometry Nodes may still contain instances."""
+
+
 def _evaluated_mesh(obj, depsgraph, props, matrix):
     evaluated = obj.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
     try:
+        if mesh is None or not mesh.vertices:
+            raise _NoMeshGeometry(f"{obj.name} evaluated to an empty mesh")
         mesh.calc_loop_triangles()
+        if not mesh.loop_triangles:
+            raise _NoMeshGeometry(f"{obj.name} evaluated to a mesh without faces")
         positions = array("f", [0.0]) * (len(mesh.vertices) * 3)
         mesh.vertices.foreach_get("co", positions)
 
-        raw_indices = []
         emission_weights = array("f")
         mask = _mesh_emission_mask(obj, mesh, props)
-        for triangle in mesh.loop_triangles:
-            weights = _triangle_mask_weights(mask, triangle)
-            if (
-                weights
-                and sum(weights) / len(weights)
-                < props.mesh_emission_mask_threshold
-            ):
-                continue
-            raw_indices.extend(triangle.vertices)
-            emission_weights.extend(weights)
-        indices = array("i", raw_indices)
+        if mask is None:
+            indices = array("i", [0]) * (3 * len(mesh.loop_triangles))
+            mesh.loop_triangles.foreach_get("vertices", indices)
+        else:
+            raw_indices = []
+            for triangle in mesh.loop_triangles:
+                weights = _triangle_mask_weights(mask, triangle)
+                if (
+                    weights
+                    and sum(weights) / len(weights)
+                    < props.mesh_emission_mask_threshold
+                ):
+                    continue
+                raw_indices.extend(triangle.vertices)
+                emission_weights.extend(weights)
+            indices = array("i", raw_indices)
+            if not indices:
+                name = props.mesh_emission_mask_attribute.strip()
+                raise RuntimeError(
+                    f'{obj.name}: Mask "{name}" excludes all faces. '
+                    "Clear Mask to emit from the whole mesh, or provide weights above "
+                    "the mask threshold on the evaluated mesh. Geometry Nodes-generated "
+                    "geometry needs its own mask weights."
+                )
         velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
     finally:
         evaluated.to_mesh_clear()
 
-    if not positions or not indices:
-        raise RuntimeError(f"{obj.name} evaluated to an empty mesh")
     return positions, indices, velocities, emission_weights
 
 
@@ -112,7 +130,7 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
             direct_velocities,
             direct_weights,
         ) = _evaluated_mesh(obj, depsgraph, props, matrix)
-    except RuntimeError:
+    except _NoMeshGeometry:
         direct_positions = direct_indices = direct_velocities = None
     if direct_positions:
         for offset in range(0, len(direct_positions), 3):
@@ -129,7 +147,7 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
             "Geometry Nodes mesh",
             allow_self=True,
         )
-    except RuntimeError:
+    except _NoMeshGeometry:
         instance_positions = instance_indices = None
     if instance_positions:
         index_offset = len(positions) // 3
@@ -174,7 +192,7 @@ def _instance_mesh(obj, depsgraph, label, *, allow_self):
             indices.extend(offset + vertex_index for vertex_index in triangle.vertices)
 
     if not positions or not indices:
-        raise RuntimeError(f"{obj.name} did not provide {label} instances")
+        raise _NoMeshGeometry(f"{obj.name} did not provide {label} instances")
     return positions, indices, velocities
 
 
@@ -247,10 +265,11 @@ def _mesh_normal_velocities(positions, indices, normal_velocity, matrix):
         normals[i2] += normal
 
     velocities = array("f")
+    normal_transform = matrix.to_3x3().inverted_safe().transposed()
     for normal in normals:
         if normal.length > 1e-6:
             normal.normalize()
-            world_normal = matrix.to_3x3() @ normal
+            world_normal = normal_transform @ normal
             if world_normal.length > 1e-6:
                 world_normal.normalize()
             velocities.extend((world_normal.x * normal_velocity, world_normal.y * normal_velocity, world_normal.z * normal_velocity))

@@ -7,6 +7,17 @@ GPU_INITIALIZATION_MESSAGE = (
 
 
 def active_job():
+    global _ACTIVE_JOB
+    job = _ACTIVE_JOB
+    if job is not None:
+        try:
+            getattr(job, "_job_mode", None)
+        except ReferenceError:
+            # Blender can remove operator RNA while its Python state survives.
+            # Detach first: resource cleanup can itself trigger UI callbacks.
+            _ACTIVE_JOB = None
+            from .jobs import recover_removed_job
+            recover_removed_job(job)
     return _ACTIVE_JOB
 
 
@@ -17,7 +28,8 @@ def active_mode():
 
 def claim_job(job, mode):
     global _ACTIVE_JOB
-    if _ACTIVE_JOB is not None and _ACTIVE_JOB is not job:
+    current = active_job()
+    if current is not None and current is not job:
         raise RuntimeError(f"Fumaris is already {active_mode()}")
     job._job_mode = mode
     _ACTIVE_JOB = job

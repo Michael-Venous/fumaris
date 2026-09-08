@@ -12,6 +12,7 @@ from .cache import (
     recover_cache_lock,
 )
 from .diagnostics import console_log
+from . import diagnostics
 from .exporters import build_session, session_structure_signature
 from .importers import (
     VOLUME_MARKER,
@@ -78,6 +79,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         self._domain_name = domain.name
         try:
             claim_job(self, "baking")
+            clear_all_previews()
             self._configure_job(
                 context,
                 domain,
@@ -87,9 +89,11 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 show_progress=True,
             )
         except Exception as error:
+            self._record_failure(str(error))
             release_job(self)
             self._restore_imported_volumes()
             self._cleanup_volume_staging()
+            self._release_cache_lock()
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
@@ -132,6 +136,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         return {"FINISHED"}
 
     def _cancelled(self, context, data):
+        self._record_failure(data.get("message", "Bake failed"))
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
             clear_preview(domain)
@@ -200,8 +205,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._loop_reset_pending = False
         try:
             claim_job(self, "previewing")
+            clear_all_previews()
             self._start_preview_session(context, domain, clear_preview_points=True)
         except Exception as error:
+            self._record_failure(str(error))
             release_job(self)
             self._restore_imported_volumes()
             self._cleanup_volume_staging()
@@ -277,6 +284,15 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
     def _ready_to_submit(self, context):
         if getattr(self, "_preview_render_submitted", False):
+            return False
+        if (
+            getattr(self, "_loop_reset_pending", False)
+            and not getattr(self, "_pause_requested", False)
+        ):
+            domain = bpy.data.objects.get(self._domain_name)
+            if domain is None:
+                raise RuntimeError("The active Fumaris domain was deleted")
+            self._restart_preview_session(context, domain)
             return False
         if self._submit_changed_volume_preview(context):
             return False
@@ -384,6 +400,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if paused == getattr(self, "_pause_requested", False):
             return
         self._pause_requested = paused
+        diagnostics.set_status(getattr(self, "_diagnostic_key", None), "Paused" if paused else "Running")
         if paused:
             console_log(f"Fumaris preview paused for {self._domain_name}")
             return
@@ -393,7 +410,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             raise RuntimeError("The active Fumaris domain was deleted")
         self._next_submit_at = 0.0
         if getattr(self, "_loop_reset_pending", False):
-            self._restart_preview_session(context, domain)
+            # Let any pending viewport response arrive before resetting Flow.
+            self._ready_to_submit(context)
         console_log(f"Fumaris preview resumed for {self._domain_name}")
 
     def _end_of_range(self, context, completed):
@@ -411,6 +429,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         return None
 
     def _cancelled(self, context, data):
+        self._record_failure(data.get("message", "Preview failed"))
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
             clear_preview(domain)
@@ -473,6 +492,7 @@ class FUMARIS_OT_preview_pause(Operator):
 
 def _cancel_job(context, job):
     job._finished = True
+    clear_preview(getattr(job, "_domain_name", ""))
     domain = bpy.data.objects.get(getattr(job, "_domain_name", ""))
     if domain:
         domain.fumaris.simulation_state = "idle"
@@ -532,7 +552,7 @@ def _stop_active_job():
 class FUMARIS_OT_delete(Operator):
     bl_idname = "fumaris.delete"
     bl_label = "Delete Baked"
-    bl_description = "Delete Fumaris VDB cache files, imported volumes, and live preview dots for this domain"
+    bl_description = "Delete Fumaris VDB cache files, imported volumes, and the live preview for this domain"
 
     @classmethod
     def poll(cls, context):
@@ -627,7 +647,23 @@ def _active_domain(context):
     return None
 
 
+class FUMARIS_OT_copy_diagnostics(Operator):
+    bl_idname = "fumaris.copy_diagnostics"
+    bl_label = "Copy Diagnostics"
+    bl_description = "Copy system, GPU, timing, memory and recent bridge messages for support; may include paths from error messages"
+
+    @classmethod
+    def poll(cls, context):
+        return _active_domain(context) is not None
+
+    def execute(self, context):
+        context.window_manager.clipboard = diagnostics.report(_active_domain(context))
+        self.report({"INFO"}, "Fumaris diagnostics copied")
+        return {"FINISHED"}
+
+
 CLASSES = (
+    FUMARIS_OT_copy_diagnostics,
     FUMARIS_OT_bake,
     FUMARIS_OT_preview_play,
     FUMARIS_OT_preview_pause,
@@ -655,13 +691,26 @@ def _recover_orphaned_bakes():
         if props.smoke_object_type != "domain":
             continue
         directory = output_directory_for_object(obj)
-        recover_cache_lock(directory, owner_pid=owner_pid)
-        delete_temporary_writes(
-            directory,
-            props.output_prefix or "fumaris_",
-        )
-        if props.simulation_state == "baking":
-            props.simulation_state = "stopped"
+        try:
+            recover_cache_lock(directory, owner_pid=owner_pid)
+            if not os.path.isdir(directory):
+                if props.simulation_state == "baking":
+                    props.simulation_state = "stopped"
+                continue
+            with cache_lock(directory):
+                delete_temporary_writes(
+                    directory,
+                    props.output_prefix or "fumaris_",
+                )
+                if props.simulation_state == "baking":
+                    props.simulation_state = "stopped"
+        except RuntimeError:
+            # Another Blender process may still be writing this cache.
+            continue
+        except OSError as error:
+            if props.simulation_state == "baking":
+                props.simulation_state = "stopped"
+            console_log(f"Fumaris could not recover cache for {obj.name}: {error}")
 
 
 @persistent
@@ -674,6 +723,7 @@ def _clear_previews_before_load(_dummy=None):
     _stop_active_job()
     clear_all_previews()
     clear_geometry_revisions()
+    diagnostics.clear()
 
 
 @persistent
@@ -727,6 +777,7 @@ def register():
 def unregister():
     _stop_active_job()
     clear_all_previews()
+    diagnostics.clear()
     _remove_handler_named(bpy.app.handlers.load_pre, "_clear_previews_before_load")
     _remove_handler_named(bpy.app.handlers.load_post, "_recover_orphaned_bakes_after_load")
     _remove_handler_named(bpy.app.handlers.depsgraph_update_post, "_track_geometry_updates")

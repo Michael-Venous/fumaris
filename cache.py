@@ -3,6 +3,7 @@ import os
 import shutil
 
 LOCK_FILE = ".fumaris.lock"
+GUARD_FILE = ".fumaris.guard"
 _OBSOLETE_FILES = ("fumaris_cache.json", "plume_forge_cache.json")
 _OBSOLETE_DIRECTORIES = (
     ".fumaris_preview_cache",
@@ -25,9 +26,21 @@ class CacheLock:
         self.directory = os.path.normpath(directory)
         self.path = os.path.join(self.directory, LOCK_FILE)
         self._owned = False
+        self._guard = None
 
     def acquire(self):
         os.makedirs(self.directory, exist_ok=True)
+        if self._owned:
+            raise RuntimeError("This cache lock is already acquired")
+        self._guard = _acquire_guard(self.directory)
+        try:
+            return self._acquire_owner_file()
+        except BaseException:
+            self._guard.close()
+            self._guard = None
+            raise
+
+    def _acquire_owner_file(self):
         try:
             descriptor = os.open(
                 self.path,
@@ -39,12 +52,16 @@ class CacheLock:
                     os.remove(self.path)
                 except FileNotFoundError:
                     pass
-                return self.acquire()
+                return self._acquire_owner_file()
             raise RuntimeError(
                 f"Fumaris cache is already in use: {self.directory}"
             )
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(str(os.getpid()))
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(str(os.getpid()))
+        except BaseException:
+            os.remove(self.path)
+            raise
         self._owned = True
         return self
 
@@ -52,10 +69,14 @@ class CacheLock:
         if not self._owned:
             return
         try:
-            os.remove(self.path)
-        except FileNotFoundError:
-            pass
-        self._owned = False
+            try:
+                os.remove(self.path)
+            except FileNotFoundError:
+                pass
+        finally:
+            self._owned = False
+            self._guard.close()
+            self._guard = None
 
     def __enter__(self):
         return self.acquire()
@@ -72,14 +93,46 @@ def recover_cache_lock(directory, *, owner_pid=None):
     path = os.path.join(os.path.normpath(directory), LOCK_FILE)
     if not os.path.isfile(path):
         return False
-    lock_pid = _lock_owner(path)
-    if lock_pid is None or not _pid_is_alive(lock_pid) or lock_pid == owner_pid:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-        return True
-    return False
+    try:
+        guard = _acquire_guard(directory)
+    except RuntimeError:
+        return False
+    with guard:
+        lock_pid = _lock_owner(path)
+        if lock_pid is None or not _pid_is_alive(lock_pid) or lock_pid == owner_pid:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            return True
+        return False
+
+
+def _acquire_guard(directory):
+    # Never unlink this file: contenders must lock the same inode. The OS
+    # releases its lock even if Blender crashes before removing the PID file.
+    stream = open(os.path.join(directory, GUARD_FILE), "a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            if os.fstat(stream.fileno()).st_size == 0:
+                stream.write(b"\0")
+                stream.flush()
+            stream.seek(0)
+            try:
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as error:
+                raise RuntimeError(f"Fumaris cache is already in use: {directory}") from error
+        else:
+            import fcntl
+            try:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise RuntimeError(f"Fumaris cache is already in use: {directory}") from error
+        return stream
+    except BaseException:
+        stream.close()
+        raise
 
 
 def _lock_is_stale(path):

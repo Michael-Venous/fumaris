@@ -7,6 +7,7 @@ import bpy
 from mathutils import Matrix, Vector
 
 from .diagnostics import console_log
+from .collection_export import collection_mesh_arrays, collection_point_arrays
 from .mesh_export import (
     _add_mesh_initial_velocity,
     _add_mesh_motion_velocities,
@@ -117,6 +118,10 @@ def session_structure_signature(domain):
                 getattr(item["object"].fumaris, "gn_subtype", ""),
                 getattr(item["object"].fumaris, "particle_subtype", ""),
                 getattr(item["object"].fumaris, "collider_type", ""),
+                (
+                    _collection_signature(item["object"].fumaris.source_collection),
+                    item["object"].fumaris.collection_point_center,
+                ) if _participant_shape(item["object"].fumaris) in {"collection_points", "collection_mesh"} else None,
             )
             for item in participants
         ),
@@ -249,8 +254,10 @@ def _domain_state(props, resolution_scale=1.0):
 def _mesh_state(participant, depsgraph, payload, frame):
     obj = participant["object"]
     props = obj.fumaris
+    initial_velocity = props.velocity
     enabled = bool(props.participant_enabled)
     if not enabled:
+        participant.pop("collection_mesh_history", None)
         participant.pop("previous_positions", None)
         participant.pop("previous_matrix", None)
         track_deformation = False
@@ -259,6 +266,16 @@ def _mesh_state(participant, depsgraph, payload, frame):
         indices = array("i")
         velocities = array("f")
         emission_weights = array("f")
+        reuse_geometry = False
+    elif participant["role"] == "emitter" and props.participant_type == "collection_mesh":
+        track_deformation = False
+        matrix = Matrix.Identity(4)
+        positions, indices, velocities, emission_weights = collection_mesh_arrays(
+            participant, depsgraph, frame,
+            bpy.context.scene.render.fps / bpy.context.scene.render.fps_base,
+        )
+        initial_velocity = _world_vector(obj.evaluated_get(depsgraph).matrix_world, props.velocity)
+        position_version = topology_version = frame
         reuse_geometry = False
     elif _is_particles(props, "mesh"):
         track_deformation = False
@@ -309,7 +326,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
             participant["previous_positions"] = array("f", positions)
         else:
             participant.pop("previous_positions", None)
-        _add_mesh_initial_velocity(velocities, positions, matrix, props.velocity)
+        _add_mesh_initial_velocity(velocities, positions, matrix, initial_velocity)
     if velocities and len(velocities) != len(positions):
         raise RuntimeError(
             f"{obj.name} produced {len(velocities) // 3} mesh velocities "
@@ -355,6 +372,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
     }
     if velocity_section:
         state["velocities"] = {**velocity_section, "version": position_version}
+    if props.participant_type == "collection_mesh" and participant.get("collection_mesh_layout_changed"):
+        state["motion_substeps"] = 1
     if weight_section:
         state["emission_weights"] = {**weight_section, "version": frame}
     return state
@@ -584,7 +603,12 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
     obj = participant["object"]
     props = obj.fumaris
     enabled = bool(props.participant_enabled)
-    if enabled:
+    if props.participant_type == "collection_points":
+        positions, radii, velocities, values = collection_point_arrays(
+            participant, depsgraph, frame,
+            bpy.context.scene.render.fps / bpy.context.scene.render.fps_base,
+        )
+    elif enabled:
         positions, radii, velocities, values = _point_arrays(obj, props, depsgraph)
     else:
         positions, radii, velocities, values = _empty_point_arrays()

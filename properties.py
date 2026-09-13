@@ -107,8 +107,42 @@ class FumarisSettings(PropertyGroup):
             ("particles", "Particles", "Blender particle system emitter"),
             ("geometry_nodes", "Geometry Nodes", "Use this object's evaluated Geometry Nodes output"),
             ("openvdb", "OpenVDB", "Load an OpenVDB file as a volume emitter"),
+            ("collection_points", "Collection Points", "Batch mesh objects from a collection as spheres with automatic motion velocity"),
+            ("collection_mesh", "Collection Mesh", "Combine collection meshes into one emitter with shared channels and automatic motion velocity"),
         ],
         default="mesh",
+    )
+
+    source_collection: PointerProperty(
+        name="Source Collection",
+        description="Source mesh objects, including child collections; source objects need no Fumaris role",
+        type=bpy.types.Collection,
+    )
+
+    collection_point_center: EnumProperty(
+        name="Point Center",
+        items=[
+            ("bounds", "Bounds Center", "Place each point at the evaluated mesh bounds center"),
+            ("origin", "Object Origin", "Place each point at its evaluated object origin"),
+        ],
+        default="bounds",
+    )
+
+    collection_radius_mode: EnumProperty(
+        name="Radius From",
+        items=[
+            ("bounds", "Object Size", "Use half the largest scaled local bounding-box dimension; approximates each mesh as a sphere"),
+            ("fixed", "Fixed Radius", "Use the same world-space radius for all source objects"),
+        ],
+        default="bounds",
+    )
+
+    collection_radius_scale: FloatProperty(
+        name="Radius Scale",
+        description="Multiplier for radii derived from object size",
+        default=1.0,
+        min=0.0,
+        soft_max=5.0,
     )
 
     gn_subtype: EnumProperty(

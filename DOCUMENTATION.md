@@ -1,4 +1,4 @@
-# Fumaris 1.0.0 Documentation
+# Fumaris 1.0.1 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
@@ -257,6 +257,59 @@ mask excludes all faces rather than treating the node output as missing.
 `Motion Sub-Steps` sample intermediate source poses for moving or deforming
 sources. They do not improve a static emitter or the fluid solve and they
 multiply emitter work inside each domain Sub-Step.
+
+### Collection Points
+
+For many separately animated mesh objects, use one controller object with
+`Flow Object: Emitter` and `Shape: Collection Points`. Put this controller in
+the domain's Emitters Collection and choose the meshes' collection as its
+`Source Collection`. Child collections are included. Source meshes do not need
+their own Fumaris role. Remove their old emitter roles or keep them outside the
+domain's Emitters Collection to avoid emitting them twice.
+
+Each source mesh becomes one spherical point in the existing batched particle
+path. Emitted channels and velocity settings come from the controller. Choose
+object origins or evaluated bounds centers for positions. Object Size derives
+radius from half the largest scaled local bounds dimension, with a Radius Scale;
+Fixed Radius uses one world-space radius. This approximates mesh shapes and does
+not reproduce detailed surfaces, elongated shapes, or rotational surface flow.
+The point path's minimum radius of 0.05 Blender units still applies.
+
+Motion velocity is calculated from successive evaluated world-space centers and
+elapsed frame time, including parented, constrained, and rigid-body transforms.
+It is matched by object identity, not collection order. New sources and the first
+frame have no inherited motion; explicit Initial Velocity still applies. Disabling
+the controller or restarting/rewinding the simulation clears motion history.
+Source membership and center-mode changes restart a live preview. Hide state is
+not an emission mask: collection membership selects source meshes.
+
+This avoids exporting and processing each mesh's triangles separately. It does
+not make arbitrary smoke volumes free: large radii, high resolution, and widely
+spread sources still increase solver work. Mesh emitters remain appropriate
+when the emission must follow actual surfaces.
+
+### Collection Mesh
+
+Use `Shape: Collection Mesh` on the same kind of controller when you need actual
+mesh emission rather than spherical approximations. Fumaris combines evaluated
+source meshes into one mesh emitter, without joining or modifying scene objects.
+Transforms and deformation contribute per-vertex world-space velocity; unchanged
+local mesh geometry is cached where supported. Source settings come from the
+controller, including surface/volume region, channels, mask, and normal velocity.
+
+Use this for sources that can share settings. It behaves as one combined mesh,
+not as independently layered emitters: overlapping surfaces/volumes can behave
+differently, and different source channels need separate controllers. Deformation
+motion assumes stable vertex correspondence. Changed connectivity resets that
+object's inherited deformation velocity; changes that reorder vertices without
+changing connectivity cannot be reliably identified. Keep separate emitters for
+such sources or supply a stable-topology representation.
+
+Combining meshes reduces per-emitter processing but still exports moving vertices
+and processes triangles. Collection Points is the lighter choice when spheres
+are sufficient. Empty source collections emit nothing. Remove individual source
+emitter roles or keep them outside the domain's Emitters Collection to avoid
+duplicate emission, as with Collection Points.
 
 ### Geometry Nodes Attributes
 

@@ -2,7 +2,9 @@ import json
 import math
 import platform
 import textwrap
+import tomllib
 from collections import deque
+from pathlib import Path
 
 
 _STATES = {}
@@ -125,7 +127,10 @@ def warnings(state):
 def report(domain):
     import bpy
     import gpu
-    from . import bl_info
+
+    # Blender's extension loader removes legacy bl_info from the package.
+    with Path(__file__).with_name("blender_manifest.toml").open("rb") as stream:
+        version = tomllib.load(stream)["version"]
 
     state = snapshot(domain)
     viewport = {}
@@ -139,7 +144,7 @@ def report(domain):
     except (RuntimeError, AttributeError, SystemError):
         pass
     data = {
-        "fumaris_version": ".".join(map(str, bl_info["version"])),
+        "fumaris_version": version,
         "blender_version": bpy.app.version_string,
         "platform": platform.platform(),
         "viewport_gpu": viewport,

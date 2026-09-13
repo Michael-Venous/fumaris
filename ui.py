@@ -102,6 +102,22 @@ def _draw_emitter_shape(box, obj, props):
             box.label(text="Uses evaluated Geometry Nodes volume grids")
     elif props.participant_type == "openvdb":
         box.prop(props, "volume_filepath")
+    elif props.participant_type == "collection_points":
+        box.prop(props, "source_collection")
+        box.prop(props, "collection_point_center")
+        box.prop(props, "collection_radius_mode")
+        if props.collection_radius_mode == "bounds":
+            box.prop(props, "collection_radius_scale")
+        else:
+            box.prop(props, "point_radius", text="Radius")
+        box.label(text="One sphere per mesh")
+        box.label(text="Automatic motion velocity")
+        box.label(text="Source meshes need no Fumaris role")
+    elif props.participant_type == "collection_mesh":
+        box.prop(props, "source_collection")
+        _draw_mesh_emitter_options(box, props)
+        box.label(text="Combined geometry, shared settings")
+        box.label(text="Source meshes need no Fumaris role")
 
 
 def _draw_emitter(layout, obj, props):

@@ -1,6 +1,6 @@
 # Fumaris Blender Integration
 
-Current release: **0.2.0 Beta**.
+Current release: **1.0.1**.
 
 This repository contains the GPL-licensed Blender integration layer for
 Fumaris, an interactive GPU smoke and fire simulator.

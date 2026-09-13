@@ -2,6 +2,21 @@
 
 All notable customer-facing changes are recorded here.
 
+## 1.0.1 - 2026-09-13
+
+- Collection Points combines source meshes into one sphere-cloud emitter, with
+  object-size or fixed radii and automatic per-object motion velocity.
+- Collection Mesh combines evaluated meshes into one emitter with shared channels,
+  motion velocity, nested collection support, and reflected winding correction.
+- Source meshes do not need individual Fumaris roles. Membership changes, renamed
+  objects, disabled sources and timeline rewinds reset motion history safely.
+- Fixed Copy Diagnostics failing when installed as a Blender extension.
+- Fixed Linux packaging when a required library is already in the runtime bundle.
+
+Collection meshes share emission settings; intersecting closed meshes and changing
+vertex correspondence retain the limitations described in the documentation.
+Stop active jobs and restart Blender after updating. Existing caches are preserved.
+
 ## 1.0.0 - 2026-09-08
 
 - Optional smoke detail/upres with an explicit GPU-memory budget.

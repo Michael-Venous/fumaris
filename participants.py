@@ -90,6 +90,10 @@ def participant_for_object(obj, role, participant_id, collection_name):
         return item("box")
     if shape == "sphere":
         return item("sphere")
+    if shape == "collection_points":
+        return item("point_spheres")
+    if shape == "collection_mesh":
+        return item("mesh")
     if is_particles(props, "point_cloud"):
         return item("point_spheres")
     if is_particles(props, "mesh") and obj.type == "MESH":

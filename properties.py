@@ -1014,7 +1014,7 @@ class FumarisSettings(PropertyGroup):
     effector_coupling: FloatProperty(
         name="Coupling",
         description="How strongly the force velocity couples into the Flow grid",
-        default=200.0,
+        default=8.0,
         min=0.0,
         soft_max=500.0,
     )

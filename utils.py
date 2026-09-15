@@ -115,18 +115,24 @@ def base_output_directory_for_object(obj):
 
 
 def _absolute_cache_directory(configured, fallback_name, *, create=True):
-    resolved = bpy.path.abspath(configured)
-    if os.path.isabs(resolved):
-        return os.path.normpath(resolved)
-    if not bpy.data.filepath:
-        user_cache = bpy.utils.user_resource(
-            "DATAFILES",
-            path=fallback_name,
-            create=create,
-        )
+    # Blender can turn // paths into absolute paths even without a .blend
+    # file (including an unwritable installation/root directory on Windows).
+    # Decide whether the input needs a project anchor before resolving it.
+    if not bpy.data.filepath and (
+        configured.startswith("//") or not os.path.isabs(configured)
+    ):
+        try:
+            user_cache = bpy.utils.user_resource(
+                "DATAFILES",
+                path=fallback_name,
+                create=create,
+            )
+        except OSError:
+            user_cache = ""
         if user_cache and os.path.isabs(user_cache):
             return os.path.normpath(user_cache)
         return os.path.join(tempfile.gettempdir(), fallback_name)
+    resolved = bpy.path.abspath(configured)
     return os.path.normpath(os.path.abspath(resolved))
 
 

@@ -155,7 +155,11 @@ bake.
 
 Under `Output`:
 
-- Choose a local writable cache directory with enough free space.
+- Choose a local writable cache directory with enough free space. Before the
+  project is saved, default/project-relative output uses Blender's user data
+  directory (system temporary storage if unavailable). An explicit absolute
+  output directory is respected. After saving, project-relative output is
+  resolved beside the `.blend`; earlier caches stay at their original location.
 - Use descriptive Cache Slot names to keep multiple bakes without overwriting
   earlier versions.
 - Assign a material to apply it automatically to the imported volume.
@@ -354,6 +358,11 @@ containment, but it is not a mathematically sealed no-flux pressure boundary.
 Very fast smoke may still leak through thin or complex colliders.
 
 ### Effectors
+
+Coupling defaults to **8** and is passed directly to the solver, without
+rescaling. Explicitly saved values and animation use the original property.
+Older objects without a stored value inherit the new default. Emitter Channel
+Coupling is unchanged.
 
 Effectors support force, wind, vortex, and turbulence behavior with strength,
 radius, coupling, sampling, noise, and distance falloff controls. Vortex uses

@@ -2,6 +2,15 @@
 
 All notable customer-facing changes are recorded here.
 
+## Unreleased
+
+- Resolve unsaved-project cache paths in user-writable storage before Blender
+  can anchor them to an installation or root directory. Windows verification
+  of the reported no-output issue is still pending.
+- Set the effector Coupling default to 8 using the original property and literal
+  solver units. Stored values and animation are not rescaled; older objects
+  without a stored value inherit the new default. Emitter coupling is unchanged.
+
 ## 1.0.1 - 2026-09-13
 
 - Collection Points combines source meshes into one sphere-cloud emitter, with

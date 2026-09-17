@@ -2,14 +2,31 @@
 
 All notable customer-facing changes are recorded here.
 
-## Unreleased
+## 1.1.0 - 2026-09-17
 
-- Resolve unsaved-project cache paths in user-writable storage before Blender
-  can anchor them to an installation or root directory. Windows verification
-  of the reported no-output issue is still pending.
-- Set the effector Coupling default to 8 using the original property and literal
-  solver units. Stored values and animation are not rescaled; older objects
-  without a stored value inherit the new default. Emitter coupling is unchanged.
+- Control live preview without selecting the domain: viewport/timeline header
+  controls, participant controls, a scene domain picker, and configurable
+  Shift–Alt–Space (play/pause/resume) and Shift–Alt–Backspace (stop) shortcuts.
+- Add AgX (Preview) tone mapping and calibrate AgX/Filmic brightness against
+  Off (Legacy). These are preview approximations, not Blender's full OCIO transform.
+- Remove the obsolete points preview renderer. Volume preview remains;
+  Geometry Nodes and Collection Points emitters are unaffected.
+- Allow hidden domains to simulate while suppressing their overlay. Explain when
+  live preview needs a 3D Viewport instead of failing with a density-readback error.
+- Prefer compatible system GCC runtimes for the isolated Linux worker so newer
+  graphics drivers can load, retaining the bundled fallback on older systems.
+- Explain why Smoke Upres is disabled during running/paused previews. Rename
+  effector Radius to Influence Radius to distinguish coverage from detail.
+- Default emitter and effector coupling to 8, Expansion Per Burn and Vorticity
+  to 2, and temperature/burn exports to enabled. Preview density defaults to 2,
+  brightness to 5, and smoke color to (0.5, 0.5, 0.5).
+  Existing explicitly stored settings and animation are preserved.
+- Resolve unsaved-project cache paths to writable user storage.
+- Remove orphaned preview code and update diagnostics and profiling tools.
+
+Stop active jobs and restart Blender after updating the extension and native
+worker together. Existing caches are preserved. Native Blender playback remains
+independent; use it for baked VDB playback.
 
 ## 1.0.1 - 2026-09-13
 

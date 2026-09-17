@@ -19,12 +19,6 @@ TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
 
 
-def _preview_display_updated(_self, _context):
-    from .preview import refresh_preview_display
-
-    refresh_preview_display()
-
-
 def _appearance_updated(self, _context):
     from .importers import update_generated_materials
     from .preview import refresh_preview_display
@@ -235,7 +229,7 @@ class FumarisSettings(PropertyGroup):
     couple_rate_velocity: FloatProperty(
         name="Velocity",
         description="How strongly the emitter pushes smoke along its velocity or movement; a stationary emitter does not slow existing smoke",
-        default=200.0,
+        default=8.0,
         min=0.0,
         soft_max=200.0,
     )
@@ -325,7 +319,7 @@ class FumarisSettings(PropertyGroup):
 
     motion_velocity_scale: FloatProperty(
         name="Motion Velocity Scale",
-        description="Multiplier for velocity derived from emitter/object/point motion; set to 0 to ignore motion velocity",
+        description="Scale of source motion velocity: 1 uses the measured velocity (Blender units per second), 0 ignores it. Geometry Nodes velocity attributes must be in local units per second. Fluid response also depends on Velocity Coupling",
         default=1.0,
         min=0.0,
         soft_max=25.0,
@@ -364,23 +358,6 @@ class FumarisSettings(PropertyGroup):
         soft_max=4096,
     )
 
-    preview_dot_resolution: FloatProperty(
-        name="Preview Dots",
-        description="Multiplier for live preview point budget; base budget is derived from simulation resolution",
-        default=1.0,
-        min=0.05,
-        soft_max=4.0,
-    )
-
-    preview_mode: EnumProperty(
-        name="Preview Mode",
-        description="Volume shows shaded smoke and fire; Points is a simpler, lightweight view for troubleshooting",
-        items=[
-            ("volume", "Volume", "Raymarch the live sparse Flow grid"),
-            ("points", "Points", "Draw sampled active voxels as points"),
-        ],
-        default="volume",
-    )
 
     preview_resolution_percent: FloatProperty(
         name="Preview Resolution",
@@ -391,45 +368,6 @@ class FumarisSettings(PropertyGroup):
         subtype="PERCENTAGE",
     )
 
-    preview_max_points: IntProperty(
-        name="Preview Max Dots",
-        description="Maximum number of live preview dots drawn per frame after the resolution multiplier is applied",
-        default=500000,
-        min=512,
-        max=16000000,
-        soft_max=4000000,
-    )
-
-    preview_dot_size: FloatProperty(
-        name="Preview Dot Size",
-        description="World-space radius multiplier for live preview dots",
-        default=5.0,
-        min=0.05,
-        max=40.0,
-        soft_max=40.0,
-        update=_preview_display_updated,
-    )
-
-    preview_color: FloatVectorProperty(
-        name="Preview Color",
-        description="Color used by live preview dots",
-        default=(0.35, 0.65, 1.0),
-        min=0.0,
-        max=1.0,
-        size=3,
-        subtype="COLOR",
-        update=_preview_display_updated,
-    )
-
-    preview_opacity: FloatProperty(
-        name="Preview Opacity",
-        description="Opacity multiplier for the live preview",
-        default=0.65,
-        min=0.0,
-        max=1.0,
-        subtype="FACTOR",
-        update=_preview_display_updated,
-    )
 
     preview_image_scale: FloatProperty(
         name="Viewport Scale",
@@ -465,8 +403,9 @@ class FumarisSettings(PropertyGroup):
         name="Tone Mapping",
         description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",
         items=(
-            ("filmic", "Filmic", "Smooth bright highlights and add contrast with an ACES-style curve and sRGB display encoding; adjust Exposure to taste"),
-            ("none", "Off (Legacy)", "Use the original preview brightness; values above the display range clip to white"),
+            ("filmic", "Filmic", "Smooth bright highlights and add contrast with an ACES-style curve and calibrated display brightness; adjust Exposure to taste"),
+            ("none", "Off", "Use the original preview brightness; values above the display range clip to white"),
+            ("agx", "AgX (Preview)", "Brightness-calibrated AgX approximation with gentle highlight desaturation; not Blender's full AgX color-management transform"),
         ),
         default="filmic",
     )
@@ -479,7 +418,7 @@ class FumarisSettings(PropertyGroup):
 
     upres_enabled: BoolProperty(
         name="Smoke Upres (Experimental)",
-        description="Add finer smoke detail without running a full higher-resolution simulation. Works in preview and baked volumes, but needs extra GPU memory. Fire stays at the original resolution. Restart the simulation after changing this",
+        description="Add finer smoke detail without running a full higher-resolution simulation. Works in preview and baked volumes, but needs extra GPU memory. Fire stays at the original resolution. Unavailable while a simulation is running or paused. Press Stop, change this setting, then Play",
         default=False,
     )
     upres_strength: FloatProperty(
@@ -885,8 +824,8 @@ class FumarisSettings(PropertyGroup):
     )
 
     effector_radius: FloatProperty(
-        name="Radius",
-        description="Radial area influenced by this effector",
+        name="Influence Radius",
+        description="Size of the region affected by this effector, not simulation detail or resolution. Increase it to affect a wider area",
         default=4.0,
         min=0.01,
         soft_max=20.0,
@@ -1103,7 +1042,7 @@ class FumarisSettings(PropertyGroup):
     divergence_per_burn: FloatProperty(
         name="Expansion Per Burn",
         description="How strongly burning fuel pushes the gas outward; increase for expanding fireballs, lower for gentler flames",
-        default=1.0,
+        default=2.0,
         soft_min=-20.0,
         soft_max=20.0,
     )
@@ -1119,7 +1058,7 @@ class FumarisSettings(PropertyGroup):
     vorticity: FloatProperty(
         name="Vorticity",
         description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off",
-        default=0.5,
+        default=2.0,
         min=0.0,
         max=10.0,
     )
@@ -1142,7 +1081,7 @@ class FumarisSettings(PropertyGroup):
     export_temperature_vdb: BoolProperty(
         name="Export Temperature VDB",
         description="Export nonnegative Flow temperature in a fixed Kelvin-like 0 to 5000 range for direct Blackbody shading",
-        default=False,
+        default=True,
     )
 
     export_fuel_vdb: BoolProperty(
@@ -1154,7 +1093,7 @@ class FumarisSettings(PropertyGroup):
     export_burn_vdb: BoolProperty(
         name="Export Burn VDB",
         description="Export Flow's raw timestep-dependent combustion amount for custom shading",
-        default=False,
+        default=True,
     )
 
     flame_temperature_min: FloatProperty(
@@ -1188,7 +1127,7 @@ class FumarisSettings(PropertyGroup):
     shader_smoke_color: FloatVectorProperty(
         name="Color",
         description="Smoke color used by the generated volume material and live volume preview",
-        default=(0.6, 0.6, 0.6),
+        default=(0.5, 0.5, 0.5),
         min=0.0,
         max=1.0,
         size=3,
@@ -1206,7 +1145,7 @@ class FumarisSettings(PropertyGroup):
     shader_flame_brightness: FloatProperty(
         name="Brightness",
         description="Emission strength multiplier for generated fire",
-        default=1.0,
+        default=5.0,
         min=0.0,
         max=100.0,
         soft_max=10.0,

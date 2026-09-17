@@ -108,7 +108,7 @@ sparse grid allocation restart the preview session.
 
 Useful preview controls:
 
-- `Preview Mode` selects the normal volume raymarch or diagnostic points.
+- Live preview uses the volume raymarch. The old diagnostic points path has been removed.
 - `Preview Resolution` scales simulation resolution for preview only.
 - `Viewport Scale` controls output pixels. Doubling the value renders, reads
   back, transfers, and uploads four times as many pixels.
@@ -116,7 +116,10 @@ Useful preview controls:
   work once spacing reaches 0.75 simulation voxel because finer samples cannot
   recover detail absent from the grid.
 - `Tone Mapping` defaults to `Filmic`, which softens bright highlights instead
-  of clipping them to white. `Off (Legacy)` restores the original preview look.
+  of clipping them to white. `AgX (Preview)` adds an AgX approximation with
+  highlight desaturation. `Off` restores the original preview look.
+- Mapped modes are calibrated against Off at neutral display gray 0.18, reducing
+  brightness jumps when switching modes while preserving highlight compression.
 - `Exposure` adjusts brightness before tone mapping: +1 doubles the incoming
   light, -1 halves it. Try -1 or -2 if bright fire looks washed out. Both controls
   update while paused and affect only the preview, not baked grids or materials.
@@ -130,13 +133,13 @@ Useful preview controls:
   raising it fills them in. `Azimuth` rotates light around world Z without
   changing its height; `Elevation` sets that height (0 degrees horizontal,
   +90 overhead). These controls do not move Blender scene lights.
-- Point mode exposes dot budget, size, color, and opacity controls.
 - `Preview Bake` shows the selected preview during a final bake, with some
   performance cost.
 
 The live volume preview uses a simple Flow shader and currently does not use
 Blender's scene depth for object occlusion. Its Filmic option is an ACES-style
-approximation, not Blender's Filmic or AgX view transform. The preview does not
+approximation; AgX (Preview) uses a polynomial approximation of the original
+AgX transform. Neither is Blender's full OCIO view transform. The preview does not
 follow scene color-management settings; final OpenVDB shading and rendering
 inside Blender are unaffected.
 
@@ -180,7 +183,8 @@ slot and its imported volume. It is unavailable while a job is active.
 Optional smoke upres adds an advected detail field to density. It affects the
 live volume and baked smoke but does not increase the resolution of fire or
 the underlying velocity/pressure solve. Restart the simulation after enabling
-or disabling it.
+or disabling it. The toggle is unavailable while the simulation is running or
+paused: press Stop, change Smoke Upres, then start again.
 
 - Start with Detail Strength 1 and Detail Size 4. Strength 0 uses original smoke.
 - Detail Size is measured in base cells, not an output-resolution multiplier.
@@ -365,7 +369,8 @@ Older objects without a stored value inherit the new default. Emitter Channel
 Coupling is unchanged.
 
 Effectors support force, wind, vortex, and turbulence behavior with strength,
-radius, coupling, sampling, noise, and distance falloff controls. Vortex uses
+Influence Radius, coupling, sampling, noise, and distance falloff controls.
+Influence Radius changes the affected region, not detail or resolution. Vortex uses
 a cylindrical field with a controllable height and rotating core; optional
 Inflow confines smoke toward the axis and Updraft carries it along local Z.
 Effectors use the object's complete rotation, including roll. Noise is a
@@ -472,3 +477,42 @@ Use the support channel on the purchase receipt. Include:
 
 Remove proprietary assets before sending a project file. Beta hardware reports
 are welcome even when the issue is specific to an unqualified GPU.
+
+
+### Linux C++ runtime selection
+
+The separate Fumaris worker prefers the system libstdc++ and libgcc runtimes
+when they pass a Flow runtime-load check. This lets newer system Vulkan drivers
+use the C++ symbols they require. Flow and Slang keep their private bundled
+libraries. Older systems retain the bundled GCC fallback if the native runtime
+cannot load Fumaris. Blender's own loaded libraries and environment are unchanged.
+
+Motion Velocity Scale 1 uses source velocity in Blender units per second.
+For deforming meshes, motion is estimated from corresponding evaluated vertices
+on consecutive simulation frames. Keep vertex count and ordering stable; topology
+changes or arbitrary frame jumps do not provide reliable deformation velocities.
+Geometry Nodes velocity attributes must use local units per second, not displacement
+per frame; object transforms convert them to world space. Coupling controls how
+quickly the fluid approaches this target, and pressure can change the resulting
+fluid velocity. An attribute does not automatically include additional host-object
+motion that was not represented in the attribute.
+
+
+### Playback while editing emitters
+
+Use the Fumaris controls in the 3D Viewport or Timeline header, or the controls
+above an emitter/collider/effector's Physics settings. Object selection stays
+unchanged. Shift–Alt–Space starts, pauses or resumes the live preview;
+Shift–Alt–Backspace stops it. Edit these bindings in Preferences → Add-ons →
+Fumaris, or search Fumaris in Preferences → Keymap.
+
+A single domain in the current view layer is picked automatically. With multiple
+domains, choose one in the header's Fumaris menu; the choice is saved in the scene.
+During playback, controls target the running preview regardless of selection.
+Stop before changing the target. A baked domain must have its bake deleted before
+starting live preview, as with the existing domain controls.
+
+Fumaris owns sequential live simulation timing; it waits for each worker step
+before submitting the next frame. Normal Blender playback is independent and
+starting it stops live preview. Use it for baked VDB playback. The new shortcuts
+do not replace Blender's normal Spacebar behavior.

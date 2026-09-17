@@ -182,31 +182,42 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     _timer_interval = 0.001
     _next_submit_at = 0.0
 
+    domain_name: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
     @classmethod
     def poll(cls, context):
-        domain = _active_domain(context)
-        return bool(
-            domain
-            and not active_job()
-            and domain.fumaris.simulation_state not in {"baking", "baked"}
+        from .playback import scene_domains
+        return not active_job() and any(
+            domain.fumaris.simulation_state not in {"baking", "baked"}
+            for domain in scene_domains(context)
         )
 
     def execute(self, context):
-        domain = _active_domain(context)
-        if not domain:
+        name = getattr(self, "domain_name", "")
+        domain = (context.view_layer.objects.get(name) if name
+                  else _active_domain(context) or _playback_domain(context))
+        if not domain or domain.fumaris.smoke_object_type != 'domain':
             self.report({"ERROR"}, "Select a Fumaris domain")
+            return {"CANCELLED"}
+        if active_job() or domain.fumaris.simulation_state in {"baking", "baked"}:
+            self.report({"WARNING"}, "Stop the active job or delete this domain's bake before previewing")
             return {"CANCELLED"}
         if _is_playing(context):
             self.report({"WARNING"}, "Stop Blender playback before starting Fumaris preview")
             return {"CANCELLED"}
 
+        if not capture_volume_preview(context, domain).get("valid", False):
+            self.report({"WARNING"}, "Open a 3D Viewport before starting Fumaris preview")
+            return {"CANCELLED"}
+
+        context.scene.fumaris_preview_domain = domain
         self._domain_name = domain.name
         self._pause_requested = False
         self._loop_reset_pending = False
         try:
             claim_job(self, "previewing")
             clear_all_previews()
-            self._start_preview_session(context, domain, clear_preview_points=True)
+            self._start_preview_session(context, domain, clear_preview_image=True)
         except Exception as error:
             self._record_failure(str(error))
             release_job(self)
@@ -220,9 +231,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         console_log(f"Fumaris preview started for {domain.name} frame {self._frame}")
         return self._start_modal(context)
 
-    def _start_preview_session(self, context, domain, *, clear_preview_points=False):
+    def _start_preview_session(self, context, domain, *, clear_preview_image=False):
         signature = session_structure_signature(domain)
-        if clear_preview_points:
+        if clear_preview_image:
             clear_preview(domain)
         self._configure_job(
             context,
@@ -314,7 +325,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._next_preview_capture_at = now + (1.0 / 30.0)
 
         domain = bpy.data.objects.get(self._domain_name)
-        if domain is None or domain.fumaris.preview_mode != "volume":
+        if domain is None:
             return False
         preview = capture_volume_preview(context, domain)
         signature = volume_preview_signature(preview)
@@ -346,7 +357,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self._accepted = False
             self._stop_requested = False
             self._ending_session = False
-            self._start_preview_session(context, domain, clear_preview_points=True)
+            self._start_preview_session(context, domain, clear_preview_image=True)
             return
         super()._submit_frame(context)
 
@@ -633,6 +644,11 @@ def _activate(context, obj):
 
 def _is_imported_volume(obj):
     return bool(obj and obj.get(VOLUME_MARKER))
+
+
+def _playback_domain(context):
+    from .playback import resolve_domain
+    return resolve_domain(context)
 
 
 def _active_domain(context):

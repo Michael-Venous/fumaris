@@ -16,10 +16,7 @@ PREVIEW_MARKER = "fumaris_preview"
 LEGACY_PREVIEW_MARKER = "plume_forge_preview"
 PREVIEW_NAME = "Fumaris Preview"
 _PREVIEWS = {}
-_POINT_DRAW_HANDLE = None
 _IMAGE_DRAW_HANDLE = None
-_POINT_SHADER = None
-_POINT_VERTEX_FORMAT = None
 _IMAGE_SHADER = None
 _IMAGE_BATCH = None
 _IMAGE_UPLOAD_BUFFER = None
@@ -28,9 +25,11 @@ _IMAGE_UPLOAD_SHAPE = None
 
 def capture_volume_preview(context, domain):
     props = domain.fumaris
-    if getattr(props, "preview_mode", "points") != "volume":
-        return {"valid": False}
     target = _largest_viewport(context, domain)
+    if target is None:
+        # Visibility controls drawing, not simulation. Keep a valid camera when
+        # hidden/excluded/in local view rather than falling back to point readback.
+        target = _largest_viewport(context)
     if target is None:
         return {"valid": False}
 
@@ -106,42 +105,6 @@ def volume_preview_signature(preview):
     )
 
 
-def update_density_points(domain, data, payload):
-    started = time.perf_counter()
-    preview = data.get("preview") or {}
-    if preview.get("type") != "density_points" or not payload:
-        clear_preview(domain)
-        return 0.0
-
-    count = int(preview.get("count", 0))
-    if count <= 0:
-        clear_preview(domain)
-        return 0.0
-
-    stride = int(preview.get("stride", 0))
-    expected_bytes = count * stride * 4
-    if stride != 3 or len(payload) != expected_bytes:
-        raise RuntimeError(
-            f"Invalid preview payload: count={count}, stride={stride}, "
-            f"bytes={len(payload)}"
-        )
-    positions = memoryview(payload).cast("f", shape=[count, 3])
-    vertex_buffer = gpu.types.GPUVertBuf(format=_point_vertex_format(), len=count)
-    vertex_buffer.attr_fill("pos", positions)
-    batch = gpu.types.GPUBatch(type="POINTS", buf=vertex_buffer)
-    _PREVIEWS[domain.name] = {
-        "type": "points",
-        "domain": domain,
-        "domain_name": domain.name,
-        "point_size": max(0.001, float(preview.get("point_size", 0.1))),
-        "buffer": vertex_buffer,
-        "batch": batch,
-    }
-    _sync_draw_handlers()
-    _tag_viewports()
-    return (time.perf_counter() - started) * 1000.0
-
-
 def update_volume_image(domain, data, payload):
     started = time.perf_counter()
     preview = data.get("preview") or {}
@@ -176,8 +139,6 @@ def show_preview_payload(domain, data, payload):
     preview_type = (data.get("preview") or {}).get("type")
     if preview_type == "volume_rgba8":
         return update_volume_image(domain, data, payload)
-    if preview_type == "density_points":
-        return update_density_points(domain, data, payload)
     clear_preview(domain)
     return 0.0
 
@@ -231,43 +192,6 @@ def _visible_preview_domain(preview):
     if _domain_visible(domain, context.view_layer, context.space_data):
         return domain
     return None
-
-
-def _draw_point_previews():
-    point_previews = tuple(
-        preview for preview in _PREVIEWS.values()
-        if preview["type"] == "points"
-    )
-    if not point_previews:
-        return
-    region = bpy.context.region
-    if region is None:
-        return
-    shader = _point_shader()
-    uses_program_point_size = gpu.platform.backend_type_get() == "OPENGL"
-    gpu.state.blend_set("ALPHA")
-    if uses_program_point_size:
-        gpu.state.program_point_size_set(True)
-    try:
-        projection = gpu.matrix.get_projection_matrix()
-        shader.bind()
-        shader.uniform_float(
-            "ModelViewProjectionMatrix",
-            projection @ gpu.matrix.get_model_view_matrix(),
-        )
-        shader.uniform_float("ProjectionMatrix", projection)
-        shader.uniform_float("viewportSize", (region.width, region.height))
-        for preview in point_previews:
-            domain = _visible_preview_domain(preview)
-            if domain is None:
-                continue
-            shader.uniform_float("worldSize", _world_point_size(domain, preview))
-            shader.uniform_float("color", _point_color(domain))
-            preview["batch"].draw(shader)
-    finally:
-        if uses_program_point_size:
-            gpu.state.program_point_size_set(False)
-        gpu.state.blend_set("NONE")
 
 
 def _draw_volume_previews():
@@ -352,26 +276,13 @@ def _volume_texture(preview):
 
 
 def _sync_draw_handlers():
-    global _POINT_DRAW_HANDLE, _IMAGE_DRAW_HANDLE, _IMAGE_UPLOAD_BUFFER, _IMAGE_UPLOAD_SHAPE
-    needs_points = any(
-        preview["type"] == "points" for preview in _PREVIEWS.values()
-    )
+    global _IMAGE_DRAW_HANDLE, _IMAGE_UPLOAD_BUFFER, _IMAGE_UPLOAD_SHAPE
     needs_images = any(
         preview["type"] == "volume" for preview in _PREVIEWS.values()
     )
     if not needs_images:
         _IMAGE_UPLOAD_BUFFER = None
         _IMAGE_UPLOAD_SHAPE = None
-    if needs_points and _POINT_DRAW_HANDLE is None:
-        _POINT_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
-            _draw_point_previews,
-            (),
-            "WINDOW",
-            "POST_VIEW",
-        )
-    elif not needs_points and _POINT_DRAW_HANDLE is not None:
-        _remove_draw_handler(_POINT_DRAW_HANDLE)
-        _POINT_DRAW_HANDLE = None
     if needs_images and _IMAGE_DRAW_HANDLE is None:
         _IMAGE_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
             _draw_volume_previews,
@@ -389,40 +300,6 @@ def _remove_draw_handler(handle):
         bpy.types.SpaceView3D.draw_handler_remove(handle, "WINDOW")
     except (ReferenceError, ValueError):
         pass
-
-
-def _point_shader():
-    global _POINT_SHADER
-    if _POINT_SHADER is None:
-        info = gpu.types.GPUShaderCreateInfo()
-        info.push_constant("MAT4", "ModelViewProjectionMatrix")
-        info.push_constant("MAT4", "ProjectionMatrix")
-        info.push_constant("VEC2", "viewportSize")
-        info.push_constant("FLOAT", "worldSize")
-        info.push_constant("VEC4", "color")
-        info.vertex_in(0, "VEC3", "pos")
-        info.fragment_out(0, "VEC4", "FragColor")
-        info.vertex_source("""
-            void main()
-            {
-                vec4 clip = ModelViewProjectionMatrix * vec4(pos, 1.0);
-                gl_Position = clip;
-                float depth = max(abs(clip.w), 1e-6);
-                gl_PointSize = max(
-                    1.0,
-                    worldSize * viewportSize.y * 0.5 *
-                    abs(ProjectionMatrix[1][1]) / depth
-                );
-            }
-        """)
-        info.fragment_source("""
-            void main()
-            {
-                FragColor = color;
-            }
-        """)
-        _POINT_SHADER = gpu.shader.create_from_info(info)
-    return _POINT_SHADER
 
 
 def _image_shader():
@@ -472,31 +349,6 @@ def _image_batch():
         )
         _IMAGE_BATCH = gpu.types.GPUBatch(type="TRIS", buf=vertices)
     return _IMAGE_BATCH
-
-
-def _point_vertex_format():
-    global _POINT_VERTEX_FORMAT
-    if _POINT_VERTEX_FORMAT is None:
-        _POINT_VERTEX_FORMAT = gpu.types.GPUVertFormat()
-        _POINT_VERTEX_FORMAT.attr_add(
-            id="pos",
-            comp_type="F32",
-            len=3,
-            fetch_mode="FLOAT",
-        )
-    return _POINT_VERTEX_FORMAT
-
-
-def _world_point_size(domain, preview):
-    scale = max(0.05, float(getattr(domain.fumaris, "preview_dot_size", 1.0)))
-    return preview["point_size"] * scale * 0.1
-
-
-def _point_color(domain):
-    props = domain.fumaris
-    color = tuple(float(value) for value in getattr(props, "preview_color", (0.35, 0.65, 1.0)))
-    opacity = max(0.0, min(1.0, float(getattr(props, "preview_opacity", 0.65))))
-    return (*color[:3], opacity)
 
 
 def _largest_viewport(context, domain=None):

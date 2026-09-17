@@ -46,7 +46,6 @@ def build_session(
     *,
     write_vdb=True,
     preview_enabled=True,
-    preview_max_points=None,
     resolution_scale=1.0,
     log_participants=False,
 ):
@@ -70,28 +69,13 @@ def build_session(
         "vdb_compression": getattr(domain.fumaris, "vdb_compression", "active_mask"),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
-        "preview_mode": (
-            getattr(domain.fumaris, "preview_mode", "points")
-            if preview_enabled
-            else "none"
-        ),
         "flow_profile_enabled": (
             os.environ.get("FUMARIS_FLOW_PROFILE")
             or os.environ.get("PLUME_FORGE_FLOW_PROFILE", "")
         ).strip().lower() in {"1", "true", "yes", "on"},
-        "preview_max_points": _preview_max_points(domain.fumaris, preview_max_points),
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
     return settings, participants
-
-
-def _preview_max_points(props, override=None):
-    if override is not None:
-        return max(0, int(override))
-    resolution = max(1, int(props.resolution))
-    multiplier = max(0.0, float(getattr(props, "preview_dot_resolution", 1.0)))
-    limit = max(512, int(getattr(props, "preview_max_points", 500000)))
-    return max(512, min(limit, int(resolution * resolution * 0.25 * multiplier)))
 
 
 def session_structure_signature(domain):
@@ -141,13 +125,7 @@ def build_frame(
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
     preview_request = volume_preview or {"valid": False}
-    preview_mode = (
-        getattr((domain or context.object).fumaris, "preview_mode", "points")
-        if preview_enabled
-        else "none"
-    )
-    if preview_mode == "volume" and not preview_request.get("valid", False):
-        preview_mode = "points"
+    preview_mode = "volume" if preview_enabled and preview_request.get("valid", False) else "none"
     meshes = []
     boxes = []
     spheres = []
@@ -181,7 +159,6 @@ def build_frame(
     return FramePacket(
         {
             "frame": frame,
-            "preview_max_points": _preview_max_points((domain or context.object).fumaris),
             "preview_mode": preview_mode,
             "volume_preview": preview_request,
             "domain": _domain_state((domain or context.object).fumaris, resolution_scale),

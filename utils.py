@@ -95,6 +95,9 @@ def process_environment(executable=None):
     paths = os.pathsep.join((libs, binary))
     env[variable] = paths if not previous else paths + os.pathsep + previous
     env["FUMARIS_PARENT_PID"] = str(os.getpid())
+    if sys.platform.startswith("linux"):
+        from .linux_runtime import prefer_system_gcc
+        env = prefer_system_gcc(executable or os.path.join(binary, "fumaris_bridge"), env)
     return env
 
 

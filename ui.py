@@ -365,6 +365,10 @@ def _draw_domain(layout, scene, props):
     preview_stop = preview.row(align=True)
     preview_stop.enabled = is_previewing
     preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
+    domain = props.id_data
+    if not domain.visible_get(view_layer=bpy.context.view_layer):
+        controls.label(text="Domain hidden: simulation can still run", icon="INFO")
+        controls.label(text="Unhide the domain to see the preview")
     _draw_diagnostics(controls, props)
 
     settings = controls.column(align=True)
@@ -424,29 +428,19 @@ def _draw_domain(layout, scene, props):
     preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
     if preview_open:
         preview.prop(props, "preview_bake")
-        preview.prop(props, "preview_mode")
         preview.prop(props, "preview_resolution_percent", slider=True)
-        if props.preview_mode == "volume":
-            preview.prop(props, "preview_image_scale", slider=True)
-            preview.prop(props, "preview_max_ray_steps")
-            preview.prop(props, "preview_tone_mapping")
-            preview.prop(props, "preview_exposure", slider=True)
-            preview.prop(props, "preview_shadows")
-            light = preview.column()
-            light.enabled = props.preview_shadows
-            light.prop(props, "preview_shadow_min_light", slider=True)
-            light.label(text="Light Direction")
-            light.prop(props, "preview_light_azimuth")
-            light.prop(props, "preview_light_elevation")
-            preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
-        else:
-            preview.prop(props, "preview_dot_resolution")
-            preview.prop(props, "preview_max_points")
-            if props.preview_max_points > 4_000_000:
-                preview.label(text="High dot limits use substantial transfer and GPU memory", icon="ERROR")
-            preview.prop(props, "preview_dot_size")
-            preview.prop(props, "preview_color")
-            preview.prop(props, "preview_opacity")
+        preview.prop(props, "preview_image_scale", slider=True)
+        preview.prop(props, "preview_max_ray_steps")
+        preview.prop(props, "preview_tone_mapping")
+        preview.prop(props, "preview_exposure", slider=True)
+        preview.prop(props, "preview_shadows")
+        light = preview.column()
+        light.enabled = props.preview_shadows
+        light.prop(props, "preview_shadow_min_light", slider=True)
+        light.label(text="Light Direction")
+        light.prop(props, "preview_light_azimuth")
+        light.prop(props, "preview_light_elevation")
+        preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
 
     participants = layout.box()
     participants.enabled = not is_baking
@@ -462,6 +456,8 @@ def _draw_domain(layout, scene, props):
     detail_toggle = behavior.row()
     detail_toggle.enabled = not is_previewing
     detail_toggle.prop(props, "upres_enabled")
+    if is_previewing:
+        behavior.label(text="Stop the preview to change Smoke Upres (Pause keeps it active)", icon="INFO")
     if props.upres_enabled:
         detail = behavior.box()
         detail.prop(props, "upres_strength")
@@ -531,6 +527,9 @@ class FUMARIS_PT_main(Panel):
         if props.smoke_object_type == "domain":
             _draw_domain(layout, context.scene, props)
         else:
+            from .playback import draw_controls, scene_domains
+            if active_job() or scene_domains(context):
+                draw_controls(layout.box(), context)
             content = layout.column()
             content.enabled = active_mode() != "baking"
             if props.smoke_object_type == "emitter":

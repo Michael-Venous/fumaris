@@ -46,7 +46,6 @@ class FrameRangeJob:
         restore_frame=True,
         write_vdb=True,
         preview_enabled=True,
-        preview_max_points=None,
         resolution_scale=1.0,
         show_progress=True,
         completed_frames=None,
@@ -92,7 +91,6 @@ class FrameRangeJob:
             domain=domain,
             write_vdb=write_vdb,
             preview_enabled=preview_enabled,
-            preview_max_points=preview_max_points,
             resolution_scale=resolution_scale,
             log_participants=True,
         )

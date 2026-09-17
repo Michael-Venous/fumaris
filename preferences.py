@@ -13,9 +13,11 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         subtype="FILE_PATH",
     )
 
-    def draw(self, _context):
+    def draw(self, context):
         layout = self.layout
         layout.prop(self, "executable_path")
+        from .playback import draw_keymaps
+        draw_keymaps(layout.box(), context)
         error = runtime_validation_error()
         status = layout.row()
         status.alert = bool(error)

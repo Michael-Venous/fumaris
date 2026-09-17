@@ -9,6 +9,7 @@ The packaged runtime may include:
 | Component | License |
 | --- | --- |
 | NVIDIA Flow / PhysX distribution | BSD-3-Clause |
+| Minimal AgX shader, Benjamin Wrensch / Missing Deadlines | MIT (licenses/AgX-MIT.txt) |
 | Slang shader compiler | Apache-2.0 WITH LLVM-exception |
 | glslang used by Slang | BSD, MIT, Apache-2.0, and GPL-3.0 with Bison exception |
 | miniz used by Slang | MIT |

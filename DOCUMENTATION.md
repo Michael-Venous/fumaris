@@ -1,12 +1,12 @@
-# Fumaris 1.0.1 Documentation
+# Fumaris 1.1.0 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.0.0 introduces major workflow and rendering changes. Save copies of important project files, keep
-your GPU driver current, and report reproducible problems with the system
-details requested at the end of this document.
+Fumaris 1.1.0 adds global playback controls, AgX preview tone mapping, and
+Linux runtime compatibility improvements. See [CHANGELOG.md](CHANGELOG.md)
+for release details and the Updating section below before replacing an installation.
 
 ## Requirements And Compatibility
 
@@ -99,8 +99,9 @@ and release its GPU working set.
 `Volume` mode raymarches the live sparse Flow grid and displays the resulting
 image over the 3D viewport. It does not create NanoVDB or OpenVDB data. Moving
 the viewport or changing display settings rerenders the current Flow frame
-without advancing the simulation. `Points` remains available as a lightweight
-diagnostic fallback.
+without advancing the simulation. The former diagnostic points preview has
+been removed; point-based emitters remain supported. A hidden domain can keep
+simulating while its viewport overlay is suppressed.
 
 Most participant and simulation settings can be adjusted while preview is
 running and affect subsequent simulated frames. Changes that alter fundamental
@@ -425,10 +426,9 @@ can cause the renderer to reject or miss a volume frame.
 
 ## Performance Guidance
 
-Preview is normally much faster than Bake because volume mode reads back one
-viewport-sized RGBA image and point mode reads sampled density positions. Bake
-must read complete grids from the GPU, convert NanoVDB to OpenVDB, and write
-them to disk.
+Preview is normally much faster than Bake because it reads back one
+viewport-sized RGBA image. Bake must read complete grids from the GPU,
+convert NanoVDB to OpenVDB, and write them to disk.
 
 For a faster or more memory-efficient simulation:
 
@@ -475,7 +475,7 @@ Use the support channel on the purchase receipt. Include:
 - Blender console output from job start through failure
 - Exact reproduction steps and the smallest `.blend` that reproduces it
 
-Remove proprietary assets before sending a project file. Beta hardware reports
+Remove proprietary assets before sending a project file. Hardware reports
 are welcome even when the issue is specific to an unqualified GPU.
 
 

@@ -1,6 +1,9 @@
 import ctypes
+import json
 import os
 import shutil
+import tempfile
+import time
 
 LOCK_FILE = ".fumaris.lock"
 GUARD_FILE = ".fumaris.guard"
@@ -9,6 +12,53 @@ _OBSOLETE_DIRECTORIES = (
     ".fumaris_preview_cache",
     ".plume_forge_preview_cache",
 )
+
+
+def create_preview_take(directory):
+    """Recording never reuses a bake directory or an earlier preview take."""
+    root = os.path.join(directory, "preview_takes")
+    os.makedirs(root, exist_ok=True)
+    return tempfile.mkdtemp(prefix=time.strftime("%Y%m%d-%H%M%S-"), dir=root)
+
+
+def write_preview_manifest(directory, manifest):
+    path = os.path.join(directory, "fumaris_preview_take.json")
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as stream:
+        json.dump(manifest, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+    os.replace(temporary, path)
+
+
+def owned_preview_takes(directory):
+    """Yield only direct, nonsymlink take folders with our matching manifest."""
+    root = os.path.join(directory, "preview_takes")
+    if not os.path.isdir(root) or os.path.islink(root):
+        return
+    with os.scandir(root) as entries:
+        candidates = sorted(entry.path for entry in entries if entry.is_dir(follow_symlinks=False))
+    for path in candidates:
+        manifest_path = os.path.join(path, "fumaris_preview_take.json")
+        if os.path.islink(manifest_path):
+            continue
+        try:
+            with open(manifest_path, encoding="utf-8") as stream:
+                manifest = json.load(stream)
+            session = manifest.get("session", {})
+            prefix = session.get("output_prefix", "")
+            if (
+                manifest.get("schema_version") == 1
+                and manifest.get("kind") == "preview_take"
+                and manifest.get("generation") == os.path.basename(path)
+                and os.path.abspath(session.get("output_directory", "")) == os.path.abspath(path)
+                and isinstance(prefix, str)
+                and prefix
+                and all(character.isalnum() or character in "._-" for character in prefix)
+            ):
+                yield path, manifest
+        except (OSError, ValueError, TypeError, AttributeError):
+            # Unrelated folders and damaged metadata are never deletion targets.
+            continue
 
 
 def delete_obsolete_cache_state(directory):

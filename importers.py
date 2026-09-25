@@ -21,6 +21,7 @@ LEGACY_IMPORT_DIRECTORY = ".plume_forge_import"
 LEGACY_VOLUME_MARKER = "plume_forge_volume"
 LEGACY_VOLUME_PREFIX_MARKER = "plume_forge_volume_prefix"
 GENERATED_MATERIAL_MARKER = "fumaris_generated_material"
+PREVIEW_OWNER_MARKER = "fumaris_preview_owner"
 
 NODE_VOLUME_SHADER = "Fumaris Volume Shader"
 NODE_FIRE_INTENSITY = "Fumaris Fire Intensity"
@@ -29,27 +30,65 @@ NODE_TEMPERATURE_MULTIPLIER = "Fumaris Color Temperature"
 NODE_TIMESTEP_NORMALIZATION = "Fumaris Timestep Normalization"
 
 
-def hide_generated_volumes(directory, prefix=PREFIX):
+def hide_generated_volumes(directory, prefix=PREFIX, *, hide_render=False):
     """Hide this cache's imported volume and return enough state to restore it."""
     normalized = os.path.normpath(directory)
     hidden = []
     for obj in bpy.data.objects:
         if not _is_generated_volume(obj, normalized, prefix):
             continue
-        hidden.append((obj.name, bool(obj.hide_viewport)))
+        hidden.append(
+            (obj.name, bool(obj.hide_viewport), bool(obj.hide_render))
+            if hide_render else (obj.name, bool(obj.hide_viewport))
+        )
         obj.hide_viewport = True
+        if hide_render:
+            obj.hide_render = True
         obj.update_tag()
     return hidden
 
 
 def restore_generated_volumes(directory, prefix, states):
     normalized = os.path.normpath(directory)
-    for name, was_hidden in states:
+    for state in states:
+        name, was_hidden = state[:2]
         obj = bpy.data.objects.get(name)
         if obj is None or not _is_generated_volume(obj, normalized, prefix):
             continue
         obj.hide_viewport = was_hidden
+        if len(state) > 2:
+            obj.hide_render = state[2]
         obj.update_tag()
+
+
+def hide_recorded_previews(owner, except_volume=None):
+    """Only one recorded take for this domain should be displayed at a time."""
+    states = []
+    for obj in bpy.data.objects:
+        if obj == except_volume or obj.get(PREVIEW_OWNER_MARKER) != owner:
+            continue
+        states.append((obj.name, bool(obj.hide_viewport), bool(obj.hide_render)))
+        obj.hide_viewport = obj.hide_render = True
+        obj.update_tag()
+    return states
+
+
+def replace_recorded_previews(owner, volume):
+    """Replace prior display objects, retaining their recorded files on disk."""
+    for obj in list(bpy.data.objects):
+        if (obj != volume and obj.type == "VOLUME"
+                and obj.get(PREVIEW_OWNER_MARKER) == owner
+                and (obj.get(VOLUME_MARKER) or obj.get(LEGACY_VOLUME_MARKER))):
+            _remove_generated_volume_object(obj)
+
+
+def restore_recorded_previews(states):
+    for name, viewport, render in states or ():
+        obj = bpy.data.objects.get(name)
+        if obj is not None:
+            obj.hide_viewport = viewport
+            obj.hide_render = render
+            obj.update_tag()
 
 
 def delete_generated_data(directory, prefix=PREFIX):
@@ -59,10 +98,7 @@ def delete_generated_data(directory, prefix=PREFIX):
             obj.get(VOLUME_MARKER) == normalized
             or obj.get(LEGACY_VOLUME_MARKER) == normalized
         ):
-            volume = obj.data if obj.type == "VOLUME" else None
-            bpy.data.objects.remove(obj, do_unlink=True)
-            if volume and volume.users == 0:
-                bpy.data.volumes.remove(volume)
+            _remove_generated_volume_object(obj)
 
     if os.path.isdir(directory):
         for candidate_prefix in {prefix, LEGACY_PREFIX}:
@@ -292,11 +328,20 @@ def import_sequence(
     selectable=True,
     appearance=None,
     flame_rate_scale=1.0,
+    frame_end=None,
 ):
     files = _sequence_files(directory, prefix)
+    if frame_end is not None:
+        files = [path for path in files if frame_start <= _frame_number(path, prefix) <= frame_end]
+        expected = list(range(frame_start, frame_end + 1))
+        if [_frame_number(path, prefix) for path in files] != expected:
+            raise RuntimeError("Recorded preview has missing committed VDB frames")
     if not files:
         raise RuntimeError("The bridge completed without writing VDB files")
-    files = _files_with_grids(files)
+    readable = _files_with_grids(files)
+    if frame_end is not None and len(readable) != len(files):
+        raise RuntimeError("Recorded preview contains an unreadable committed VDB frame")
+    files = readable
     if not files:
         raise RuntimeError("The bridge wrote VDB files, but none contained readable grids")
 
@@ -479,16 +524,31 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start):
     scene = bpy.context.scene
     current_frame = scene.frame_current
     load_frame = frame_start + max(0, frame_count - 1)
+    grid_names = ()
     try:
         if current_frame != load_frame:
             scene.frame_set(load_frame)
-        volume.grids.load()
+        # Sequence frame selection lives on evaluated Volume data. Loading
+        # the original datablock can try frame 0 (a nonexistent import file),
+        # especially when the scene already sits at this take's last frame.
+        volume.update_tag()
+        volume_object.update_tag()
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        evaluated_volume = volume_object.evaluated_get(depsgraph).data
+        evaluated_volume.grids.load()
+        grid_names = tuple(grid.name for grid in evaluated_volume.grids)
     finally:
         if scene.frame_current != current_frame:
             scene.frame_set(current_frame)
-    if len(volume.grids) == 0:
-        volume.grids.load()
-    if any(grid.name == "velocity" for grid in volume.grids):
+    # OpenVDB's read order can be alphabetical even when density is written
+    # first. Select the smoke field for newly imported volumes; otherwise burn
+    # may be selected and make a successful bake look empty in Solid shading.
+    for index, name in enumerate(grid_names):
+        if name == "density":
+            volume.grids.active_index = index
+            break
+    if "velocity" in grid_names:
         volume.velocity_grid = "velocity"
         volume.velocity_unit = "SECOND"
     volume.update_tag()
@@ -500,10 +560,21 @@ def _remove_volume_for_directory(directory, prefix=PREFIX):
     for obj in list(bpy.data.objects):
         if not _is_generated_volume(obj, normalized, prefix):
             continue
-        volume = obj.data if obj.type == "VOLUME" else None
-        bpy.data.objects.remove(obj, do_unlink=True)
-        if volume and volume.users == 0:
-            bpy.data.volumes.remove(volume)
+        _remove_generated_volume_object(obj)
+
+
+def _remove_generated_volume_object(obj):
+    volume = obj.data if obj.type == "VOLUME" else None
+    materials = tuple(volume.materials) if volume else ()
+    bpy.data.objects.remove(obj, do_unlink=True)
+    if volume and volume.users == 0:
+        bpy.data.volumes.remove(volume)
+    # Repeated pause imports replace the volume. Only discard our now-orphan
+    # materials; keep user materials, shared materials and explicit fake users.
+    for material in dict.fromkeys(materials):
+        if (material is not None and material.get(GENERATED_MATERIAL_MARKER)
+                and material.users == 0 and not material.use_fake_user):
+            bpy.data.materials.remove(material)
 
 
 def _is_generated_volume(obj, directory, prefix):

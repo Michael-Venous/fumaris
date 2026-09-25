@@ -43,23 +43,44 @@ def snapshot(domain):
     return _STATES.get(_key(domain))
 
 
-def clear():
-    _STATES.clear()
+def clear(domain=None):
+    if domain is None:
+        _STATES.clear()
+    else:
+        _STATES.pop(_key(domain), None)
 
 
 def record(domain, data):
     state = snapshot(domain)
     if state is None:
         return
-    for name, value in data.items():
+    for name, entry in data.items():
         if not (name.startswith(("flow_", "bridge_", "blender_")) or name in {
             "frame", "frame_ms", "preview_render_ms", "payload_bytes",
         }):
             continue
-        if isinstance(value, str):
-            state["metrics"][name] = value[:512]
-        elif isinstance(value, (int, float)) and math.isfinite(value):
-            state["metrics"][name] = value
+        if isinstance(entry, str):
+            state["metrics"][name] = entry[:512]
+        elif isinstance(entry, (int, float)) and math.isfinite(entry):
+            state["metrics"][name] = entry
+    capacity = value(state, "flow_active_block_capacity")
+    active = value(state, "flow_active_blocks")
+    if capacity > 0 and active >= capacity:
+        # Keep evidence of lost allocation visible if blocks are later freed.
+        state["capacity_reached"] = True
+
+
+def capacity_status(state):
+    """Return a per-run capacity notice, including an exhausted run's history."""
+    if not state:
+        return None
+    capacity = value(state, "flow_active_block_capacity")
+    active = value(state, "flow_active_blocks")
+    if state.get("capacity_reached") or (capacity > 0 and active >= capacity):
+        return "full"
+    if capacity > 0 and active / capacity >= 0.95:
+        return "near"
+    return None
 
 
 def set_status(domain, status):
@@ -108,7 +129,9 @@ def warnings(state):
     result = []
     capacity = value(state, "flow_active_block_capacity")
     active = value(state, "flow_active_blocks")
-    if capacity and active / capacity >= 0.85:
+    if capacity_status(state) == "full":
+        result.append("Simulation capacity reached: smoke may be cut off. Increase Sparse Block Capacity or lower Resolution, then restart.")
+    elif capacity and active / capacity >= 0.85:
         result.append("Sparse blocks nearly full: increase capacity or lower resolution.")
     requested = value(state, "flow_requested_resolution")
     actual = value(state, "flow_effective_resolution")

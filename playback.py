@@ -6,6 +6,35 @@ from .runtime import active_job, active_mode
 _KEYMAPS = []
 
 
+def shortcut_label(context, operator):
+    """Show the user's current binding, including custom remaps or removal."""
+    configs = context.window_manager.keyconfigs
+    config = configs.user or configs.addon
+    if config:
+        keymap = config.keymaps.get('Window')
+        if keymap:
+            for item in keymap.keymap_items:
+                if item.idname == operator and item.active:
+                    return item.to_string()
+    return 'Unassigned'
+
+
+def preview_description(context, action):
+    has_direct_shortcut = action in {"stop", "toggle"}
+    job = active_job() if active_mode() == 'previewing' else None
+    if action in {'toggle', 'pause'}:
+        action = ('resume' if getattr(job, '_pause_requested', False) else 'pause') if job else 'play'
+    descriptions = {
+        'play': 'Start the live preview from the simulation start frame; record VDB frames when Bake on Preview is enabled.',
+        'pause': 'Pause preview and keep simulation memory ready to resume; finish and import recorded frames when Bake on Preview is enabled.',
+        'resume': 'Resume preview from its paused simulation state.',
+        'stop': 'Stop preview and release simulation memory; finish and import recorded frames when Bake on Preview is enabled.',
+    }
+    binding = shortcut_label(context, 'fumaris.preview_stop' if action == 'stop' else 'fumaris.preview_toggle')
+    # Blender appends the keymap shortcut for directly bound operators.
+    return descriptions[action] if has_direct_shortcut else descriptions[action] + '\nShortcut: ' + binding
+
+
 def is_domain(obj):
     return bool(obj and hasattr(obj, 'fumaris') and obj.fumaris.smoke_object_type == 'domain')
 
@@ -36,6 +65,10 @@ class FUMARIS_OT_preview_toggle(bpy.types.Operator):
     bl_idname = 'fumaris.preview_toggle'
     bl_label = 'Fumaris Play / Pause'
     bl_description = 'Play, pause or resume the Fumaris preview without changing object selection'
+
+    @classmethod
+    def description(cls, context, _properties):
+        return preview_description(context, 'toggle')
 
     @classmethod
     def poll(cls, context):
@@ -95,7 +128,7 @@ class FUMARIS_PT_playback(bpy.types.Panel):
         row.enabled = not active_job()
         row.prop(context.scene, 'fumaris_preview_domain', text='Domain')
         draw_controls(self.layout, context)
-        self.layout.label(text='Shortcuts: Preferences → Add-ons → Fumaris', icon='INFO')
+        self.layout.label(text='Edit shortcuts in Fumaris preferences', icon='PREFERENCES')
 
 
 def draw_header(self, context):
@@ -130,7 +163,7 @@ def register():
     config = bpy.context.window_manager.keyconfigs.addon
     if config:
         keymap = config.keymaps.new(name='Window', space_type='EMPTY')
-        for operator, key in (('fumaris.preview_toggle', 'SPACE'), ('fumaris.preview_stop', 'BACK_SPACE')):
+        for operator, key in (('fumaris.preview_toggle', 'SPACE'), ('fumaris.preview_stop', 'X')):
             item = keymap.keymap_items.new(operator, key, 'PRESS', shift=True, alt=True)
             _KEYMAPS.append((keymap, item))
 

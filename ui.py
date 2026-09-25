@@ -44,7 +44,6 @@ def _draw_mesh_emitter_options(box, props):
     box.prop(props, "mesh_emission_mask_attribute", text="Mask")
     if props.mesh_emission_mask_attribute.strip():
         box.prop(props, "mesh_emission_mask_threshold")
-    box.prop(props, "normal_velocity")
 
 
 def _draw_attribute_mapping(box, props):
@@ -137,6 +136,10 @@ def _draw_emitter(layout, obj, props):
     box = layout.box()
     box.label(text="Velocity", icon="FORCE_FORCE")
     box.prop(props, "velocity")
+    if (props.participant_type in {"mesh", "collection_mesh"}
+            or (props.participant_type == "particles" and props.particle_subtype == "mesh")
+            or (props.participant_type == "geometry_nodes" and props.gn_subtype == "mesh")):
+        box.prop(props, "normal_velocity")
     box.prop(props, "motion_velocity_scale")
 
     box = layout.box()
@@ -271,7 +274,10 @@ def _bake_summary(props, state):
 
 def _draw_diagnostics(layout, props):
     state = diagnostics.snapshot(props.id_data)
-    box = layout.box()
+    # Use the panel background, darker than the surrounding raised boxes in
+    # Blender's dark theme. Do not change the user's global theme colors.
+    layout.separator()
+    box = layout.column()
     opened = _foldout(box, props, "show_diagnostics", "Diagnostics")
     if not opened:
         error = diagnostics.error_summary(state)
@@ -315,6 +321,24 @@ def _draw_diagnostics(layout, props):
         box.operator("fumaris.copy_diagnostics", icon="COPYDOWN")
 
 
+def _draw_capacity_warning(layout, domain):
+    state = diagnostics.snapshot(domain)
+    status = diagnostics.capacity_status(state)
+    if not status:
+        return
+    box = layout.column(align=True)
+    title = box.row(align=True)
+    title.alert = True
+    if status == "full":
+        title.label(text="Capacity reached — smoke may clip", icon="ERROR")
+    else:
+        title.label(text="Capacity almost full — smoke may clip", icon="ERROR")
+    box.label(text="Increase Sparse Block Capacity")
+    box.label(text="or lower Resolution, then restart.")
+    if status == "full" and state and not state.get("active"):
+        box.label(text="Last run", icon="INFO")
+
+
 def _draw_domain(layout, scene, props):
     job = active_job()
     mode = active_mode()
@@ -325,7 +349,7 @@ def _draw_domain(layout, scene, props):
     )
     is_initializing = job is not None and not getattr(job, "_accepted", False)
 
-    controls = layout.box()
+    controls = layout.box().column(align=True)
     controls.label(text="Simulate", icon="PHYSICS")
     row = controls.row(align=True)
     sub = row.row(align=True)
@@ -337,19 +361,6 @@ def _draw_domain(layout, scene, props):
     delete = row.row(align=True)
     delete.enabled = mode is None
     delete.operator("fumaris.delete", icon="TRASH", text="Delete")
-
-    if props.simulation_state == "baking":
-        controls.label(text="Simulation is baking", icon="TIME")
-    elif props.simulation_state == "baked":
-        controls.label(text=_bake_summary(props, "Baked"), icon="CHECKMARK")
-    elif props.simulation_state == "stopped":
-        controls.label(text=_bake_summary(props, "Stopped"), icon="PAUSE")
-
-    if is_initializing:
-        notice = controls.box()
-        notice.label(text="Initializing Flow GPU...", icon="INFO")
-        notice.label(text="First run compiles GPU shaders")
-        notice.label(text="This may take several minutes")
 
     preview = controls.row(align=True)
     play = preview.row(align=True)
@@ -365,15 +376,59 @@ def _draw_domain(layout, scene, props):
     preview_stop = preview.row(align=True)
     preview_stop.enabled = is_previewing
     preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
+    controls.separator(factor=0.5)
+    options = controls.row(align=True)
+    record = options.row(align=True)
+    record.enabled = mode is None
+    record.prop(props, "bake_on_preview")
+    bake_preview = options.row(align=True)
+    bake_preview.enabled = not is_baking
+    bake_preview.prop(props, "preview_bake")
+    controls.separator(factor=0.5)
+    # Keep transport rows together; all status text lives below their options.
+    status = controls.column(align=True)
+    failure = diagnostics.error_summary(diagnostics.snapshot(props.id_data))
+    if failure:
+        error_row = status.row(align=True)
+        error_row.alert = True
+        error_row.label(text=failure, icon="ERROR")
+        if "detail memory limit reached" in failure.lower():
+            status.label(text="Lower Resolution or disable Upres.")
+            status.label(text="Or raise Detail Memory Limit if VRAM allows.")
+            status.label(text="Then restart the simulation.")
+        else:
+            status.label(text="See Diagnostics below for details.")
+    elif is_initializing:
+        status.label(text="Initializing Flow GPU…", icon="INFO")
+        status.label(text="First-run shaders can take several minutes")
+    elif is_baking:
+        status.label(text="Baking…", icon="TIME")
+    elif mode is None and props.simulation_state in {"baked", "stopped"}:
+        completed = props.simulation_state == "baked"
+        status.label(
+            text=_bake_summary(props, "Baked" if completed else "Stopped"),
+            icon="CHECKMARK" if completed else "PAUSE",
+        )
+    if is_previewing and getattr(job, "_recording_enabled", False):
+        if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):
+            status.label(text="Finishing recorded frames…", icon="TIME")
+        elif getattr(job, "_recording_showing_cache", False):
+            first = getattr(job, "_progress_start_frame", 1)
+            last = getattr(job, "_recording_committed_end", -1)
+            status.label(text=f"Recorded frames {first}–{last} · Paused", icon="CHECKMARK")
+            if getattr(job, "_recording_at_end", False):
+                status.label(text="Resume starts a new recording")
+        else:
+            status.label(text="Recording preview to VDB", icon="REC")
     domain = props.id_data
     if not domain.visible_get(view_layer=bpy.context.view_layer):
-        controls.label(text="Domain hidden: simulation can still run", icon="INFO")
-        controls.label(text="Unhide the domain to see the preview")
-    _draw_diagnostics(controls, props)
+        status.label(text="Domain hidden: simulation can still run", icon="INFO")
+        status.label(text="Unhide the domain to see the preview")
+
+    _draw_capacity_warning(status, domain)
 
     settings = controls.column(align=True)
     settings.enabled = not is_baking
-    settings.separator()
     row = settings.row(align=True)
     row.prop(props, "sim_start_frame")
     row.prop(props, "sim_end_frame")
@@ -427,7 +482,6 @@ def _draw_domain(layout, scene, props):
 
     preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
     if preview_open:
-        preview.prop(props, "preview_bake")
         preview.prop(props, "preview_resolution_percent", slider=True)
         preview.prop(props, "preview_image_scale", slider=True)
         preview.prop(props, "preview_max_ray_steps")
@@ -453,17 +507,19 @@ def _draw_domain(layout, scene, props):
     behavior = layout.box()
     behavior.enabled = not is_baking
     behavior.label(text="Smoke Behavior", icon="MOD_FLUID")
-    detail_toggle = behavior.row()
+    detail_row = behavior.row(align=True)
+    detail_toggle = detail_row.row(align=True)
     detail_toggle.enabled = not is_previewing
     detail_toggle.prop(props, "upres_enabled")
     if is_previewing:
-        behavior.label(text="Stop the preview to change Smoke Upres (Pause keeps it active)", icon="INFO")
+        detail_row.label(text="Stop preview to change", icon="INFO")
     if props.upres_enabled:
         detail = behavior.box()
         detail.prop(props, "upres_strength")
+        detail.prop(props, "upres_fire_strength")
         detail.prop(props, "upres_scale")
         detail.prop(props, "upres_memory_mb")
-        detail.label(text="2x smoke detail; extra VRAM, base fire fields unchanged", icon="INFO")
+        detail.label(text="Shared detail motion; combustion stays at base resolution", icon="INFO")
     behavior.prop(props, "gravity")
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
@@ -500,6 +556,9 @@ def _draw_domain(layout, scene, props):
             advanced.label(text="Extra GPU time and memory", icon="INFO")
         advanced.prop(props, "boundary_safe_advection")
 
+    _draw_diagnostics(layout, props)
+
+
 class FUMARIS_PT_main(Panel):
     """Fumaris object settings in the Physics Properties editor."""
 
@@ -523,6 +582,10 @@ class FUMARIS_PT_main(Panel):
             header.enabled = active_mode() != "baking"
         header.label(text=obj.name, icon="OBJECT_DATA")
         header.prop(props, "smoke_object_type", text="Flow Object")
+        if props.smoke_object_type == "none":
+            setup = header.row()
+            setup.enabled = active_job() is None
+            setup.operator("fumaris.quick_setup", text="Quick Setup…", icon="ADD")
 
         if props.smoke_object_type == "domain":
             _draw_domain(layout, context.scene, props)

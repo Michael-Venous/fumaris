@@ -23,6 +23,7 @@ if os.name == "nt":
         ]
 
 from .protocol import (
+    CACHE_FLUSH,
     CANCEL,
     CANCELLED,
     FAILED,
@@ -61,6 +62,9 @@ class BridgeWorker:
 
     def send_preview(self, preview):
         self._requests.put_nowait((PREVIEW_RENDER, preview, b""))
+
+    def send_cache_flush(self):
+        self._requests.put_nowait((CACHE_FLUSH, {}, b""))
 
     def end_session(self):
         self._requests.put_nowait((SESSION_END, {}, b""))

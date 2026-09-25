@@ -50,6 +50,7 @@ class FrameRangeJob:
         show_progress=True,
         completed_frames=None,
         keep_alive=False,
+        output_directory=None,
     ):
         runtime_error = runtime_validation_error()
         if runtime_error:
@@ -59,7 +60,7 @@ class FrameRangeJob:
             raise RuntimeError("Bridge executable not found")
 
         self._domain_name = domain.name
-        self._directory = output_directory_for_object(domain)
+        self._directory = output_directory or output_directory_for_object(domain)
         sim_start, sim_end = simulation_frame_range(domain)
         self._frame = sim_start if start_frame is None else start_frame
         self._end_frame = sim_end if end_frame is None else end_frame
@@ -81,7 +82,8 @@ class FrameRangeJob:
         self._peak_vram_bytes = 0
         self._next_memory_sample = 0.0
         self._track_metrics = True
-        self._diagnostic_key = diagnostics.begin(domain, "Bake" if write_vdb else "Preview")
+        mode = "Preview Recording" if write_vdb and keep_alive else "Bake" if write_vdb else "Preview"
+        self._diagnostic_key = diagnostics.begin(domain, mode)
         self._preview_enabled = bool(preview_enabled)
 
         session, self._participants = build_session(
@@ -94,6 +96,7 @@ class FrameRangeJob:
             resolution_scale=resolution_scale,
             log_participants=True,
         )
+        session["output_directory"] = self._directory
 
         self._prefix = session["output_prefix"]
         if not all(character.isalnum() or character in "._-" for character in self._prefix):
@@ -102,7 +105,9 @@ class FrameRangeJob:
             )
 
         os.makedirs(self._directory, exist_ok=True)
-        self._legacy_directories = legacy_output_directories_for_object(domain)
+        self._legacy_directories = (
+            () if output_directory else legacy_output_directories_for_object(domain)
+        )
         for legacy_directory in self._legacy_directories:
             with cache_lock(legacy_directory):
                 migrate_legacy_cache(legacy_directory, self._directory, self._prefix)
@@ -188,6 +193,8 @@ class FrameRangeJob:
         self._update_diagnostics(context)
 
         for message_type, data, payload in self._worker.poll():
+            if self._handle_worker_message(context, message_type, data, payload):
+                continue
             if message_type == READY:
                 continue
             if message_type == SESSION_ACCEPTED:
@@ -258,6 +265,9 @@ class FrameRangeJob:
                 return self._cancelled(context, {"message": str(error)})
         return {"RUNNING_MODAL"}
 
+    def _handle_worker_message(self, _context, _message_type, _data, _payload):
+        return False
+
     def request_cancel(self):
         if self._worker:
             self._worker.cancel()
@@ -305,6 +315,7 @@ class FrameRangeJob:
             volume_preview=preview_request,
         )
         timing_packet = time.perf_counter()
+        self._after_frame_packet(packet)
         self._worker.send_frame(packet)
         timing_sent = time.perf_counter()
         self._sample_memory(force=True)
@@ -321,6 +332,9 @@ class FrameRangeJob:
             "payload_bytes": len(packet.payload),
         })
         self._submitted = True
+
+    def _after_frame_packet(self, _packet):
+        pass
 
     def _ready_to_submit(self, _context):
         return True

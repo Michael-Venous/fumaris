@@ -204,7 +204,7 @@ class FumarisSettings(PropertyGroup):
     emitter_fuel: FloatProperty(
         name="Fuel",
         description="Combustible fuel emitted into the simulation",
-        default=0.0,
+        default=1.0,
         min=0.0,
         soft_max=5.0,
     )
@@ -220,7 +220,7 @@ class FumarisSettings(PropertyGroup):
     emitter_divergence: FloatProperty(
         name="Divergence",
         description="Expansion added by the emitter; positive values push outward and negative values pull inward",
-        default=0.0,
+        default=2.0,
         soft_min=-10.0,
         soft_max=10.0,
     )
@@ -310,8 +310,8 @@ class FumarisSettings(PropertyGroup):
     )
 
     normal_velocity: FloatProperty(
-        name="Normal Velocity",
-        description="Initial velocity emitted away from mesh face normals",
+        name="Normal Velocity (Experimental)",
+        description="Velocity along averaged mesh vertex normals, including mesh instances. Experimental: emission can be uneven across faces and hard edges",
         default=0.0,
         soft_min=-100.0,
         soft_max=100.0,
@@ -381,7 +381,7 @@ class FumarisSettings(PropertyGroup):
     preview_max_ray_steps: IntProperty(
         name="Ray Steps",
         description="Sampling quality of the smoke preview; increase to reduce visible bands, but very high values stop helping once the simulation's detail is resolved",
-        default=192,
+        default=256,
         min=32,
         max=4096,
         soft_max=1024,
@@ -417,17 +417,21 @@ class FumarisSettings(PropertyGroup):
     )
 
     upres_enabled: BoolProperty(
-        name="Smoke Upres (Experimental)",
-        description="Add finer smoke detail without running a full higher-resolution simulation. Works in preview and baked volumes, but needs extra GPU memory. Fire stays at the original resolution. Unavailable while a simulation is running or paused. Press Stop, change this setting, then Play",
+        name="Upres (Experimental)",
+        description="Add finer smoke detail without running a full higher-resolution simulation. Works in preview and baked volumes, but needs extra GPU memory. Smoke and fire detail have separate strengths; combustion stays at base resolution. Unavailable while a simulation is running or paused. Press Stop, change this setting, then Play",
         default=False,
     )
     upres_strength: FloatProperty(
-        name="Detail Strength", default=1.0, min=0.0, soft_max=10.0,
+        name="Smoke Detail", default=4.0, min=0.0, soft_max=10.0,
         description="Extra swirls where nearby smoke moves differently. Fast travel alone does not add turbulence. Motion is limited per step to reduce artifacts; zero uses the original smoke. Higher values can be typed",
     )
+    upres_fire_strength: FloatProperty(
+        name="Fire Detail", default=4.0, min=0.0, soft_max=10.0,
+        description="Refine temperature and burn using the same motion as smoke. Zero preserves base fire fields. Adds visual detail, not higher-resolution combustion",
+    )
     upres_scale: FloatProperty(
-        name="Detail Size", default=4.0, min=1.0, soft_max=16.0,
-        description="Size of the added swirls in base simulation cells. Start at 4; larger values make broader changes, not a sharper result. Sizes below 2 use the same minimum sampling size. Higher values can be typed",
+        name="Detail Size", default=8.0, min=1.0, soft_max=16.0,
+        description="Size of the added swirls in base simulation cells. Start at 8; larger values make broader changes, not a sharper result. Sizes below 2 use the same minimum sampling size. Higher values can be typed",
     )
     upres_memory_mb: IntProperty(
         name="Detail Memory Limit", default=4096, min=128, soft_max=32768,
@@ -461,6 +465,12 @@ class FumarisSettings(PropertyGroup):
     preview_bake: BoolProperty(
         name="Preview Bake",
         description="Show the selected live preview while baking; disabling this keeps bake as fast as possible",
+        default=False,
+    )
+
+    bake_on_preview: BoolProperty(
+        name="Bake on Preview",
+        description="Record VDB frames while previewing and import the recorded sequence when paused or stopped. Uses preview resolution and adds export time and disk usage. Enable before Play",
         default=False,
     )
 
@@ -960,10 +970,10 @@ class FumarisSettings(PropertyGroup):
 
     effector_samples: IntProperty(
         name="Samples",
-        description="Minimum texture samples per axis; small noise and vortex cores raise this automatically up to 64",
+        description="Minimum texture samples per axis. Automatic refinement reaches 64; set up to 256 manually for tighter fields. Memory and processing grow with the cube of this value",
         default=8,
         min=8,
-        max=64,
+        max=256,
     )
 
     # Advanced Settings
@@ -1026,7 +1036,7 @@ class FumarisSettings(PropertyGroup):
     temp_per_burn: FloatProperty(
         name="Temperature Per Burn",
         description="How much heat burning fuel adds; higher values make fire hotter and can strengthen its upward motion",
-        default=5.0,
+        default=1.0,
         min=0.0,
         soft_max=25.0,
     )
@@ -1066,7 +1076,7 @@ class FumarisSettings(PropertyGroup):
     dissipation: FloatProperty(
         name="Dissipation",
         description="How quickly smoke fades away over time; zero keeps it from fading through this setting",
-        default=0.05,
+        default=0.5,
         min=0.0,
         max=1.0,
     )

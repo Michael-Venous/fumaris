@@ -1,11 +1,11 @@
-# Fumaris 1.1.0 Documentation
+# Fumaris 1.2.0 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.1.0 adds global playback controls, AgX preview tone mapping, and
-Linux runtime compatibility improvements. See [CHANGELOG.md](CHANGELOG.md)
+Fumaris 1.2.0 adds Quick Setup, optional Bake on Preview recording, faster
+first startup, and experimental smoke/fire Upres. See [CHANGELOG.md](CHANGELOG.md)
 for release details and the Updating section below before replacing an installation.
 
 ## Requirements And Compatibility
@@ -41,10 +41,10 @@ integrated graphics. Advanced multi-GPU users can set
 The package is self-contained. Do not move or delete files inside the installed
 extension directory.
 
-The first simulation after installing Fumaris or changing GPU drivers can take
-several minutes while Flow compiles GPU shaders. Blender displays an
-initialization notice during this one-time work. Later sessions should start
-much faster.
+The development runtime compiles GPU shaders only when a feature uses them.
+Simple smoke previews avoid compiling unrelated features at startup. First use
+of a more complex feature can still take longer, especially after a GPU driver
+update. The driver's shader cache normally makes subsequent runs faster.
 
 ### Updating
 
@@ -97,7 +97,8 @@ rerenders stay responsive. This is expected; press `Stop` to close the session
 and release its GPU working set.
 
 `Volume` mode raymarches the live sparse Flow grid and displays the resulting
-image over the 3D viewport. It does not create NanoVDB or OpenVDB data. Moving
+image over the 3D viewport. With Bake on Preview off, it does not create NanoVDB
+or OpenVDB output. Moving
 the viewport or changing display settings rerenders the current Flow frame
 without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
@@ -179,19 +180,25 @@ slot and its imported volume. It is unavailable while a job is active.
 
 ## Domain Settings
 
-### Smoke Upres (Experimental)
+### Upres (Experimental)
 
-Optional smoke upres adds an advected detail field to density. It affects the
-live volume and baked smoke but does not increase the resolution of fire or
-the underlying velocity/pressure solve. Restart the simulation after enabling
-or disabling it. The toggle is unavailable while the simulation is running or
-paused: press Stop, change Smoke Upres, then start again.
+Upres adds advected detail to smoke and optionally fire, using one shared detail
+motion field and memory budget. It affects the live volume and baked fields;
+it does not increase the resolution of the velocity/pressure or combustion
+solve. Stop the simulation before enabling or disabling Upres. Pausing retains
+its allocation, so the toggle remains unavailable until you press Stop.
 
-- Start with Detail Strength 1 and Detail Size 4. Strength 0 uses original smoke.
-- Detail Size is measured in base cells, not an output-resolution multiplier.
-  Larger values make broader swirls; values below 2 share a minimum sampling size.
+- Smoke Detail controls density refinement. The default is 4; 0 uses original smoke.
+- Fire Detail controls temperature and burn refinement. Its default is 4; set it to 0 to
+  preserve base fire fields. Fuel and
+  combustion remain on the base grid; this is visual refinement, not additional
+  combustion physics. When enabled, requested temperature/burn exports use the
+  refined grid too.
+- Detail Size is shared by smoke and fire and measured in base cells, not an
+  output-resolution multiplier. The default is 8. Larger values make broader swirls; values below
+  2 share a minimum sampling size.
 - Strength and size accept typed values beyond their slider ranges. Large values
-  can distort the smoke or expose patterns; more is not always better.
+  can distort the volume or expose patterns; more is not always better.
 - Detail Memory Limit defaults to 4096 MiB (4 GiB). Its slider reaches 32768 MiB;
   larger values can be typed, but this does not create additional VRAM.
 - The limit checks estimated peak allocation, not the current total shown by a
@@ -202,6 +209,10 @@ paused: press Stop, change Smoke Upres, then start again.
 Compare a short bake with upres disabled and with a higher base resolution.
 Depending on the effect, higher base resolution can be the better tradeoff.
 Upres is not a fix for sparse-boundary stepping or insufficient solver substeps.
+The advection correction falls back to ordinary advection when it overshoots,
+and applies coarse-field losses proportionally to reduce plateaus and holes
+under strong shear. Very high detail strength/vorticity can still expose
+unresolved base-grid structure.
 
 ### Resolution And Sparse Capacity
 
@@ -248,7 +259,9 @@ Fumaris supports:
 Emitter Smoke, Temperature, Fuel, Burn, and Divergence define the source
 channels. Initial Velocity adds a constant vector. Motion Velocity Scale
 controls velocity inherited from source movement or mapped point velocities.
-Normal Velocity pushes away from mesh surfaces.
+Normal Velocity (Experimental) uses averaged mesh vertex normals, including
+particle and Geometry Nodes mesh instances. Emission can be uneven across faces
+and hard edges; primitive and point/volume modes do not support this control.
 
 Mesh `Surface` emission follows the evaluated surface and Emission Distance.
 `Volume` fills a closed mesh. A named vertex group or evaluated mesh attribute
@@ -426,7 +439,7 @@ can cause the renderer to reject or miss a volume frame.
 
 ## Performance Guidance
 
-Preview is normally much faster than Bake because it reads back one
+Preview with Bake on Preview off is normally much faster than Bake because it reads back one
 viewport-sized RGBA image. Bake must read complete grids from the GPU,
 convert NanoVDB to OpenVDB, and write them to disk.
 
@@ -445,7 +458,8 @@ For a faster or more memory-efficient simulation:
 
 - Hardware coverage is limited and AMD GPUs are currently unqualified.
 - Geometry Nodes Volume emission is experimental.
-- Preview is temporary and cannot be scrubbed as a durable simulation cache.
+- Unrecorded preview is temporary. Bake on Preview preserves VDB playback, but
+  recorded VDBs are not solver checkpoints for resuming from arbitrary frames.
 - Volume preview shading is intentionally simpler than a final Blender volume
   material and does not yet use scene depth for occlusion.
 - Stopped bakes cannot resume solver state.
@@ -461,7 +475,8 @@ Before reporting a problem:
 
 1. Confirm that the package matches the operating system.
 2. Update the GPU driver and restart Blender.
-3. Allow the first shader compilation several minutes to complete.
+3. Allow shader compilation to finish when first using a feature; report the
+   feature and whether the delay repeats on subsequent runs.
 4. Try the included demo or a minimal domain and one emitter.
 5. Reduce resolution and sparse capacity if memory is exhausted.
 6. Check that the cache path is local, writable, and has free space.
@@ -503,7 +518,8 @@ motion that was not represented in the attribute.
 Use the Fumaris controls in the 3D Viewport or Timeline header, or the controls
 above an emitter/collider/effector's Physics settings. Object selection stays
 unchanged. Shift–Alt–Space starts, pauses or resumes the live preview;
-Shift–Alt–Backspace stops it. Edit these bindings in Preferences → Add-ons →
+Shift–Alt–X stops it. Both shortcuts can be used with one hand. The current
+bindings appear in the button tooltips. Edit these bindings in Preferences → Add-ons →
 Fumaris, or search Fumaris in Preferences → Keymap.
 
 A single domain in the current view layer is picked automatically. With multiple
@@ -516,3 +532,66 @@ Fumaris owns sequential live simulation timing; it waits for each worker step
 before submitting the next frame. Normal Blender playback is independent and
 starting it stops live preview. Use it for baked VDB playback. The new shortcuts
 do not replace Blender's normal Spacebar behavior.
+
+### Quick Setup
+
+With Flow Object set to **None**, click **Quick Setup…** in Physics → Fumaris, or choose it from the 3D Viewport's
+Add menu. **Rising Smoke**, **Steady Fire**, and **Explosion** create a complete
+starting setup. Choose **Selected Objects** for unassigned mesh sources, or
+**New Source** to create an icosphere at the 3D cursor. Existing participants are
+left intact; the new setup has separate emitter, collider, effector and outflow
+collections. The new simulation object is an axes empty, with no physical domain bounds.
+
+Rising Smoke emits continuously without fuel; Steady Fire emits smoke and fuel.
+Explosion emits for 10 frames, then disables its source, with a 100-frame range.
+Ranges start at the scene's Start Frame. These are editable starting points.
+The simulation empty stores settings; smoke can extend freely around it.
+
+### Bake on Preview
+
+Enable **Bake on Preview** beside the preview controls before pressing Play. It records VDBs into a new take while the fast Flow overlay is displayed.
+This uses **Preview Resolution**, including any reduction below 100%, and the
+configured output channels/compression. Export, readback, conversion and writing
+add work even though writing is asynchronous. The option is off by default.
+
+- **Pause** lets an in-flight frame finish, waits for complete VDB files, and
+  imports the recorded sequence. The live simulation stays in GPU memory.
+- **Resume** hides the imported take and continues from the live simulation's
+  next frame. Scrubbing a recorded frame while paused does not rewind that state.
+- **Stop** finishes accepted work, imports the committed frames, and releases the
+  live simulation. Wait for finalization to finish before closing Blender.
+- At the end of the range, recording pauses. Resume starts a new take, preserving
+  the previous files rather than overwriting them in a loop.
+- Changes that require restarting the sparse grid finalize the old take and
+  start a new one. Other live edits affect subsequent frames in that take; the
+  recording preserves what you actually previewed, not a promise that the final
+  settings alone can reproduce its history.
+
+Imported VDBs use Blender materials and lighting, so they may look different
+from the live overlay. Only one of the recorded take and live overlay is shown
+at once. Publishing a new take replaces the previous preview Volume object;
+older take files remain on disk. Preview takes live below the domain cache in `preview_takes`; they do
+not overwrite the final bake. **Delete** clears this domain's generated bake and
+owned preview recordings. Interrupted writes may leave completed files for
+recovery; no partial file is presented as a committed frame.
+
+`Preview Bake` is a different option: it displays the live overlay during a
+normal final bake. `Bake on Preview` records the interactive preview. These
+options sit side by side below the playback buttons.
+
+### Capacity warning and defaults
+
+A capacity warning appears beside the simulation controls even when Diagnostics
+is collapsed. At full capacity smoke may be cut off: increase **Sparse Block
+Capacity** or lower **Resolution**, then restart. A full-capacity warning remains
+for that run because freeing blocks later does not recover missing smoke. A new
+run or Delete clears it. Upres memory-limit failures also appear here with
+recovery guidance. Diagnostics sits below Advanced on the panel's darker background;
+its exact appearance follows your Blender theme.
+
+Current defaults are Dissipation **0.5**, emitter Fuel **1**, Temperature Per Burn
+**1**, and preview Ray Steps **256**. Explicitly stored settings retain their
+values; older unset properties inherit the new defaults. The Rising Smoke setup
+explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
+divergence 2; Steady Fire fuel is 0.5 and Explosion fuel is 2. The general emitter
+divergence default is 2.

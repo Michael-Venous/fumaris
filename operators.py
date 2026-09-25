@@ -1,5 +1,7 @@
 import os
 import time
+import hashlib
+import json
 
 import bpy
 from bpy.app.handlers import persistent
@@ -8,20 +10,30 @@ from bpy.types import Operator
 from .bake_state import mark_bake_cancelled, mark_bake_complete, mark_bake_running
 from .cache import (
     cache_lock,
+    create_preview_take,
     delete_obsolete_cache_state,
+    owned_preview_takes,
     recover_cache_lock,
+    write_preview_manifest,
 )
 from .diagnostics import console_log
 from . import diagnostics
 from .exporters import build_session, session_structure_signature
 from .importers import (
     VOLUME_MARKER,
+    PREVIEW_OWNER_MARKER,
     delete_generated_data,
     delete_temporary_writes,
     import_sequence,
+    hide_generated_volumes,
+    hide_recorded_previews,
+    replace_recorded_previews,
+    restore_generated_volumes,
+    restore_recorded_previews,
     migrate_legacy_cache,
 )
 from .jobs import FrameRangeJob
+from .protocol import CACHE_FLUSHED
 from .preview import (
     capture_volume_preview,
     clear_all_previews,
@@ -162,8 +174,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
 
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     bl_idname = "fumaris.preview_play"
-    bl_label = "Preview Play"
-    bl_description = "Play a looping live Flow preview over the Fumaris simulation range without writing VDB files"
+    bl_label = "Play"
+    bl_description = "Play a live Flow preview, optionally recording VDB frames with Bake on Preview"
 
     _timer = None
     _worker = None
@@ -183,6 +195,11 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     _next_submit_at = 0.0
 
     domain_name: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    @classmethod
+    def description(cls, context, _properties):
+        from .playback import preview_description
+        return preview_description(context, "play")
 
     @classmethod
     def poll(cls, context):
@@ -220,9 +237,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self._start_preview_session(context, domain, clear_preview_image=True)
         except Exception as error:
             self._record_failure(str(error))
-            release_job(self)
-            self._restore_imported_volumes()
-            self._cleanup_volume_staging()
+            self._finish(context)
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
@@ -235,6 +250,21 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         signature = session_structure_signature(domain)
         if clear_preview_image:
             clear_preview(domain)
+        self._preview_owner_directory = output_directory_for_object(domain)
+        self._recording_enabled = bool(getattr(domain.fumaris, "bake_on_preview", False))
+        self._recording_flush_pending = False
+        self._recording_flush_needed = False
+        self._recording_stop_requested = False
+        self._recording_restart_requested = False
+        self._recording_at_end = False
+        self._recording_committed_end = -1
+        self._recording_committed_count = 0
+        self._recording_volume_name = None
+        self._recording_showing_cache = False
+        self._recording_inputs = []
+        self._recording_manifest = None
+        self._hidden_owner_imported_volumes = None
+        take_directory = create_preview_take(self._preview_owner_directory) if self._recording_enabled else None
         self._configure_job(
             context,
             domain,
@@ -242,13 +272,42 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             start_frame=self._preview_start_frame(context, domain),
             end_frame=simulation_frame_range(domain)[1],
             restore_frame=False,
-            write_vdb=False,
+            write_vdb=self._recording_enabled,
             preview_enabled=True,
             resolution_scale=_preview_resolution_scale(domain),
             show_progress=False,
             keep_alive=True,
+            output_directory=take_directory,
         )
+        if self._recording_enabled:
+            self._recording_manifest = {
+                "schema_version": 1,
+                "kind": "preview_take",
+                "generation": os.path.basename(self._directory),
+                "domain": domain.name,
+                "status": "recording",
+                "session": self._worker._session,
+                "resolution_scale": self._resolution_scale,
+                "committed_first_frame": -1,
+                "committed_last_frame": -1,
+                "committed_frame_count": 0,
+                "live_inputs": [],
+            }
+            domain["fumaris_preview_take_directory"] = self._directory
+            self._write_recording_manifest("recording")
+            console_log(f"Fumaris preview recording: {self._directory}")
         self._hide_imported_volumes()
+        if self._recording_enabled:
+            # Recording writes into its take directory, while a previous
+            # partial/final bake belongs to the owner's ordinary cache.
+            self._hidden_owner_imported_volumes = tuple(
+                (directory, self._prefix, hide_generated_volumes(directory, self._prefix, hide_render=True))
+                for directory in (
+                    self._preview_owner_directory,
+                    *legacy_output_directories_for_object(domain),
+                )
+            )
+        self._hidden_preview_recordings = hide_recorded_previews(self._preview_owner_directory)
         self._session_signature = signature
         self._next_submit_at = 0.0
         self._preview_render_submitted = False
@@ -296,6 +355,19 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     def _ready_to_submit(self, context):
         if getattr(self, "_preview_render_submitted", False):
             return False
+        if getattr(self, "_recording_enabled", False):
+            if self._recording_flush_pending or self._ending_session:
+                return False
+            if self._pause_requested:
+                if not self._submitted:
+                    if self._recording_flush_needed:
+                        self._worker.send_cache_flush()
+                        self._recording_flush_pending = True
+                        diagnostics.set_status(self._diagnostic_key, "Finalizing preview recording")
+                    elif self._recording_stop_requested or self._recording_restart_requested:
+                        self._ending_session = True
+                        self._worker.end_session()
+                return False
         if (
             getattr(self, "_loop_reset_pending", False)
             and not getattr(self, "_pause_requested", False)
@@ -312,6 +384,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         return time.monotonic() >= getattr(self, "_next_submit_at", 0.0)
 
     def _submit_changed_volume_preview(self, context):
+        if getattr(self, "_recording_showing_cache", False):
+            return False
         if not getattr(self, "_has_volume_preview_frame", False):
             return False
         if (
@@ -343,6 +417,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             raise RuntimeError("The active Fumaris domain was deleted")
         signature = session_structure_signature(domain)
         if signature != self._session_signature:
+            if getattr(self, "_recording_enabled", False):
+                # The old take must finish publishing before a replacement
+                # worker may start. Each restart gets a new output directory.
+                self._recording_restart_requested = True
+                self._pause_requested = True
+                self._ready_to_submit(context)
+                return
             console_log(
                 f"Fumaris preview restarted for {domain.name}: "
                 "session structure changed"
@@ -360,6 +441,121 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self._start_preview_session(context, domain, clear_preview_image=True)
             return
         super()._submit_frame(context)
+
+    def _after_frame_packet(self, packet):
+        if not getattr(self, "_recording_enabled", False):
+            return
+        digest = hashlib.sha256(json.dumps(packet.header, sort_keys=True, separators=(",", ":")).encode())
+        digest.update(packet.payload)
+        self._recording_inputs.append({"frame": int(packet.header["frame"]), "input_sha256": digest.hexdigest()})
+        self._recording_flush_needed = True
+
+    def _write_recording_manifest(self, status):
+        manifest = getattr(self, "_recording_manifest", None)
+        if manifest is None:
+            return
+        manifest["status"] = status
+        manifest["live_inputs"] = self._recording_inputs
+        write_preview_manifest(self._directory, manifest)
+
+    def _handle_worker_message(self, context, message_type, data, _payload):
+        if message_type != CACHE_FLUSHED:
+            return False
+        if not getattr(self, "_recording_enabled", False) or not self._recording_flush_pending:
+            raise RuntimeError("Unexpected preview cache flush acknowledgement")
+        first = int(data["committed_first_frame"])
+        last = int(data["committed_last_frame"])
+        count = int(data["committed_frame_count"])
+        expected = self._completed_frames
+        valid_empty = count == 0 and first == last == -1 and not expected
+        valid_range = (
+            count > 0
+            and count == len(expected)
+            and first == self._progress_start_frame
+            and last - first + 1 == count
+            and expected == list(range(first, last + 1))
+        )
+        if not (valid_empty or valid_range):
+            raise RuntimeError("Preview recording acknowledgement does not match completed frames")
+        self._recording_flush_pending = False
+        self._recording_flush_needed = False
+        self._recording_committed_end = last
+        self._recording_committed_count = count
+        diagnostics.record(self._diagnostic_key, data)
+        self._recording_manifest.update({
+            "committed_first_frame": first,
+            "committed_last_frame": last,
+            "committed_frame_count": count,
+            "flush_ms": float(data.get("bridge_vdb_flush_ms", 0.0)),
+        })
+        self._write_recording_manifest("paused")
+        if count:
+            self._publish_recording(context, first, last)
+        diagnostics.set_status(self._diagnostic_key, "Paused — preview recorded")
+        # Resume may have been requested while the writer was still flushing.
+        if not self._pause_requested:
+            self._hide_recorded_volume()
+            self._write_recording_manifest("recording")
+            diagnostics.set_status(self._diagnostic_key, "Running")
+        return True
+
+    def _publish_recording(self, context, first, last):
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None:
+            return
+        volume = _import_cache(context, domain, self._directory, self._prefix,
+                               frame_start=first, frame_end=last)
+        volume[PREVIEW_OWNER_MARKER] = self._preview_owner_directory
+        replace_recorded_previews(self._preview_owner_directory, volume)
+        volume.name = f"{domain.name} Preview Recording"
+        volume.hide_viewport = volume.hide_render = False
+        self._recording_volume_name = volume.name
+        self._recording_showing_cache = True
+        # A newly published take replaces the previous take's display. Its
+        # files remain intact; cleanup must not make all older takes visible.
+        self._hidden_preview_recordings = None
+        self._hidden_owner_imported_volumes = None
+
+    def _hide_recorded_volume(self):
+        volume = bpy.data.objects.get(getattr(self, "_recording_volume_name", "") or "")
+        if volume is not None:
+            volume.hide_viewport = volume.hide_render = True
+        self._recording_showing_cache = False
+        self._last_preview_signature = None
+        self._preview_rerendered_since_frame = False
+
+    def request_recording_stop(self, context):
+        self._recording_stop_requested = True
+        self._recording_restart_requested = False
+        self._pause_requested = True
+        diagnostics.set_status(self._diagnostic_key, "Finalizing preview recording")
+        if self._accepted and not self._submitted:
+            self._ready_to_submit(context)
+
+    def _restore_imported_volumes(self):
+        super()._restore_imported_volumes()
+        for directory, prefix, states in getattr(self, "_hidden_owner_imported_volumes", None) or ():
+            restore_generated_volumes(directory, prefix, states)
+        self._hidden_owner_imported_volumes = None
+        restore_recorded_previews(getattr(self, "_hidden_preview_recordings", None))
+        self._hidden_preview_recordings = None
+        volume = bpy.data.objects.get(getattr(self, "_recording_volume_name", "") or "")
+        if volume is not None:
+            hide_recorded_previews(self._preview_owner_directory, except_volume=volume)
+            volume.hide_viewport = volume.hide_render = False
+
+    def _finish(self, context):
+        manifest = getattr(self, "_recording_manifest", None)
+        if manifest is not None and manifest.get("status") not in {"complete", "stopped", "interrupted"}:
+            # File loads, addon reloads and Blender's external cancellation
+            # cannot wait for an async import into the disappearing context.
+            # Keep every published file and the last acknowledged range.
+            status = "interrupted" if getattr(self, "_recording_flush_needed", False) else "stopped"
+            try:
+                self._write_recording_manifest(status)
+            except Exception as error:
+                console_log(f"Fumaris could not update preview recording manifest: {error}")
+        super()._finish(context)
 
     def _preview_start_frame(self, _context, domain):
         return simulation_frame_range(domain)[0]
@@ -398,6 +594,17 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
     def _complete(self, context):
         domain = bpy.data.objects.get(self._domain_name)
+        if getattr(self, "_recording_enabled", False):
+            self._write_recording_manifest("complete" if self._recording_at_end else "stopped")
+            if self._recording_restart_requested and not self._recording_stop_requested and domain:
+                self._worker.close()
+                self._restore_imported_volumes()
+                self._cleanup_volume_staging()
+                self._release_cache_lock()
+                self._pause_requested = False
+                self._loop_reset_pending = False
+                self._start_preview_session(context, domain, clear_preview_image=True)
+                return {"RUNNING_MODAL"}
         self._finish(context)
         if domain:
             clear_preview(domain)
@@ -408,17 +615,30 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
     def set_paused(self, context, paused):
         paused = bool(paused)
+        if getattr(self, "_recording_stop_requested", False):
+            return
         if paused == getattr(self, "_pause_requested", False):
             return
         self._pause_requested = paused
         diagnostics.set_status(getattr(self, "_diagnostic_key", None), "Paused" if paused else "Running")
         if paused:
             console_log(f"Fumaris preview paused for {self._domain_name}")
+            if getattr(self, "_recording_enabled", False) and self._accepted and not self._submitted:
+                self._ready_to_submit(context)
             return
 
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
             raise RuntimeError("The active Fumaris domain was deleted")
+        if getattr(self, "_recording_enabled", False):
+            if self._recording_at_end:
+                self._pause_requested = True
+                self._recording_restart_requested = True
+                self._ready_to_submit(context)
+                return
+            self._hide_recorded_volume()
+            if not self._recording_flush_pending:
+                self._write_recording_manifest("recording")
         self._next_submit_at = 0.0
         if getattr(self, "_loop_reset_pending", False):
             # Let any pending viewport response arrive before resetting Flow.
@@ -429,6 +649,12 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
             return self._cancelled(context, {"message": "The active Fumaris domain was deleted"})
+        if getattr(self, "_recording_enabled", False):
+            self._submitted = False
+            self._recording_at_end = True
+            self._pause_requested = True
+            self._ready_to_submit(context)
+            return None
         if getattr(self, "_pause_requested", False):
             self._submitted = False
             self._loop_reset_pending = True
@@ -441,6 +667,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
     def _cancelled(self, context, data):
         self._record_failure(data.get("message", "Preview failed"))
+        if getattr(self, "_recording_manifest", None) is not None:
+            try:
+                self._recording_manifest["error"] = data.get("message", "Preview failed")
+                self._write_recording_manifest("interrupted")
+            except Exception:
+                pass
+            console_log(f"Fumaris partial preview recording retained: {self._directory}")
         domain = bpy.data.objects.get(self._domain_name)
         if domain:
             clear_preview(domain)
@@ -461,6 +694,11 @@ class FUMARIS_OT_preview_stop(Operator):
     bl_description = "Stop the active Fumaris live preview and close its bridge process"
 
     @classmethod
+    def description(cls, context, _properties):
+        from .playback import preview_description
+        return preview_description(context, "stop")
+
+    @classmethod
     def poll(cls, context):
         return active_mode() == "previewing"
 
@@ -469,7 +707,10 @@ class FUMARIS_OT_preview_stop(Operator):
         if job is None:
             self.report({"WARNING"}, "This domain has no active preview")
             return {"CANCELLED"}
-        _cancel_job(context, job)
+        if getattr(job, "_recording_enabled", False):
+            job.request_recording_stop(context)
+        else:
+            _cancel_job(context, job)
         return {"FINISHED"}
 
 
@@ -477,6 +718,11 @@ class FUMARIS_OT_preview_pause(Operator):
     bl_idname = "fumaris.preview_pause"
     bl_label = "Pause or Resume Preview"
     bl_description = "Freeze or resume simulation while keeping the Flow volume available for viewport rerenders"
+
+    @classmethod
+    def description(cls, context, _properties):
+        from .playback import preview_description
+        return preview_description(context, "pause")
 
     @classmethod
     def poll(cls, context):
@@ -526,7 +772,7 @@ def _restore_selection(context, domain, selected, active):
         context.view_layer.objects.active = domain
 
 
-def _import_cache(context, domain, directory, prefix):
+def _import_cache(context, domain, directory, prefix, *, frame_start=None, frame_end=None):
     if domain is None:
         return
     selected = list(context.selected_objects)
@@ -542,16 +788,21 @@ def _import_cache(context, domain, directory, prefix):
         * float(props.num_sub_steps)
         / max(1e-6, float(props.simulation_speed))
     )
-    import_sequence(
-        directory,
-        simulation_frame_range(domain)[0],
-        prefix,
-        material=props.volume_material,
-        selectable=props.volume_selectable,
-        appearance=props,
-        flame_rate_scale=flame_rate_scale,
-    )
-    _restore_selection(context, domain, selected, active)
+    try:
+        volume = import_sequence(
+            directory,
+            simulation_frame_range(domain)[0] if frame_start is None else frame_start,
+            prefix,
+            material=props.volume_material,
+            selectable=props.volume_selectable,
+            appearance=props,
+            flame_rate_scale=flame_rate_scale,
+            frame_end=frame_end,
+        )
+        hide_recorded_previews(output_directory_for_object(domain), except_volume=volume)
+    finally:
+        _restore_selection(context, domain, selected, active)
+    return volume
 
 
 def _stop_active_job():
@@ -563,7 +814,7 @@ def _stop_active_job():
 class FUMARIS_OT_delete(Operator):
     bl_idname = "fumaris.delete"
     bl_label = "Delete Baked"
-    bl_description = "Delete Fumaris VDB cache files, imported volumes, and the live preview for this domain"
+    bl_description = "Delete this domain's baked and recorded preview VDB files, imported volumes, and live preview"
 
     @classmethod
     def poll(cls, context):
@@ -592,9 +843,23 @@ class FUMARIS_OT_delete(Operator):
                 clear_preview(domain)
                 delete_generated_data(directory, prefix)
                 delete_obsolete_cache_state(directory)
+                for take_directory, manifest in owned_preview_takes(directory):
+                    recover_cache_lock(take_directory, owner_pid=os.getpid())
+                    with cache_lock(take_directory):
+                        delete_generated_data(take_directory, manifest["session"]["output_prefix"])
+                        manifest.update({
+                            "status": "deleted",
+                            "committed_first_frame": -1,
+                            "committed_last_frame": -1,
+                            "committed_frame_count": 0,
+                        })
+                        # Preserve the guard inode and small provenance record;
+                        # only generated volumes/cache files are deletion targets.
+                        write_preview_manifest(take_directory, manifest)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
+        diagnostics.clear(domain)
         domain.fumaris.simulation_state = "idle"
         domain.fumaris.baked_frames = 0
         domain.fumaris.bake_elapsed = 0.0
@@ -769,7 +1034,13 @@ def _cancel_preview_before_native_playback(_scene=None, _depsgraph=None):
     if active_mode() != "previewing":
         return
     console_log("Fumaris preview stopped because Blender playback started")
-    _cancel_job(bpy.context, active_job())
+    job = active_job()
+    if getattr(job, "_recording_enabled", False):
+        # Stop feeding simulation frames immediately, but let the background
+        # writer publish its last in-flight frame before importing the take.
+        job.request_recording_stop(bpy.context)
+    else:
+        _cancel_job(bpy.context, job)
 
 
 def register():

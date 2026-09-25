@@ -196,6 +196,7 @@ def _domain_state(props, resolution_scale=1.0):
         "num_sub_steps": props.num_sub_steps,
         "upres_enabled": props.upres_enabled,
         "upres_strength": props.upres_strength,
+        "upres_fire_strength": props.upres_fire_strength,
         "upres_scale": props.upres_scale,
         "upres_memory_mb": props.upres_memory_mb,
         "small_sparse_blocks": props.small_sparse_blocks,
@@ -558,7 +559,7 @@ def _effector_state(participant, depsgraph):
         "noise_size": max(0.001, props.effector_noise_size),
         "noise_w": props.effector_noise_w,
         "noise_seed": props.effector_noise_seed,
-        "samples": max(8, min(64, props.effector_samples)),
+        "samples": max(8, min(256, props.effector_samples)),
     }
 
 

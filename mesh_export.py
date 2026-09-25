@@ -1,6 +1,11 @@
 from array import array
 
-from mathutils import Vector
+from mathutils import Matrix, Vector
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from .runtime import geometry_revision
 
@@ -112,7 +117,8 @@ def _static_mesh_cache_key(obj, depsgraph, props):
 
 
 def _particle_mesh(obj, depsgraph, props):
-    return _instance_mesh(obj, depsgraph, "particle mesh", allow_self=False)
+    return _instance_mesh(obj, depsgraph, "particle mesh", allow_self=False,
+                          normal_velocity=props.normal_velocity)
 
 
 def _geometry_nodes_mesh(obj, depsgraph, props):
@@ -141,11 +147,12 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
         emission_weights.extend(direct_weights)
 
     try:
-        instance_positions, instance_indices, _instance_velocities = _instance_mesh(
+        instance_positions, instance_indices, instance_velocities = _instance_mesh(
             obj,
             depsgraph,
             "Geometry Nodes mesh",
             allow_self=True,
+            normal_velocity=props.normal_velocity,
         )
     except _NoMeshGeometry:
         instance_positions = instance_indices = None
@@ -153,8 +160,12 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
         index_offset = len(positions) // 3
         positions.extend(instance_positions)
         indices.extend(index_offset + index for index in instance_indices)
-        if velocities:
-            velocities.extend((0.0 for _ in range(len(instance_positions))))
+        if instance_velocities:
+            if not velocities:
+                velocities.extend([0.0] * (index_offset * 3))
+            velocities.extend(instance_velocities)
+        elif velocities:
+            velocities.extend([0.0] * len(instance_positions))
         if str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip():
             emission_weights.extend((1.0 for _ in range(len(instance_indices))))
 
@@ -163,10 +174,15 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
     return positions, indices, velocities, emission_weights
 
 
-def _instance_mesh(obj, depsgraph, label, *, allow_self):
+def _instance_mesh(obj, depsgraph, label, *, allow_self, normal_velocity=0.0):
     positions = array("f")
     indices = array("i")
     velocities = array("f")
+    # Evaluated meshes can be shared by hundreds of particle/GN instances.
+    # Cache copied prototype arrays only during this export: a later evaluation
+    # may change geometry while keeping the same mesh identity.
+    prototypes = {}
+    prototype_normals = {}
 
     for instance in depsgraph.object_instances:
         if not getattr(instance, "is_instance", False):
@@ -183,13 +199,51 @@ def _instance_mesh(obj, depsgraph, label, *, allow_self):
             continue
 
         mesh = source.data
-        mesh.calc_loop_triangles()
+        key = mesh.as_pointer()
+        prototype = prototypes.get(key)
+        if prototype is None:
+            mesh.calc_loop_triangles()
+            local = array("f", [0.0]) * (len(mesh.vertices) * 3)
+            triangles = array("i", [0]) * (len(mesh.loop_triangles) * 3)
+            mesh.vertices.foreach_get("co", local)
+            mesh.loop_triangles.foreach_get("vertices", triangles)
+            if abs(float(normal_velocity)) > 1e-6:
+                prototype_normals[key] = _mesh_normal_velocities(
+                    local, triangles, 1.0, Matrix.Identity(4))
+            if np is not None:
+                local = np.frombuffer(local, dtype=np.float32).reshape((-1, 3))
+                triangles = np.frombuffer(triangles, dtype=np.int32)
+            prototype = prototypes[key] = (local, triangles)
+        local, triangles = prototype
+        normals = prototype_normals.get(key)
+        if normals is not None:
+            normal_transform = instance.matrix_world.to_3x3().inverted_safe().transposed()
+            for cursor in range(0, len(normals), 3):
+                normal = normal_transform @ Vector(normals[cursor:cursor + 3])
+                normal.normalize()
+                velocities.extend(normal * float(normal_velocity))
         offset = len(positions) // 3
-        for vertex in mesh.vertices:
-            position = instance.matrix_world @ vertex.co
-            positions.extend((position.x, position.y, position.z))
-        for triangle in mesh.loop_triangles:
-            indices.extend(offset + vertex_index for vertex_index in triangle.vertices)
+        if np is not None:
+            # Consume the current iterator's matrix immediately. Depsgraph
+            # instance wrappers must not be retained beyond their iteration.
+            transform = np.asarray(instance.matrix_world, dtype=np.float32)
+            # Match mathutils' float32 products and double accumulator. A
+            # float32 matrix multiply changes rounding and can perturb a sim.
+            world = np.zeros((len(local), 3), dtype=np.float64)
+            for axis in range(3):
+                world += local[:, axis, None] * transform[:3, axis]
+            world += transform[:3, 3]
+            positions.frombytes(world.astype(np.float32).tobytes())
+            if len(triangles):
+                if offset + len(local) - 1 > 2147483647:
+                    raise OverflowError("Instance mesh indices exceed signed 32-bit range")
+                indices.frombytes((triangles + offset).tobytes())
+        else:
+            matrix = instance.matrix_world
+            for cursor in range(0, len(local), 3):
+                position = matrix @ Vector(local[cursor:cursor + 3])
+                positions.extend((position.x, position.y, position.z))
+            indices.extend(offset + vertex_index for vertex_index in triangles)
 
     if not positions or not indices:
         raise _NoMeshGeometry(f"{obj.name} did not provide {label} instances")

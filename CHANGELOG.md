@@ -2,6 +2,38 @@
 
 All notable customer-facing changes are recorded here.
 
+## 1.2.0 - 2026-09-25
+
+- Experimental Upres adds shared smoke/fire detail motion with separate strengths
+  and an explicit detail-memory safety limit. Failures appear beside playback controls.
+- Extend experimental Normal Velocity to particle and Geometry Nodes mesh instances;
+  move its control into Velocity. Averaged normals can still emit unevenly across faces.
+- Default emitter divergence to 2; Quick Effects use dissipation 1, Steady Fire fuel
+  0.5, and Explosion fuel 2 with a ten-frame source burst.
+- Default Upres Detail Size to 8 and Smoke/Fire Detail to 4; Upres remains opt-in.
+- Delete clears the selected simulation's warning history.
+- Include four replacement demo scenes in a separate demo download.
+
+
+- Replace previous recorded-preview display objects on replay, retaining take files.
+- Show Quick Setup only for unassigned objects; use axes empties as simulations.
+- Compact preview options into two columns and move Upres guidance inline.
+
+- Compile Vulkan pipelines only when used, avoiding costly first-start
+  compilation of unrelated features on Intel and other Vulkan GPUs.
+- Add Quick Setup for Rising Smoke, Steady Fire and Explosion, with linked
+  participant collections and simulation empties.
+- Add optional Bake on Preview: record VDB takes during preview, import on
+  pause/stop, and preserve live state for Resume. Requires the matching updated
+  native bridge.
+- Show action-specific shortcut tooltips; move Stop to Shift–Alt–X for one-hand use.
+  Play/Pause/Resume remains Shift–Alt–Space. Keep the compact Play button label.
+- Show actionable capacity warnings outside Diagnostics; move Diagnostics below
+  Advanced using the darker panel background.
+- Default dissipation to 0.5, fuel to 1, temperature per burn to 1, and ray steps
+  to 256. Select Density after importing VDBs.
+- Batch shared instanced-mesh extraction without reducing geometry fidelity.
+
 ## 1.1.0 - 2026-09-17
 
 - Control live preview without selecting the domain: viewport/timeline header

@@ -10,7 +10,7 @@ for release details and the Updating section below before replacing an installat
 
 ## Requirements And Compatibility
 
-- Blender 5.1 or newer on Windows/Linux; Blender 5.2 or newer on Mac
+- Blender 5.2 or newer (officially supported on all platforms)
 - The Windows x64, Linux x64, or macOS ARM64 Fumaris package for your operating system
 - Windows/Linux: a Vulkan-capable GPU with a current driver; Mac: Apple Silicon
 - Enough GPU memory for the selected resolution and sparse block capacity

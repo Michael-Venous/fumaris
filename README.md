@@ -8,9 +8,9 @@ native volume shading and rendering.
 
 ## Requirements And Installation
 
-- Blender 5.1 or newer
-- Windows x64 or Linux x64
-- A Vulkan-capable GPU and sufficient GPU memory
+- Blender 5.1 or newer on Windows/Linux; Blender 5.2 or newer on Mac
+- Windows x64, Linux x64, or Apple Silicon Mac (macOS 26+)
+- A Vulkan-capable GPU on Windows/Linux, or Apple Silicon on Mac, with sufficient GPU memory
 - The matching Fumaris package, including its native simulation runtime
 
 Install the platform ZIP through **Edit > Preferences > Extensions > Install

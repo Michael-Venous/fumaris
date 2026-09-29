@@ -41,6 +41,8 @@ def executable_path():
 def required_flow_libraries():
     if sys.platform == "win32":
         return ("nvflow.dll", "nvflowext.dll")
+    if sys.platform == "darwin":
+        return ("libnvflow.dylib", "libnvflowext.dylib", "libMoltenVK.dylib")
     return ("libnvflow.so", "libnvflowext.so")
 
 
@@ -90,7 +92,10 @@ def process_environment(executable=None):
         else os.path.join(addon_directory(), "bin")
     )
     libs = os.path.join(binary, "libs")
-    variable = "PATH" if sys.platform == "win32" else "LD_LIBRARY_PATH"
+    variable = (
+        "PATH" if sys.platform == "win32" else
+        "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+    )
     previous = env.get(variable, "")
     paths = os.pathsep.join((libs, binary))
     env[variable] = paths if not previous else paths + os.pathsep + previous

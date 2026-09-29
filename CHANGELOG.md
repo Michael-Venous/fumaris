@@ -1,3 +1,10 @@
+## 1.2.0 — Apple Silicon package addition
+
+- Added a native ARM64 Mac package using Metal through MoltenVK.
+- Requires macOS 26+ and Blender 5.2+; tested on Mac mini M4, 16 GB.
+- Includes the existing 1.2.0 simulation features and workflow. Intel Macs are not supported.
+- Windows/Linux 1.2.0 downloads remain available; no mandatory update for those platforms.
+
 # Changelog
 
 All notable customer-facing changes are recorded here.

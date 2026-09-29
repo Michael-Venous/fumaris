@@ -10,9 +10,9 @@ for release details and the Updating section below before replacing an installat
 
 ## Requirements And Compatibility
 
-- Blender 5.1 or newer
-- The Windows x64 or Linux x64 Fumaris package for your operating system
-- A Vulkan-capable GPU with a current driver
+- Blender 5.1 or newer on Windows/Linux; Blender 5.2 or newer on Mac
+- The Windows x64, Linux x64, or macOS ARM64 Fumaris package for your operating system
+- Windows/Linux: a Vulkan-capable GPU with a current driver; Mac: Apple Silicon
 - Enough GPU memory for the selected resolution and sparse block capacity
 - Local writable storage for baked OpenVDB sequences
 
@@ -20,7 +20,9 @@ Fumaris has been exercised on NVIDIA GPUs under Windows and Linux and Intel
 Arc GPUs under Windows and Linux. Recorded release testing includes an NVIDIA
 RTX 3090 on Linux and an Intel Arc 140V on Windows. AMD hardware has not yet
 been qualified. It may work through the same Vulkan path, but this release does
-not promise AMD compatibility. macOS and Apple Silicon are unsupported.
+not promise AMD compatibility. Apple Silicon support uses Metal through bundled
+MoltenVK and was tested on an M4 Mac mini with 16 GB unified memory, macOS
+26.6.1 and Blender 5.2.2. Intel Macs are not supported.
 
 GPU and driver combinations vary considerably. If Fumaris cannot create a
 device or complete its first preview, update the driver and send the console
@@ -467,7 +469,7 @@ For a faster or more memory-efficient simulation:
 - Colliders are improved Flow collision emitters, not sealed pressure
   boundaries.
 - Results do not match Mantaflow parameter-for-parameter.
-- macOS and Apple Silicon are unsupported.
+- Mac requires Apple Silicon, macOS 26+ and Blender 5.2+. Intel Macs are unsupported.
 
 ## Troubleshooting And Support
 

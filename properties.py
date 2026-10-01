@@ -228,8 +228,8 @@ class FumarisSettings(PropertyGroup):
     # Flow exposes an independent coupling rate for every emitted channel.
     couple_rate_velocity: FloatProperty(
         name="Velocity",
-        description="Rate per second at which smoke approaches the source velocity. Use 100-200 for small, fast sources that barely touch each voxel; 0 disables velocity transfer. A stationary emitter does not slow existing smoke",
-        default=200.0,
+        description="How strongly the emitter pushes smoke along its velocity or movement; a stationary emitter does not slow existing smoke",
+        default=8.0,
         min=0.0,
         soft_max=200.0,
     )
@@ -319,7 +319,7 @@ class FumarisSettings(PropertyGroup):
 
     motion_velocity_scale: FloatProperty(
         name="Motion Velocity Scale",
-        description="Target motion velocity multiplier: 1 uses measured Blender units per second, 0 ignores motion. If smoke lags behind, raise Velocity Coupling before multiplying the target speed. Geometry Nodes velocity attributes must be in local units per second",
+        description="Scale of source motion velocity: 1 uses the measured velocity (Blender units per second), 0 ignores it. Geometry Nodes velocity attributes must be in local units per second. Fluid response also depends on Velocity Coupling",
         default=1.0,
         min=0.0,
         soft_max=25.0,

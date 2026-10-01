@@ -260,12 +260,7 @@ Fumaris supports:
 
 Emitter Smoke, Temperature, Fuel, Burn, and Divergence define the source
 channels. Initial Velocity adds a constant vector. Motion Velocity Scale
-controls the target velocity inherited from source movement or mapped point velocities.
-Velocity Coupling, in the Velocity card, controls how quickly smoke reaches that
-target. For small, fast sources use coupling 100–200 with Motion Velocity Scale 1.
-Older saved scenes may retain the former coupling default of 8, which transfers
-little velocity when a source only touches each voxel briefly. New emitters
-default to coupling 200; existing saved settings are not automatically changed.
+controls velocity inherited from source movement or mapped point velocities.
 Normal Velocity (Experimental) uses averaged mesh vertex normals, including
 particle and Geometry Nodes mesh instances. Emission can be uneven across faces
 and hard edges; primitive and point/volume modes do not support this control.
@@ -514,9 +509,8 @@ For deforming meshes, motion is estimated from corresponding evaluated vertices
 on consecutive simulation frames. Keep vertex count and ordering stable; topology
 changes or arbitrary frame jumps do not provide reliable deformation velocities.
 Geometry Nodes velocity attributes must use local units per second, not displacement
-per frame; object transforms convert them to world space. Coupling is a rate per second: a value of 8 takes much longer to approach the
-target than a tiny emitter spends inside one voxel. Raise Velocity Coupling
-before increasing Motion Velocity Scale to 10–20. Pressure can change the resulting
+per frame; object transforms convert them to world space. Coupling controls how
+quickly the fluid approaches this target, and pressure can change the resulting
 fluid velocity. An attribute does not automatically include additional host-object
 motion that was not represented in the attribute.
 
@@ -603,6 +597,3 @@ values; older unset properties inherit the new defaults. The Rising Smoke setup
 explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
 divergence 2; Steady Fire fuel is 0.5 and Explosion fuel is 2. The general emitter
 divergence default is 2.
-
-Bakes include valid empty VDB frames before the first particles are born or while
-no sparse simulation blocks are active. The sequence stays aligned to the timeline.

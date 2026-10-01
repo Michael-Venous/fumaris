@@ -141,6 +141,7 @@ def _draw_emitter(layout, obj, props):
             or (props.participant_type == "geometry_nodes" and props.gn_subtype == "mesh")):
         box.prop(props, "normal_velocity")
     box.prop(props, "motion_velocity_scale")
+    box.prop(props, "couple_rate_velocity", text="Velocity Coupling")
 
     box = layout.box()
     column, opened = _nested_foldout(box, props, "show_emitter_coupling", "Channel Coupling")
@@ -149,7 +150,6 @@ def _draw_emitter(layout, obj, props):
         column.prop(props, "couple_rate_temperature")
         column.prop(props, "couple_rate_fuel")
         column.prop(props, "couple_rate_burn")
-        column.prop(props, "couple_rate_velocity")
         column.prop(props, "couple_rate_divergence")
 
     box = layout.box()

@@ -2,6 +2,15 @@
 
 All notable customer-facing changes are recorded here.
 
+## 1.2.1 — 2026-10-01
+
+- Fix baking when an emitter has no particles or active smoke on an initial frame.
+  Empty frames now produce valid VDB files instead of a density-readback error.
+- Fix disconnected smoke trails from small, fast-moving mesh emitters by allocating
+  their swept path and preserving motion interpolation across solver substeps.
+- Velocity settings and defaults remain unchanged. Existing scenes and caches are preserved.
+- Requires Blender 5.2+. Stop simulations and restart Blender after updating.
+
 ## 1.2.0 — Apple Silicon package addition
 
 - Added a native ARM64 Mac package using Metal through MoltenVK.

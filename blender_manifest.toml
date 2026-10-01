@@ -1,13 +1,13 @@
 schema_version = "1.0.0"
 
 id = "fumaris"
-version = "1.2.0"
+version = "1.2.1"
 name = "Fumaris"
 tagline = "Interactive GPU smoke and fire simulation"
 maintainer = "Fumaris"
 type = "add-on"
 
-blender_version_min = "5.1.0"
+blender_version_min = "5.2.0"
 license = ["SPDX:GPL-3.0-or-later"]
 platforms = ["linux-x64", "windows-x64", "macos-arm64"]
 

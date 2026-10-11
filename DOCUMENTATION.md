@@ -267,13 +267,62 @@ out, smoke and emitters keep their blocks and the margin shrinks.
 same stepping. With Air Margin above 0 it only makes the margin look one more
 frame ahead; most scenes can leave it off.
 
+### Fast Emitters, Vehicles And Move With Object
+
+An emitter or collider that crosses many voxels per frame is the hardest case
+for any grid solver. Three settings under Advanced deal with it.
+
+`Fast-Motion Safeguards` (on for new domains) keeps such scenes stable and
+compact:
+
+- Vorticity can sharpen swirls up to the speeds around them but cannot push
+  past them, so a high Vorticity value with few Sub-Steps no longer runs away
+  into exploding motion and smoke thrown out of the simulation.
+- A fast emitter is stamped along its whole path each step, however few
+  Sub-Steps are used, instead of leaving separate puffs.
+- A collider at rest does not reserve simulation space on its own. A long road
+  or a large wall used to consume blocks along its entire length before any
+  smoke existed.
+- Moving air with only a trace of smoke no longer holds its blocks; the Air
+  Margin keeps the air that real smoke needs.
+
+`Move With Object` makes the domain simulate in its own object's space. Parent
+the domain to the vehicle (or animate the domain itself) and the simulation
+grid travels and turns with it. Emitters and colliders that ride along are then
+at rest in the grid, so the flow around them is resolved cleanly with a
+fraction of the Sub-Steps a scene-space simulation needs. Only the domain
+object's location and rotation are used; its scale and its mesh are ignored.
+
+- `Carry Air` at 0 (the default) leaves the air still in the scene. Smoke
+  trails behind the moving domain exactly as in a scene-space simulation, and
+  objects that do not move in the scene, such as the road, are at rest in that
+  air. At 1 the air travels with the domain, as inside a closed vehicle or a
+  sealed container; values between mix the two.
+- Bakes are written in scene space: each VDB carries its own placement, so the
+  imported volume needs no parenting and velocity grids hold scene-space
+  motion for motion blur.
+- A domain that only travels moves its grid in whole voxels, which costs no
+  sharpness. A domain that also turns resamples the smoke every step, which
+  softens fine detail slightly; the faster it turns, the more.
+- Smoke that is left behind still occupies blocks. For a long run, limit the
+  trail with Dissipation or an Outflow parented to the vehicle.
+- Sphere, box and mesh emitters and colliders are followed exactly through
+  each frame. Particle and VDB sources that are fixed in the scene are placed
+  once per frame, so they smear slightly when the domain moves fast.
+- Move With Object cannot be combined with Upres.
+
+For a vehicle the camera follows, Move With Object is usually the better
+choice. For a vehicle that passes a still camera and leaves a long trail in
+view, either works; scene space keeps the resting trail perfectly sharp.
+
 ### Smoke Behavior
 
 - `Gravity` accelerates the velocity field.
 - `Temperature Buoyancy` lifts hot gas.
 - `Smoke Buoyancy` controls density-driven lift or sinking.
 - `Vorticity` restores small rotational motion lost through advection.
-- `Dissipation` fades smoke over time.
+- `Dissipation` fades smoke over time, by that much density per second. The
+  slider stops at 1; type a larger value for dense smoke that must clear fast.
 
 Combustion is active when its coefficients require it. Fuel burns above the
 ignition threshold, producing configurable smoke, heat, and expansion. Large

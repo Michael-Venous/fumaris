@@ -76,7 +76,7 @@ _SOURCE_OPERATIONS = (
 
 # Solver settings given to newly created simulations. Existing simulations keep
 # their stored (or default, pre-1.3) values so their results do not change.
-MODERN_SOLVER_SETTINGS = {"air_margin": 0.5, "pressure_long_range": True}
+MODERN_SOLVER_SETTINGS = {"air_margin": 0.5, "pressure_long_range": True, "motion_safeguards": True}
 
 
 def _object_type_updated(self, _context):
@@ -617,6 +617,27 @@ class FumarisSettings(PropertyGroup):
     pressure_long_range: BoolProperty(
         name="Long-Range Pressure",
         description="Solve pressure across the whole plume each step, so large shapes such as mushroom caps form at high resolution and with few sub-steps. Works best with an Air Margin. Off matches earlier versions",
+        default=False,
+    )
+
+    follow_object: BoolProperty(
+        name="Move With Object",
+        description="Simulate in this domain object's own space, so the simulation travels and turns with it and with whatever it is parented to. Emitters and colliders that ride along stay put in the simulation grid, which keeps fast vehicles smooth and stable with few sub-steps. The object's scale is ignored. Not available with Upres",
+        default=False,
+    )
+
+    carry_air: FloatProperty(
+        name="Carry Air",
+        description="How much of the domain's motion the surrounding air shares. 0 leaves the air still in the scene, so smoke trails behind a moving domain as it would outdoors. 1 carries the air along, as inside a closed vehicle",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+    )
+
+    motion_safeguards: BoolProperty(
+        name="Fast-Motion Safeguards",
+        description="Keep the simulation stable and compact with very fast emitters and colliders and few sub-steps: vorticity can sharpen swirls but no longer feeds on itself until the motion explodes, fast emitters leave a continuous trail instead of separate stamps, and colliders at rest or air with only a trace of smoke stop reserving simulation space. Off matches earlier versions",
         default=False,
     )
 
@@ -1233,10 +1254,11 @@ class FumarisSettings(PropertyGroup):
 
     dissipation: FloatProperty(
         name="Dissipation",
-        description="How quickly smoke fades away over time; zero keeps it from fading through this setting",
+        description="How quickly smoke fades away over time, in smoke density per second; zero keeps it from fading through this setting. Type a value above 1 for dense smoke that must clear quickly",
         default=0.5,
         min=0.0,
-        max=1.0,
+        soft_max=1.0,
+        max=100.0,
     )
 
     # VDB export controls

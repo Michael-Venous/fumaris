@@ -181,7 +181,10 @@ def build_frame(
             "frame": frame,
             "preview_mode": preview_mode,
             "volume_preview": preview_request,
-            "domain": _domain_state((domain or context.object).fumaris, resolution_scale),
+            "domain": {
+                **_domain_state((domain or context.object).fumaris, resolution_scale),
+                **_domain_frame(domain or context.object, depsgraph),
+            },
             "meshes": meshes,
             "boxes": boxes,
             "spheres": spheres,
@@ -204,6 +207,22 @@ def _log_participants(domain, participants):
             f"{obj.name} collection={item.get('collection', '')} "
             f"enabled={bool(obj.fumaris.participant_enabled)}"
         )
+
+
+def _domain_frame(domain, depsgraph):
+    """Where the simulation grid is this frame when it moves with its object."""
+    props = domain.fumaris
+    if not getattr(props, "follow_object", False):
+        return {}
+    matrix = domain.evaluated_get(depsgraph).matrix_world
+    # Location and rotation only: a scaled grid would change the voxel size.
+    rigid = matrix.to_quaternion().to_matrix().to_4x4()
+    rigid.translation = matrix.translation
+    return {
+        "follow_object": True,
+        "carry_air": min(1.0, max(0.0, float(props.carry_air))),
+        "frame_matrix": [value for row in rigid for value in row],
+    }
 
 
 def _domain_state(props, resolution_scale=1.0):
@@ -230,6 +249,7 @@ def _domain_state(props, resolution_scale=1.0):
         "adaptive_boundary_padding": props.adaptive_boundary_padding,
         "air_margin": max(0.0, float(getattr(props, "air_margin", 0.0))),
         "pressure_long_range": bool(getattr(props, "pressure_long_range", False)),
+        "motion_safeguards": bool(getattr(props, "motion_safeguards", False)),
         "boundary_safe_advection": props.boundary_safe_advection,
         "gravity": list(props.gravity),
         "buoyancy_per_temp": props.buoyancy_per_temp,

@@ -15,9 +15,24 @@ defaults to the 1.2.1 behavior.
 - **Long-Range Pressure.** Lets the pressure solve reach across large plumes
   so mushroom caps and big rolling shapes form at high resolution and low
   Sub-Steps.
-- Both are on for domains created in 1.3.0 (Air Margin 0.5 m). Domains from
-  earlier versions keep them off and look the same; turn them on under
-  Advanced. Air Margin uses more sparse blocks, so check the capacity readout.
+- **Move With Object.** A domain can now simulate in its own object's space:
+  parent the domain to a vehicle, or animate it, and the simulation travels
+  and turns with it. Emitters and colliders that ride along stay put in the
+  simulation grid, which keeps fast vehicles smooth with far fewer Sub-Steps.
+  The air stays still in the scene, so smoke trails behind as it would
+  outdoors; `Carry Air` carries it along instead, as inside a closed cabin.
+  Bakes are written in scene space as before. Not available with Upres.
+- **Fast-Motion Safeguards.** Very fast emitters and colliders with few
+  Sub-Steps no longer make the motion explode: vorticity can still sharpen
+  swirls but cannot feed on itself. Fast emitters leave a continuous trail
+  instead of separate stamps, and colliders at rest (a long road, a wall) no
+  longer reserve simulation space along their whole length.
+- Air Margin, Long-Range Pressure and Fast-Motion Safeguards are on for
+  domains created in 1.3.0 (Air Margin 0.5 m). Domains from earlier versions
+  keep them off and look the same; turn them on under Advanced. Air Margin
+  uses more sparse blocks, so check the capacity readout.
+- **Dissipation** accepts typed values above 1 for dense smoke that must clear
+  quickly.
 - **Source operations.** Smoke, Temperature, Fuel and Burn each choose Blend
   (the existing behavior), Add, Maximum or Replace under Channel Coupling.
 - **Field masks for effectors.** Any force can be limited by the simulated
@@ -48,6 +63,11 @@ Fixes
 - A duplicated simulation no longer takes over the original's cache.
 - When Sparse Block Capacity is full, a newly active emitter now gets blocks
   ahead of empty blocks that were only waiting out Block Minimum Lifetime.
+- Baked velocity grids no longer contain stray values when Small Sparse
+  Blocks is on (the default). Parts of the velocity field were being
+  overwritten with unrelated data from neighboring blocks, differently on
+  each run and graphics card, which could streak motion blur and distorted
+  bakes fed back in as VDB sources. Re-bake to get correct velocity.
 
 Performance
 

@@ -576,6 +576,11 @@ def _draw_domain(layout, scene, props):
         row.enabled = props.allocate_neighbor_blocks
         row.prop(props, "air_margin")
         advanced.prop(props, "pressure_long_range")
+        advanced.prop(props, "motion_safeguards")
+        advanced.prop(props, "follow_object")
+        row = advanced.row()
+        row.enabled = props.follow_object
+        row.prop(props, "carry_air", slider=True)
         row = advanced.row()
         row.enabled = props.allocate_neighbor_blocks
         row.prop(props, "adaptive_boundary_padding")

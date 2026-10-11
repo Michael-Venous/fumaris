@@ -21,6 +21,10 @@ defaults to the 1.2.1 behavior.
 
 Fixes
 
+- Baked VDBs are now positioned exactly where the simulation is. Earlier
+  versions wrote every grid half a voxel toward -X, -Y and -Z, so a bake sat
+  slightly off its emitters, colliders and the live preview. Re-baking shifts
+  the result by that half voxel; existing caches are not changed.
 - Delete, Bake and cache migration now touch only numbered Fumaris frame files.
   Other VDBs sharing the output prefix in the Output Directory are left alone, and
   folders containing `[`, `]`, `*` or `?` work.

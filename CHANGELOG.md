@@ -17,7 +17,8 @@ defaults to the 1.2.1 behavior.
   grids, play numbered file sequences with a frame offset, and optionally emit
   the file's velocity grid. Grids with their own voxel size, including the
   velocity grid of a Fumaris bake, are now placed correctly instead of being
-  read at the smoke grid's coordinates.
+  read at the smoke grid's coordinates, and grid velocities keep their real
+  speed instead of being shrunk by the voxel size.
 
 Fixes
 

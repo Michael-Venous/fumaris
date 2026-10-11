@@ -74,6 +74,17 @@ _SOURCE_OPERATIONS = (
 )
 
 
+# Solver settings given to newly created simulations. Existing simulations keep
+# their stored (or default, pre-1.3) values so their results do not change.
+MODERN_SOLVER_SETTINGS = {"air_margin": 0.5, "pressure_long_range": True}
+
+
+def _object_type_updated(self, _context):
+    if self.smoke_object_type == "domain":
+        for name, value in MODERN_SOLVER_SETTINGS.items():
+            setattr(self, name, value)
+
+
 class FumarisSettings(PropertyGroup):
     """Custom PropertyGroup storing all simulation parameters for Fumaris smoke simulation."""
 
@@ -91,6 +102,7 @@ class FumarisSettings(PropertyGroup):
             ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
+        update=_object_type_updated,
     )
 
     participant_enabled: BoolProperty(
@@ -586,7 +598,25 @@ class FumarisSettings(PropertyGroup):
 
     adaptive_boundary_padding: BoolProperty(
         name="Adaptive Boundary Padding",
-        description="Give moving smoke extra surrounding air, including diagonal neighbors, to reduce sparse-block bands. Uses more GPU time and memory, especially with Smoke Detail; leave off for the faster compact allocation",
+        description="Give moving smoke extra surrounding air, including diagonal neighbors, to reduce sparse-block bands. Uses more GPU time and memory, especially with Smoke Detail; leave off for the faster compact allocation. With an Air Margin it only lengthens the margin's motion forecast",
+        default=False,
+    )
+
+    # Zero and False reproduce simulations made before 1.3; new simulations
+    # receive MODERN_SOLVER_SETTINGS when the object becomes a domain.
+    air_margin: FloatProperty(
+        name="Air Margin",
+        description="World-space air simulated on every side of the smoke and further along its motion. Removes block-shaped stepping in fast smoke and gives plumes room to roll into caps; uses more GPU time and memory. 0 uses the compact allocation of earlier versions",
+        default=0.0,
+        min=0.0,
+        soft_max=4.0,
+        max=1000.0,
+        subtype="DISTANCE",
+    )
+
+    pressure_long_range: BoolProperty(
+        name="Long-Range Pressure",
+        description="Solve pressure across the whole plume each step, so large shapes such as mushroom caps form at high resolution and with few sub-steps. Works best with an Air Margin. Off matches earlier versions",
         default=False,
     )
 

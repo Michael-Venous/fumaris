@@ -574,6 +574,10 @@ def _draw_domain(layout, scene, props):
         advanced.prop(props, "allocate_neighbor_blocks")
         row = advanced.row()
         row.enabled = props.allocate_neighbor_blocks
+        row.prop(props, "air_margin")
+        advanced.prop(props, "pressure_long_range")
+        row = advanced.row()
+        row.enabled = props.allocate_neighbor_blocks
         row.prop(props, "adaptive_boundary_padding")
         if props.allocate_neighbor_blocks and props.adaptive_boundary_padding:
             advanced.label(text="Extra GPU time and memory", icon="INFO")

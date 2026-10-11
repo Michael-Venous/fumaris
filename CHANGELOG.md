@@ -7,6 +7,17 @@ All notable customer-facing changes are recorded here.
 New controls. Existing scenes simulate as before: every new simulation option
 defaults to the 1.2.1 behavior.
 
+- **Air Margin.** Simulates a set distance of clear air on every side of the
+  smoke and reaches further in the direction the smoke is moving. It removes
+  the horizontal steps that fast smoke could leave at the edge of the
+  simulated region, for a fraction of the cost of Adaptive Boundary Padding,
+  and gives large plumes the surrounding air they need to roll up.
+- **Long-Range Pressure.** Lets the pressure solve reach across large plumes
+  so mushroom caps and big rolling shapes form at high resolution and low
+  Sub-Steps.
+- Both are on for domains created in 1.3.0 (Air Margin 0.5 m). Domains from
+  earlier versions keep them off and look the same; turn them on under
+  Advanced. Air Margin uses more sparse blocks, so check the capacity readout.
 - **Source operations.** Smoke, Temperature, Fuel and Burn each choose Blend
   (the existing behavior), Add, Maximum or Replace under Channel Coupling.
 - **Field masks for effectors.** Any force can be limited by the simulated
@@ -35,6 +46,8 @@ Fixes
 - A Collection Mesh source no longer fails when one member has no faces.
 - Importing a bake on Windows no longer fails when the cache is on another drive.
 - A duplicated simulation no longer takes over the original's cache.
+- When Sparse Block Capacity is full, a newly active emitter now gets blocks
+  ahead of empty blocks that were only waiting out Block Minimum Lifetime.
 
 Performance
 

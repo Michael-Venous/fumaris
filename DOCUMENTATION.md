@@ -242,6 +242,31 @@ blocks can produce smoother continuity in demanding high-resolution effects at
 a substantial performance cost. Leave `Allocate Neighbor Blocks` and
 `Boundary-Safe Advection` enabled for fast-moving smoke.
 
+### Air Margin And Long-Range Pressure
+
+Only the space near smoke is simulated. Smoke that reaches the edge of that
+space before the surrounding air exists shows horizontal steps or block-shaped
+terraces, and a plume with too little air around it rises as a column instead
+of rolling into a mushroom cap. Both are most visible at high resolution and
+low Sub-Steps, where blocks are small and the smoke crosses several per frame.
+
+- `Air Margin` (Advanced) is the distance of clear air kept on every side of
+  the smoke. It also reaches further ahead of moving smoke, by how far the
+  smoke will travel before the next allocation. 0.5 m suits most plumes;
+  large explosions can use 1 m or more. 0 restores the 1.2.1 allocation.
+- `Long-Range Pressure` (Advanced) makes the pressure solve reach across large
+  plumes instead of a few dozen voxels, at a small cost per step.
+
+New domains start with Air Margin 0.5 m and Long-Range Pressure on. Domains
+saved by earlier versions keep both off so they simulate as before; turn them
+on to fix stepping or columns in an old scene. Air Margin adds sparse blocks
+(typically 1.5x to 2.5x), so watch the capacity readout; when capacity runs
+out, smoke and emitters keep their blocks and the margin shrinks.
+
+`Adaptive Boundary Padding` is the older, much more expensive answer to the
+same stepping. With Air Margin above 0 it only makes the margin look one more
+frame ahead; most scenes can leave it off.
+
 ### Smoke Behavior
 
 - `Gravity` accelerates the velocity field.
@@ -509,6 +534,8 @@ For a faster or more memory-efficient simulation:
 3. Lower Preview Resolution, Viewport Scale, or Ray Steps for viewport work.
 4. Increase resolution and sparse capacity in measured steps.
 5. Use the lowest Sub-Step count that gives a converged result.
+   For stepping at the smoke's edge, raise Air Margin before Sub-Steps or
+   Adaptive Boundary Padding.
 6. Keep caches on a fast local drive.
 7. Split point clouds with widely different radii and reduce excessive point
    counts when point emission dominates a frame.

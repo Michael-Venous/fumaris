@@ -228,6 +228,8 @@ def _domain_state(props, resolution_scale=1.0):
         "allocation_speed_min_smoke": props.allocation_speed_min_smoke,
         "allocate_neighbor_blocks": props.allocate_neighbor_blocks,
         "adaptive_boundary_padding": props.adaptive_boundary_padding,
+        "air_margin": max(0.0, float(getattr(props, "air_margin", 0.0))),
+        "pressure_long_range": bool(getattr(props, "pressure_long_range", False)),
         "boundary_safe_advection": props.boundary_safe_advection,
         "gravity": list(props.gravity),
         "buoyancy_per_temp": props.buoyancy_per_temp,

@@ -66,6 +66,14 @@ def _preview_light_elevation_set(props, value):
     _set_preview_light_angles(props, _preview_light_angles(props)[0], value)
 
 
+_SOURCE_OPERATIONS = (
+    ("blend", "Blend", "Pull the field toward the emitter value at the coupling rate. Overlapping emitters settle on a mix, and a low value thins denser smoke"),
+    ("add", "Add", "Inject value × coupling every second. Overlapping emitters accumulate and nothing is removed"),
+    ("max", "Maximum", "Raise the field toward the emitter value but never lower what is already there"),
+    ("replace", "Replace", "Set the field to the emitter value everywhere inside the emitter"),
+)
+
+
 class FumarisSettings(PropertyGroup):
     """Custom PropertyGroup storing all simulation parameters for Fumaris smoke simulation."""
 
@@ -274,6 +282,36 @@ class FumarisSettings(PropertyGroup):
         soft_max=200.0,
     )
 
+    # How each emitted channel is written into the simulation. Blend is the
+    # original behavior and remains the default for existing scenes.
+    source_op_smoke: EnumProperty(
+        name="Smoke Operation",
+        description="How this emitter writes smoke into the simulation",
+        items=_SOURCE_OPERATIONS,
+        default="blend",
+    )
+
+    source_op_temperature: EnumProperty(
+        name="Temperature Operation",
+        description="How this emitter writes temperature into the simulation",
+        items=_SOURCE_OPERATIONS,
+        default="blend",
+    )
+
+    source_op_fuel: EnumProperty(
+        name="Fuel Operation",
+        description="How this emitter writes fuel into the simulation",
+        items=_SOURCE_OPERATIONS,
+        default="blend",
+    )
+
+    source_op_burn: EnumProperty(
+        name="Burn Operation",
+        description="How this emitter writes burn into the simulation",
+        items=_SOURCE_OPERATIONS,
+        default="blend",
+    )
+
     emitter_apply_post_pressure: BoolProperty(
         name="Apply After Pressure",
         description="Apply this emitter after the pressure solve instead of before it",
@@ -390,6 +428,12 @@ class FumarisSettings(PropertyGroup):
     preview_shadows: BoolProperty(
         name="Self Shadows",
         description="Calculate directional self-shadowing through the visible smoke density",
+        default=True,
+    )
+
+    preview_occlusion: BoolProperty(
+        name="Scene Occlusion",
+        description="Hide preview smoke behind solid objects using the viewport depth. Preview only; transparent objects still occlude",
         default=True,
     )
 
@@ -767,6 +811,54 @@ class FumarisSettings(PropertyGroup):
         subtype="FILE_PATH",
     )
 
+    volume_use_sequence: BoolProperty(
+        name="Sequence",
+        description="Treat the trailing number in the file name as a frame and load the file for each simulated frame. Frames without a file emit nothing",
+        default=False,
+    )
+
+    volume_frame_offset: IntProperty(
+        name="Frame Offset",
+        description="File frame loaded on scene frame 0; a positive value starts later in the sequence",
+        default=0,
+    )
+
+    volume_use_velocity: BoolProperty(
+        name="Emit Velocity Grid",
+        description="Push the simulation with the file's velocity grid at the Velocity coupling rate. Off keeps a stationary volume from affecting motion",
+        default=False,
+    )
+
+    volume_grid_density: StringProperty(
+        name="Density Grid",
+        description="Grid emitted as smoke; empty uses density, or the first float grid",
+        default="",
+    )
+
+    volume_grid_temperature: StringProperty(
+        name="Temperature Grid",
+        description="Grid emitted as temperature; empty uses temperature",
+        default="",
+    )
+
+    volume_grid_fuel: StringProperty(
+        name="Fuel Grid",
+        description="Grid emitted as fuel when Fuel is above zero; empty uses fuel",
+        default="",
+    )
+
+    volume_grid_burn: StringProperty(
+        name="Burn Grid",
+        description="Grid emitted as burn when Burn and its coupling are above zero; empty uses burn",
+        default="",
+    )
+
+    volume_grid_velocity: StringProperty(
+        name="Velocity Grid",
+        description="Vector grid emitted as velocity; empty uses velocity",
+        default="",
+    )
+
     mesh_emission_mode: EnumProperty(
         name="Mesh Emission",
         description="How a mesh emits smoke",
@@ -966,6 +1058,42 @@ class FumarisSettings(PropertyGroup):
         default=8.0,
         min=0.0,
         soft_max=500.0,
+    )
+
+    effector_mask_field: EnumProperty(
+        name="Mask By",
+        description="Scale this force by a simulated field, so it only acts where the smoke meets a condition",
+        items=(
+            ("none", "None", "Apply the force everywhere inside its falloff"),
+            ("smoke", "Smoke", "Smoke density at each point"),
+            ("temperature", "Temperature", "Simulation temperature from 0 to 1, as used by Ignition Temperature"),
+            ("fuel", "Fuel", "Unburned fuel at each point"),
+            ("burn", "Burn", "Active combustion at each point"),
+            ("speed", "Speed", "Smoke speed in meters per second"),
+        ),
+        default="none",
+    )
+
+    effector_mask_min: FloatProperty(
+        name="Start",
+        description="Field value where the force begins to act",
+        default=0.0,
+        soft_min=0.0,
+        soft_max=5.0,
+    )
+
+    effector_mask_max: FloatProperty(
+        name="Full",
+        description="Field value where the force reaches full strength",
+        default=1.0,
+        soft_min=0.0,
+        soft_max=5.0,
+    )
+
+    effector_mask_invert: BoolProperty(
+        name="Invert",
+        description="Act at full strength below Start and fade out toward Full, for example to confine a force to thin smoke",
+        default=False,
     )
 
     effector_samples: IntProperty(
@@ -1268,6 +1396,16 @@ class FumarisSettings(PropertyGroup):
 
     show_panel_falloff: BoolProperty(
         name="Falloff",
+        default=False,
+    )
+
+    show_panel_mask: BoolProperty(
+        name="Field Mask",
+        default=False,
+    )
+
+    show_volume_grids: BoolProperty(
+        name="Grid Names",
         default=False,
     )
 

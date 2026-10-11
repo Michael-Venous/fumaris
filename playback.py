@@ -1,4 +1,6 @@
 """Selection-independent controls for the existing sequential preview player."""
+import time
+
 import bpy
 from bpy.props import PointerProperty
 from .runtime import active_job, active_mode
@@ -39,8 +41,28 @@ def is_domain(obj):
     return bool(obj and hasattr(obj, 'fumaris') and obj.fumaris.smoke_object_type == 'domain')
 
 
+# One header redraw asks for the domain list several times (draw plus each
+# button's poll). A brief memo turns those into a single pass over the scene.
+_DOMAIN_SCAN_SECONDS = 0.05
+_domain_scan = (None, 0.0, ())
+
+
 def scene_domains(context):
-    return [obj for obj in context.view_layer.objects if is_domain(obj)]
+    global _domain_scan
+    view_layer = context.view_layer
+    if not hasattr(view_layer, "as_pointer"):
+        return [obj for obj in view_layer.objects if is_domain(obj)]
+    key = (view_layer.as_pointer(), len(view_layer.objects))
+    now = time.monotonic()
+    cached_key, cached_at, names = _domain_scan
+    if cached_key == key and now - cached_at < _DOMAIN_SCAN_SECONDS:
+        objects = view_layer.objects
+        domains = [objects.get(name) for name in names]
+        if all(is_domain(obj) for obj in domains):
+            return domains
+    domains = [obj for obj in view_layer.objects if is_domain(obj)]
+    _domain_scan = (key, now, tuple(obj.name for obj in domains))
+    return domains
 
 
 def resolve_domain(context):

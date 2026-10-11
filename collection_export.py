@@ -3,7 +3,12 @@
 from array import array
 from mathutils import Vector
 
-from .mesh_export import _cached_or_evaluated_mesh
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+from .mesh_export import _NoMeshGeometry, _cached_or_evaluated_mesh, _world_positions
 from .point_export import _append_point_defaults, _empty_point_arrays, _point_radius
 
 
@@ -92,12 +97,14 @@ def collection_mesh_arrays(participant, depsgraph, frame, fps):
         old = previous.get(identity, {})
         member = dict(old)
         matrix = obj.evaluated_get(depsgraph).matrix_world.copy()
-        local, faces, normals, emission_weights, _, _, _ = _cached_or_evaluated_mesh(
-            member, obj, depsgraph, props, matrix, frame
-        )
-        world = array("f")
-        for offset in range(0, len(local), 3):
-            world.extend(matrix @ Vector(local[offset:offset + 3]))
+        try:
+            local, faces, normals, emission_weights, _, _, _ = _cached_or_evaluated_mesh(
+                member, obj, depsgraph, props, matrix, frame
+            )
+        except _NoMeshGeometry:
+            # An empty member must not stop the rest of the collection emitting.
+            continue
+        world = _world_positions(local, matrix)
         # Vertex correspondence is only safe when topology matches for this object.
         old_world = old.get("world") if old.get("faces") == faces else None
         layout_changed = layout_changed or old_world is None
@@ -108,21 +115,42 @@ def collection_mesh_arrays(participant, depsgraph, frame, fps):
         positions.extend(world)
         flipped = matrix.to_3x3().determinant() < 0.0
         layout_changed = layout_changed or old.get("flipped", flipped) != flipped
-        if flipped:
-            # Baking a reflection into vertices reverses winding and mask corners.
-            for corner in range(0, len(faces), 3):
-                indices.extend(faces[corner + index] + offset for index in (0, 2, 1))
-                if emission_weights:
-                    weights.extend(emission_weights[corner + index] for index in (0, 2, 1))
-        else:
-            indices.extend(index + offset for index in faces)
-            weights.extend(emission_weights)
-        for index, position in enumerate(world):
-            velocity = normals[index] if normals else 0.0
+        motion_velocity_scale = props.motion_velocity_scale
+        if np is not None:
+            corners = np.frombuffer(faces, dtype=np.int32)
+            corner_weights = np.frombuffer(emission_weights, dtype=np.float32)
+            if flipped:
+                # Baking a reflection into vertices reverses winding and mask corners.
+                corners = corners.reshape((-1, 3))[:, (0, 2, 1)]
+                corner_weights = corner_weights.reshape((-1, 3))[:, (0, 2, 1)]
+            indices.frombytes((corners + np.int32(offset)).tobytes())
+            weights.frombytes(corner_weights.tobytes())
+            member_velocities = np.zeros(len(world), dtype=np.float64)
+            if normals:
+                member_velocities += np.frombuffer(normals, dtype=np.float32)
             if old_world is not None:
-                velocity += (position - old_world[index]) * inverse_dt * props.motion_velocity_scale
-            velocities.append(velocity)
-            any_velocity = any_velocity or abs(velocity) > 1e-12
+                member_velocities += (
+                    np.frombuffer(world, dtype=np.float32).astype(np.float64)
+                    - np.frombuffer(old_world, dtype=np.float32)
+                ) * inverse_dt * motion_velocity_scale
+            any_velocity = any_velocity or bool(
+                np.any(np.abs(member_velocities) > 1e-12))
+            velocities.frombytes(member_velocities.astype(np.float32).tobytes())
+        else:
+            if flipped:
+                for corner in range(0, len(faces), 3):
+                    indices.extend(faces[corner + index] + offset for index in (0, 2, 1))
+                    if emission_weights:
+                        weights.extend(emission_weights[corner + index] for index in (0, 2, 1))
+            else:
+                indices.extend(index + offset for index in faces)
+                weights.extend(emission_weights)
+            for index, position in enumerate(world):
+                velocity = normals[index] if normals else 0.0
+                if old_world is not None:
+                    velocity += (position - old_world[index]) * inverse_dt * motion_velocity_scale
+                velocities.append(velocity)
+                any_velocity = any_velocity or abs(velocity) > 1e-12
         member["world"] = world
         member["faces"] = faces
         member["flipped"] = flipped

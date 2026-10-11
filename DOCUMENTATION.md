@@ -1,12 +1,13 @@
-# Fumaris 1.2.0 Documentation
+# Fumaris 1.3.0 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.2.0 adds Quick Setup, optional Bake on Preview recording, faster
-first startup, and experimental smoke/fire Upres. See [CHANGELOG.md](CHANGELOG.md)
-for release details and the Updating section below before replacing an installation.
+Fumaris 1.3.0 adds per-channel source operations, field masks for effectors,
+scene occlusion in the live preview, and OpenVDB sources with grid mapping and
+file sequences. See [CHANGELOG.md](CHANGELOG.md) for release details and the
+Updating section below before replacing an installation.
 
 ## Requirements And Compatibility
 
@@ -105,6 +106,12 @@ the viewport or changing display settings rerenders the current Flow frame
 without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
 simulating while its viewport overlay is suppressed.
+
+`Scene Occlusion` (Preview Settings, on by default) hides preview smoke behind
+solid objects, using the viewport's own depth. It follows whatever the viewport
+draws, so wireframe objects and overlays that write depth also hide smoke, and
+a transparent object occludes like a solid one. Smoke in front of an object is
+drawn over it as before. Turn the option off to see the whole simulation.
 
 Most participant and simulation settings can be adjusted while preview is
 running and affect subsequent simulated frames. Changes that alter fundamental
@@ -265,6 +272,45 @@ Normal Velocity (Experimental) uses averaged mesh vertex normals, including
 particle and Geometry Nodes mesh instances. Emission can be uneven across faces
 and hard edges; primitive and point/volume modes do not support this control.
 
+### Source Operations
+
+Each of Smoke, Temperature, Fuel and Burn has an operation beside its rate under
+`Channel Coupling`. It decides how the emitter writes that channel:
+
+- `Blend` (default) pulls the field toward the emitter's value at the coupling
+  rate. Overlapping emitters settle on a mix, and an emitter with a low value
+  thins denser smoke that drifts into it. Existing scenes use this.
+- `Add` injects value × coupling every second and removes nothing. Overlapping
+  emitters accumulate, and smoke that stays inside the emitter keeps growing.
+- `Maximum` raises the field toward the emitter's value but never lowers what
+  is already there. Use it to keep a weak source from eroding a thick plume, or
+  to ignite with Temperature without cooling hotter fire.
+- `Replace` sets the field to the emitter's value everywhere inside it.
+
+A channel whose coupling is 0 stays off in every mode. Velocity and Expansion
+always blend. Colliders and outflows are unaffected.
+
+### OpenVDB Sources
+
+An OpenVDB emitter reads `density`, `temperature`, `fuel`, `burn` and
+`velocity` grids. `Grid Names` maps differently named grids from other tools;
+leave a name empty for the default. Fuel and Burn grids are read only when the
+emitter's Fuel or Burn value and coupling are above zero. Grids may each have
+their own transform and voxel size, as Fumaris bakes do for velocity; they are
+resampled onto the smoke grid.
+
+`Sequence` treats the trailing number in the file name as a frame and loads the
+matching file for every simulated frame. `Frame Offset` shifts which file a
+scene frame reads. Frames with no file emit nothing, so a sequence can start
+late or end early. To feed a Fumaris bake back in, pick any frame of the bake,
+enable `Sequence`, and keep the original cache untouched while it is in use.
+
+`Emit Velocity Grid` drives the simulation with the file's velocity at the
+Velocity coupling rate. It is off by default, so a stationary volume does not
+slow or push the fluid. Volume emitters start in `Blend`, which also pulls
+smoke inside the file's bounding box down toward the file's density; choose
+`Maximum` or `Add` for Smoke when the source should only contribute.
+
 Mesh `Surface` emission follows the evaluated surface and Emission Distance.
 `Volume` fills a closed mesh. A named vertex group or evaluated mesh attribute
 can vary emission strength continuously from 0 to 1. Mask Threshold skips
@@ -401,6 +447,17 @@ effector. Turbulence uses Strength as its amplitude, while Noise Amount mixes
 noise into Force, Wind, and Vortex.
 Effectors change velocity; they do not emit smoke.
 
+`Field Mask` limits any effector to where the simulated smoke meets a
+condition. Choose Smoke, Temperature, Fuel, Burn or Speed, then a `Start` value
+where the force begins and a `Full` value where it reaches full strength.
+`Invert` acts at full strength below Start and fades toward Full. The mask
+reads the live field on the GPU each step, so it follows the smoke rather than
+the effector's shape. Examples: turbulence masked by Temperature breaks up the
+flame but leaves cold smoke alone; turbulence masked by Smoke with Invert and a
+small range stirs only thin wisps; drag masked by Speed slows only fast gas.
+Temperature uses the simulation's 0 to 1 range, as Ignition Temperature does;
+Speed is in meters per second.
+
 ### Outflows
 
 Outflows remove smoke and combustion channels in a mesh surface or volume
@@ -463,7 +520,8 @@ For a faster or more memory-efficient simulation:
 - Unrecorded preview is temporary. Bake on Preview preserves VDB playback, but
   recorded VDBs are not solver checkpoints for resuming from arbitrary frames.
 - Volume preview shading is intentionally simpler than a final Blender volume
-  material and does not yet use scene depth for occlusion.
+  material. Scene Occlusion uses viewport depth, so transparent objects occlude
+  as if solid.
 - Stopped bakes cannot resume solver state.
 - Only one Fumaris preview or bake may run at a time.
 - Colliders are improved Flow collision emitters, not sealed pressure

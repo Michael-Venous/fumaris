@@ -5,6 +5,7 @@ import bpy
 import gpu
 from mathutils import Matrix
 from . import diagnostics
+from .protocol import SCENE_DEPTH_KEY
 from .utils import flame_temperature_range
 
 try:
@@ -21,6 +22,11 @@ _IMAGE_SHADER = None
 _IMAGE_BATCH = None
 _IMAGE_UPLOAD_BUFFER = None
 _IMAGE_UPLOAD_SHAPE = None
+# Latest viewport depth per region, resampled to that region's preview size.
+_SCENE_DEPTHS = {}
+_SCENE_DEPTH_SERIAL = 0
+_SCENE_DEPTH_QUIET_UNTIL = 0.0
+_SCENE_DEPTH_FAILED = False
 
 
 def capture_volume_preview(context, domain):
@@ -72,7 +78,18 @@ def capture_volume_preview(context, domain):
         "exposure": float(props.preview_exposure),
         "tone_mapping": props.preview_tone_mapping,
         "light_direction": list(props.preview_light_direction),
+        **_scene_depth_request(props, int(region.as_pointer()), width, height),
     }
+
+
+def _scene_depth_request(props, view_id, width, height):
+    if not getattr(props, "preview_occlusion", False):
+        return {}
+    depth = _SCENE_DEPTHS.get(view_id)
+    if depth is None or depth["size"] != (width, height):
+        # The draw handler has not seen this size yet; it triggers a rerender.
+        return {}
+    return {"depth_serial": depth["serial"], SCENE_DEPTH_KEY: depth["data"]}
 
 
 def volume_preview_signature(preview):
@@ -102,6 +119,7 @@ def volume_preview_signature(preview):
         round(float(preview.get("exposure", 0.0)), 7),
         preview.get("tone_mapping", "none"),
         rounded(preview.get("light_direction", (1.0, 1.0, 1.0))),
+        preview.get("depth_serial"),
     )
 
 
@@ -131,6 +149,7 @@ def update_volume_image(domain, data, payload):
         "texture": None,
     }
     _sync_draw_handlers()
+    _quiet_scene_depth()
     _tag_viewports()
     return (time.perf_counter() - started) * 1000.0
 
@@ -139,8 +158,17 @@ def show_preview_payload(domain, data, payload):
     preview_type = (data.get("preview") or {}).get("type")
     if preview_type == "volume_rgba8":
         return update_volume_image(domain, data, payload)
-    clear_preview(domain)
+    # Bakes without a preview complete every frame here; only clear a live image.
+    if _has_preview(domain):
+        clear_preview(domain)
     return 0.0
+
+
+def _has_preview(domain):
+    name = domain if isinstance(domain, str) else domain.name
+    return name in _PREVIEWS or any(
+        preview.get("domain") == domain for preview in _PREVIEWS.values()
+    )
 
 
 def clear_preview(domain):
@@ -210,6 +238,12 @@ def _draw_volume_previews():
     if not previews:
         return
 
+    for preview in previews:
+        settings = getattr(preview.get("domain"), "fumaris", None)
+        if getattr(settings, "preview_occlusion", False) and preview.get("width"):
+            _capture_scene_depth(view_id, preview["width"], preview["height"])
+            break
+
     shader = _image_shader()
     batch = _image_batch()
     gpu.state.blend_set("ALPHA_PREMULT")
@@ -224,6 +258,47 @@ def _draw_volume_previews():
             batch.draw(shader)
     finally:
         gpu.state.blend_set("NONE")
+
+
+def _quiet_scene_depth():
+    """Redraws caused by a new preview image must not request another one."""
+    global _SCENE_DEPTH_QUIET_UNTIL
+    _SCENE_DEPTH_QUIET_UNTIL = time.monotonic() + 0.25
+
+
+def _capture_scene_depth(view_id, width, height):
+    """Store the viewport's depth so the bridge can hide smoke behind objects."""
+    global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_FAILED
+    if np is None or _SCENE_DEPTH_FAILED:
+        return
+    try:
+        x, y, region_width, region_height = gpu.state.viewport_get()
+        buffer = gpu.state.active_framebuffer_get().read_depth(
+            x, y, region_width, region_height)
+        depth = np.frombuffer(buffer, dtype=np.float32).reshape(
+            (region_height, region_width))
+    except Exception as error:
+        # Unsupported on this backend: keep the unoccluded preview working.
+        _SCENE_DEPTH_FAILED = True
+        print(f"Fumaris scene occlusion is unavailable: {error}")
+        return
+    rows = ((np.arange(height) + 0.5) * (region_height / height)).astype(np.intp)
+    columns = ((np.arange(width) + 0.5) * (region_width / width)).astype(np.intp)
+    # Blender's rows run bottom to top; the preview image is top row first.
+    sampled = np.ascontiguousarray(depth[::-1][rows[:, None], columns[None, :]])
+    if sampled.max() < 0.5:
+        # Standard depth keeps even nearby geometry close to 1. A buffer that
+        # never gets there is reversed (far = 0); the bridge expects far = 1.
+        sampled = 1.0 - sampled
+    previous = _SCENE_DEPTHS.get(view_id)
+    same_size = previous is not None and previous["size"] == (width, height)
+    if same_size and np.array_equal(previous["data"], sampled):
+        return
+    serial = previous["serial"] if previous else 0
+    if not same_size or time.monotonic() >= _SCENE_DEPTH_QUIET_UNTIL:
+        _SCENE_DEPTH_SERIAL += 1
+        serial = _SCENE_DEPTH_SERIAL
+    _SCENE_DEPTHS[view_id] = {"size": (width, height), "data": sampled, "serial": serial}
 
 
 def _volume_texture(preview):
@@ -283,6 +358,7 @@ def _sync_draw_handlers():
     if not needs_images:
         _IMAGE_UPLOAD_BUFFER = None
         _IMAGE_UPLOAD_SHAPE = None
+        _SCENE_DEPTHS.clear()
     if needs_images and _IMAGE_DRAW_HANDLE is None:
         _IMAGE_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
             _draw_volume_previews,

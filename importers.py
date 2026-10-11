@@ -1,5 +1,5 @@
-import glob
 import os
+import re
 import shutil
 import time
 
@@ -14,6 +14,7 @@ from .utils import flame_temperature_range
 
 PREFIX = "fumaris_"
 LEGACY_PREFIX = "plume_forge_"
+_FRAME_DIGITS = re.compile(r"-?[0-9]+")
 IMPORT_DIRECTORY = ".fumaris_import"
 VOLUME_MARKER = "fumaris_volume"
 VOLUME_PREFIX_MARKER = "fumaris_volume_prefix"
@@ -102,16 +103,14 @@ def delete_generated_data(directory, prefix=PREFIX):
 
     if os.path.isdir(directory):
         for candidate_prefix in {prefix, LEGACY_PREFIX}:
-            for path in glob.glob(
-                os.path.join(directory, f"{candidate_prefix}*.vdb")
-            ):
+            for path in _frame_files(directory, candidate_prefix):
                 os.remove(path)
             delete_temporary_writes(directory, candidate_prefix)
         _delete_import_copies(directory)
 
 
 def delete_temporary_writes(directory, prefix=PREFIX):
-    for path in glob.glob(os.path.join(directory, f"{prefix}*.vdb.tmp")):
+    for path in _frame_files(directory, prefix, ".vdb.tmp"):
         try:
             os.remove(path)
         except FileNotFoundError:
@@ -123,20 +122,14 @@ def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
     directory = os.path.normpath(directory)
     if legacy_directory == directory:
         return False
-    legacy_files = sorted(
-        glob.glob(os.path.join(legacy_directory, f"{prefix}*.vdb"))
-    )
+    legacy_files = _frame_files(legacy_directory, prefix)
     source_prefix = prefix
     if not legacy_files and prefix != LEGACY_PREFIX:
-        legacy_files = sorted(
-            glob.glob(
-                os.path.join(legacy_directory, f"{LEGACY_PREFIX}*.vdb")
-            )
-        )
+        legacy_files = _frame_files(legacy_directory, LEGACY_PREFIX)
         source_prefix = LEGACY_PREFIX
     if not legacy_files:
         return False
-    if glob.glob(os.path.join(directory, f"{prefix}*.vdb")):
+    if _frame_files(directory, prefix):
         return False
 
     os.makedirs(directory, exist_ok=True)
@@ -424,23 +417,32 @@ def _grid_metadata(path):
         bpy.data.volumes.remove(volume)
 
 
-def _frame_number(path, prefix):
+def _frame_number(path, prefix, suffix=".vdb"):
     name = os.path.basename(path)
-    if not name.startswith(prefix) or not name.endswith(".vdb"):
+    if not name.startswith(prefix) or not name.endswith(suffix):
         return None
+    digits = name[len(prefix):len(name) - len(suffix)]
+    if not _FRAME_DIGITS.fullmatch(digits):
+        return None
+    return int(digits)
+
+
+def _frame_files(directory, prefix, suffix=".vdb"):
+    """Bridge-written frame files only; other files sharing the prefix are the user's."""
     try:
-        return int(name[len(prefix):-4])
-    except ValueError:
-        return None
+        with os.scandir(directory) as entries:
+            numbered = [
+                (frame, entry.path)
+                for entry in entries
+                if (frame := _frame_number(entry.name, prefix, suffix)) is not None
+            ]
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    return [path for _frame, path in sorted(numbered)]
 
 
 def _sequence_files(directory, prefix):
-    numbered = []
-    for path in glob.glob(os.path.join(directory, f"{prefix}*.vdb")):
-        frame = _frame_number(path, prefix)
-        if frame is not None:
-            numbered.append((frame, path))
-    return [path for _frame, path in sorted(numbered)]
+    return _frame_files(directory, prefix)
 
 
 def _stage_import_sequence(directory, files, prefix=PREFIX):
@@ -510,7 +512,13 @@ def _restore_selection(selected, active):
 
 def _configure_volume(volume_object, filepath, frame_count, frame_start):
     volume = volume_object.data
-    volume.filepath = bpy.path.relpath(filepath) if bpy.data.filepath else filepath
+    volume.filepath = filepath
+    if bpy.data.filepath:
+        try:
+            volume.filepath = bpy.path.relpath(filepath)
+        except ValueError:
+            # Windows cannot express a path on another drive relative to the file.
+            pass
     volume.is_sequence = True
     volume.frame_offset = 0
     volume.frame_start = frame_start

@@ -2,6 +2,45 @@
 
 All notable customer-facing changes are recorded here.
 
+## 1.3.0 — 2026-10-11
+
+New controls. Existing scenes simulate as before: every new simulation option
+defaults to the 1.2.1 behavior.
+
+- **Source operations.** Smoke, Temperature, Fuel and Burn each choose Blend
+  (the existing behavior), Add, Maximum or Replace under Channel Coupling.
+- **Field masks for effectors.** Any force can be limited by the simulated
+  Smoke, Temperature, Fuel, Burn or Speed, with an Invert option.
+- **Scene Occlusion.** The live preview hides smoke behind solid objects using
+  the viewport depth. On by default; switch it off in Preview Settings.
+- **OpenVDB sources.** Map grid names from other tools, read Fuel and Burn
+  grids, play numbered file sequences with a frame offset, and optionally emit
+  the file's velocity grid. Grids with their own voxel size, including the
+  velocity grid of a Fumaris bake, are now placed correctly instead of being
+  read at the smoke grid's coordinates.
+
+Fixes
+
+- Delete, Bake and cache migration now touch only numbered Fumaris frame files.
+  Other VDBs sharing the output prefix in the Output Directory are left alone, and
+  folders containing `[`, `]`, `*` or `?` work.
+- A bake that runs out of disk space now stops with an error instead of publishing
+  truncated, unreadable VDB frames.
+- Stopping a bake no longer leaves the interrupted frame behind as a `.tmp` file.
+- A Collection Mesh source no longer fails when one member has no faces.
+- Importing a bake on Windows no longer fails when the cache is on another drive.
+- A duplicated simulation no longer takes over the original's cache.
+
+Performance
+
+- Faster per-frame export for particle, Collection Mesh, deforming, masked and
+  Geometry Nodes mesh emitters; faster VDB conversion and VDB-source loading.
+- Static meshes are uploaded once when a simulation starts on frame 0, and mesh
+  geometry is no longer copied inside the solver bridge each frame.
+- Moving convex colliders skip their repeated topology check.
+
+Requires Blender 5.2+. Stop simulations and restart Blender after updating.
+
 ## 1.2.1 — 2026-10-01
 
 - Fix baking when an emitter has no particles or active smoke on an initial frame.

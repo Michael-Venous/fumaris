@@ -24,8 +24,20 @@ PREVIEW_COMPLETE = 107
 CACHE_FLUSHED = 108
 
 
+# Private key holding a preview request's scene depth array until it is packed.
+SCENE_DEPTH_KEY = "_scene_depth"
+
+
 class ProtocolError(RuntimeError):
     pass
+
+
+def split_scene_depth(preview):
+    """Return a JSON-safe preview request and its scene depth array, if any."""
+    depth = preview.get(SCENE_DEPTH_KEY) if preview else None
+    if depth is None:
+        return preview, None
+    return {key: value for key, value in preview.items() if key != SCENE_DEPTH_KEY}, depth
 
 
 def write_message(stream, message_type, data=None, payload=b""):
@@ -63,7 +75,11 @@ def read_message(stream):
 
 
 def _read_exactly(stream, size):
-    chunks = bytearray()
+    chunk = stream.read(size)
+    if len(chunk) == size:
+        # Buffered pipes normally satisfy the request without extra copies.
+        return chunk
+    chunks = bytearray(chunk)
     while len(chunks) < size:
         chunk = stream.read(size - len(chunks))
         if not chunk:

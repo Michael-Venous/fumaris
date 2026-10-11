@@ -147,10 +147,13 @@ def _absolute_cache_directory(configured, fallback_name, *, create=True):
 def cache_identity_for_object(obj):
     props = obj.fumaris
     identity = props.cache_id.strip()
+    # A duplicated domain copies cache_id. Only a newer copy takes a fresh
+    # identity, so the original keeps its bake whichever is queried first.
     duplicate = any(
         other is not obj
         and hasattr(other, "fumaris")
         and getattr(other.fumaris, "cache_id", "").strip() == identity
+        and getattr(other, "session_uid", 0) < getattr(obj, "session_uid", 0)
         for other in bpy.data.objects
     ) if identity else False
     if not identity or duplicate:

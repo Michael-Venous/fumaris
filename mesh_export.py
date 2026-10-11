@@ -14,6 +14,34 @@ class _NoMeshGeometry(RuntimeError):
     """No direct surface was found; Geometry Nodes may still contain instances."""
 
 
+def _transformed_vectors(local, matrix, columns=4):
+    """Apply a mathutils matrix to an (N, 3) float32 array.
+
+    Matches mathutils' float32 products and double accumulator. A float32
+    matrix multiply changes rounding and can perturb a sim.
+    """
+    transform = np.asarray(matrix, dtype=np.float32)
+    world = np.zeros((len(local), 3), dtype=np.float64)
+    for axis in range(3):
+        world += local[:, axis, None] * transform[:3, axis]
+    if columns == 4:
+        world += transform[:3, 3]
+    return world.astype(np.float32)
+
+
+def _world_positions(local, matrix):
+    """World-space copy of a flat float32 xyz array."""
+    if np is None:
+        world = array("f")
+        for offset in range(0, len(local), 3):
+            world.extend(matrix @ Vector(local[offset:offset + 3]))
+        return world
+    world = array("f")
+    world.frombytes(_transformed_vectors(
+        np.frombuffer(local, dtype=np.float32).reshape((-1, 3)), matrix).tobytes())
+    return world
+
+
 def _evaluated_mesh(obj, depsgraph, props, matrix):
     evaluated = obj.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
@@ -31,6 +59,9 @@ def _evaluated_mesh(obj, depsgraph, props, matrix):
         if mask is None:
             indices = array("i", [0]) * (3 * len(mesh.loop_triangles))
             mesh.loop_triangles.foreach_get("vertices", indices)
+        elif np is not None:
+            indices, emission_weights = _masked_triangles(
+                mesh, mask, props.mesh_emission_mask_threshold)
         else:
             raw_indices = []
             for triangle in mesh.loop_triangles:
@@ -44,6 +75,7 @@ def _evaluated_mesh(obj, depsgraph, props, matrix):
                 raw_indices.extend(triangle.vertices)
                 emission_weights.extend(weights)
             indices = array("i", raw_indices)
+        if mask is not None:
             if not indices:
                 name = props.mesh_emission_mask_attribute.strip()
                 raise RuntimeError(
@@ -139,9 +171,7 @@ def _geometry_nodes_mesh(obj, depsgraph, props):
     except _NoMeshGeometry:
         direct_positions = direct_indices = direct_velocities = None
     if direct_positions:
-        for offset in range(0, len(direct_positions), 3):
-            position = matrix @ Vector(direct_positions[offset:offset + 3])
-            positions.extend((position.x, position.y, position.z))
+        positions.extend(_world_positions(direct_positions, matrix))
         indices.extend(direct_indices)
         velocities.extend(direct_velocities)
         emission_weights.extend(direct_weights)
@@ -226,14 +256,8 @@ def _instance_mesh(obj, depsgraph, label, *, allow_self, normal_velocity=0.0):
         if np is not None:
             # Consume the current iterator's matrix immediately. Depsgraph
             # instance wrappers must not be retained beyond their iteration.
-            transform = np.asarray(instance.matrix_world, dtype=np.float32)
-            # Match mathutils' float32 products and double accumulator. A
-            # float32 matrix multiply changes rounding and can perturb a sim.
-            world = np.zeros((len(local), 3), dtype=np.float64)
-            for axis in range(3):
-                world += local[:, axis, None] * transform[:3, axis]
-            world += transform[:3, 3]
-            positions.frombytes(world.astype(np.float32).tobytes())
+            positions.frombytes(
+                _transformed_vectors(local, instance.matrix_world).tobytes())
             if len(triangles):
                 if offset + len(local) - 1 > 2147483647:
                     raise OverflowError("Instance mesh indices exceed signed 32-bit range")
@@ -250,6 +274,63 @@ def _instance_mesh(obj, depsgraph, label, *, allow_self, normal_velocity=0.0):
     return positions, indices, velocities
 
 
+def _masked_triangles(mesh, mask, threshold):
+    """Triangle corners and their mask weights, dropping faces below `threshold`."""
+    domain, values = mask
+    values = np.frombuffer(values, dtype=np.float32)
+    count = len(mesh.loop_triangles)
+    corners = np.empty(count * 3, dtype=np.int32)
+    mesh.loop_triangles.foreach_get("vertices", corners)
+    corners = corners.reshape((-1, 3))
+    if domain == "FACE":
+        faces = np.empty(count, dtype=np.int32)
+        mesh.loop_triangles.foreach_get("polygon_index", faces)
+        weights = np.repeat(values[faces], 3).reshape((-1, 3))
+    elif domain == "CORNER":
+        loops = np.empty(count * 3, dtype=np.int32)
+        mesh.loop_triangles.foreach_get("loops", loops)
+        weights = values[loops].reshape((-1, 3))
+    else:
+        weights = values[corners]
+    # Averaged in double precision, as the per-triangle Python sum was.
+    keep = ~(weights.sum(axis=1, dtype=np.float64) / 3.0 < threshold)
+    indices = array("i")
+    indices.frombytes(np.ascontiguousarray(corners[keep]).tobytes())
+    emission_weights = array("f")
+    emission_weights.frombytes(np.ascontiguousarray(weights[keep]).tobytes())
+    return indices, emission_weights
+
+
+def _bulk_mask_weights(attribute):
+    """Clamped attribute values read in bulk, or None for unsupported data."""
+    count = len(attribute.data)
+    if np is None or not count:
+        return None
+    first = attribute.data[0]
+    for name, width in (("value", 1), ("vector", None), ("color", 4)):
+        if not hasattr(first, name):
+            continue
+        if width is None:
+            width = len(first.vector)
+        values = np.empty(count * width, dtype=np.float32)
+        try:
+            attribute.data.foreach_get(name, values)
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return None
+        weights = array("f")
+        weights.frombytes(np.clip(
+            values.reshape((count, width))[:, 0], 0.0, 1.0).astype(np.float32).tobytes())
+        return weights
+    return None
+
+
+def _mask_weights(attribute):
+    weights = _bulk_mask_weights(attribute)
+    if weights is None:
+        weights = array("f", (_mask_weight(value) for value in attribute.data))
+    return weights
+
+
 def _mesh_emission_mask(obj, mesh, props):
     name = str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip()
     if not name:
@@ -258,11 +339,11 @@ def _mesh_emission_mask(obj, mesh, props):
     attribute = mesh.attributes.get(name)
     if attribute is not None:
         if attribute.domain == "FACE":
-            return "FACE", array("f", (_mask_weight(value) for value in attribute.data))
+            return "FACE", _mask_weights(attribute)
         if attribute.domain in {"POINT", "VERTEX"}:
-            return "POINT", array("f", (_mask_weight(value) for value in attribute.data))
+            return "POINT", _mask_weights(attribute)
         if attribute.domain == "CORNER":
-            return "CORNER", array("f", (_mask_weight(value) for value in attribute.data))
+            return "CORNER", _mask_weights(attribute)
 
     group = obj.vertex_groups.get(name)
     if group is None:
@@ -340,6 +421,27 @@ def _add_mesh_motion_velocities(velocities, positions, previous_positions, matri
         return
     velocity_scale = max(0.0, context_fps) * scale
     rotation_scale = matrix.to_3x3()
+    if np is not None:
+        deformation = (
+            np.frombuffer(positions, dtype=np.float32)
+            - np.frombuffer(previous_positions, dtype=np.float32)
+        ).reshape((-1, 3))
+        deformation_velocities = (
+            _transformed_vectors(deformation, rotation_scale, columns=3)
+            * np.float32(velocity_scale)
+        )
+        squared = (deformation_velocities * deformation_velocities).sum(
+            axis=1, dtype=np.float64)
+        if not np.any(squared > 1e-12):
+            return
+        if velocities:
+            current = np.frombuffer(velocities, dtype=np.float32)
+            current[:] = (
+                current.astype(np.float64) + deformation_velocities.reshape(-1)
+            ).astype(np.float32)
+        else:
+            velocities.frombytes(deformation_velocities.tobytes())
+        return
     deformation_velocities = array("f", [0.0]) * len(positions)
     changed = False
     for offset in range(0, len(positions), 3):
@@ -363,7 +465,13 @@ def _add_mesh_initial_velocity(velocities, positions, matrix, initial_velocity):
     if initial.length_squared <= 1e-12:
         return
     if not velocities:
-        velocities.extend((0.0 for _ in range(len(positions))))
+        velocities.frombytes(bytes(len(positions) * velocities.itemsize))
+    if np is not None:
+        current = np.frombuffer(velocities, dtype=np.float32).reshape((-1, 3))
+        current[:] = (
+            current.astype(np.float64) + (initial.x, initial.y, initial.z)
+        ).astype(np.float32)
+        return
     for offset in range(0, len(positions), 3):
         velocities[offset] += initial.x
         velocities[offset + 1] += initial.y

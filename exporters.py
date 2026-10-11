@@ -1,10 +1,16 @@
 import os
+import re
 import sys
 from array import array
 from dataclasses import dataclass
 
 import bpy
 from mathutils import Matrix, Vector
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from .diagnostics import console_log
 from .collection_export import collection_mesh_arrays, collection_point_arrays
@@ -24,13 +30,21 @@ from .participants import (
     participants as _participants,
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
+from .protocol import split_scene_depth
 from .utils import executable_path, output_directory_for_object, simulation_frame_range
+
+_FRAME_ZERO_VERSION = 1 << 40
+_SEQUENCE_NAME = re.compile(r"^(.*?)(-?)(\d+)(\.[^.]+)$")
+# Bit order of Flow's density channels in the bridge's value_ops.
+_SOURCE_OPERATION_CHANNELS = ("temperature", "fuel", "burn", "smoke")
+# Coupling that reaches the target within any solver step: Replace.
+_REPLACE_COUPLE_RATE = 1.0e6
 
 
 @dataclass(frozen=True)
 class FramePacket:
     header: dict
-    payload: bytes
+    payload: bytes | bytearray
 
 
 def bridge_executable():
@@ -124,8 +138,14 @@ def build_frame(
 ):
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
-    preview_request = volume_preview or {"valid": False}
+    preview_request, scene_depth = split_scene_depth(volume_preview or {"valid": False})
     preview_mode = "volume" if preview_enabled and preview_request.get("valid", False) else "none"
+    if scene_depth is not None and preview_mode == "volume":
+        preview_request = {
+            **preview_request,
+            "scene_depth": {"offset": len(payload), "count": int(scene_depth.size)},
+        }
+        payload.extend(scene_depth.tobytes())
     meshes = []
     boxes = []
     spheres = []
@@ -170,7 +190,7 @@ def build_frame(
             "effectors": effectors,
             "volumes": volumes,
         },
-        bytes(payload),
+        payload,
     )
 
 
@@ -326,7 +346,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
         _participant_channels(
             props,
             participant["role"],
-            velocity_active=bool(velocities) or _transform_moved(participant, matrix),
+            # Always evaluate the move so the stored matrix stays current.
+            velocity_active=_transform_moved(participant, matrix) or bool(velocities),
         )
         if enabled
         else _disabled_channels()
@@ -345,15 +366,15 @@ def _mesh_state(participant, depsgraph, payload, frame):
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
         "motion_substeps": props.motion_substeps,
         **channels,
-        "positions": {**position_section, "version": position_version},
-        "indices": {**index_section, "version": topology_version},
+        "positions": {**position_section, "version": _data_version(position_version)},
+        "indices": {**index_section, "version": _data_version(topology_version)},
     }
     if velocity_section:
-        state["velocities"] = {**velocity_section, "version": position_version}
+        state["velocities"] = {**velocity_section, "version": _data_version(position_version)}
     if props.participant_type == "collection_mesh" and participant.get("collection_mesh_layout_changed"):
         state["motion_substeps"] = 1
     if weight_section:
-        state["emission_weights"] = {**weight_section, "version": frame}
+        state["emission_weights"] = {**weight_section, "version": _data_version(frame)}
     return state
 
 
@@ -449,21 +470,25 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
     props = obj.fumaris
     matrix = obj.evaluated_get(depsgraph).matrix_world
     enabled = bool(props.participant_enabled)
+    disabled = {
+        "id": participant["id"],
+        "enabled": False,
+        "filepath": "",
+        "file_version": 0,
+        "local_to_world": [value for row in matrix for value in row],
+        **_disabled_channels(),
+    }
     if not enabled:
-        return {
-            "id": participant["id"],
-            "enabled": False,
-            "filepath": "",
-            "file_version": 0,
-            "local_to_world": [value for row in matrix for value in row],
-            **_disabled_channels(),
-        }
-
-    filepath = (
-        _stage_gn_volume(obj, depsgraph, frame, volume_stage_dir)
-        if _is_geometry_nodes(props, "volume")
-        else bpy.path.abspath(props.volume_filepath)
-    )
+        return disabled
+    if _is_geometry_nodes(props, "volume"):
+        filepath = _stage_gn_volume(obj, depsgraph, frame, volume_stage_dir)
+    else:
+        filepath = bpy.path.abspath(props.volume_filepath)
+        if props.volume_use_sequence:
+            filepath = _sequence_frame_path(filepath, frame + props.volume_frame_offset)
+            if not os.path.isfile(filepath):
+                # Outside the sequence's range this emitter contributes nothing.
+                return disabled
 
     if not filepath or not os.path.isfile(filepath):
         raise RuntimeError(f"{obj.name} did not provide a volume VDB")
@@ -475,9 +500,39 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
         "enabled": True,
         "filepath": filepath,
         "file_version": file_version,
+        "grids": _volume_grid_names(props),
         "local_to_world": [value for row in matrix for value in row],
-        **_participant_channels(props, participant["role"]),
+        **_participant_channels(
+            props,
+            participant["role"],
+            velocity_active=bool(getattr(props, "volume_use_velocity", False)),
+        ),
     }
+
+
+def _volume_grid_names(props):
+    return {
+        name: (str(getattr(props, f"volume_grid_{name}", "") or "").strip() or name)
+        for name in ("density", "temperature", "fuel", "burn", "velocity")
+    }
+
+
+def _sequence_frame_path(filepath, frame):
+    """Replace the trailing frame number of a VDB path, keeping its padding."""
+    directory, name = os.path.split(filepath)
+    match = _SEQUENCE_NAME.match(name)
+    if match is None:
+        return filepath
+    head, sign, digits, extension = match.groups()
+    # Fumaris writes negative frames as prefix-0001; elsewhere '-' separates.
+    if sign and not (head.endswith(("_", ".")) or not head):
+        head, sign = head + sign, ""
+    width = len(digits)
+    if frame < 0:
+        number = f"-{-frame:0{width}d}"
+    else:
+        number = f"{frame:0{width}d}"
+    return os.path.join(directory, f"{head}{number}{extension}")
 
 
 def _stage_gn_volume(obj, depsgraph, frame, directory):
@@ -560,7 +615,22 @@ def _effector_state(participant, depsgraph):
         "noise_w": props.effector_noise_w,
         "noise_seed": props.effector_noise_seed,
         "samples": max(8, min(256, props.effector_samples)),
+        **_effector_mask(props),
     }
+
+
+def _effector_mask(props):
+    channel = _EFFECTOR_MASK_CHANNELS.get(getattr(props, "effector_mask_field", "none"), 0)
+    if not channel:
+        return {"mask_channel": 0}
+    start, full = float(props.effector_mask_min), float(props.effector_mask_max)
+    if props.effector_mask_invert:
+        # A reversed range fades the force out as the field rises.
+        start, full = full, start
+    return {"mask_channel": channel, "mask_min": start, "mask_max": full}
+
+
+_EFFECTOR_MASK_CHANNELS = {"temperature": 1, "fuel": 2, "burn": 3, "smoke": 4, "speed": 5}
 
 
 def _effector_type_id(name):
@@ -595,6 +665,12 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
         positions, radii, velocities, values = _empty_point_arrays()
 
     _disable_inactive_point_velocity_coupling(velocities, values)
+    value_ops, replaced = _source_operations(props)
+    for name in replaced:
+        rates = values.get(f"couple_rate_{name}s")
+        if rates:
+            values[f"couple_rate_{name}s"] = array(
+                "f", (_REPLACE_COUPLE_RATE if rate > 0.0 else 0.0 for rate in rates))
 
     sections = {
         "positions": _versioned(payload, positions, frame),
@@ -615,6 +691,7 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
         "trace_samples": 0,
         "motion_substeps": props.motion_substeps,
         "apply_post_pressure": props.emitter_apply_post_pressure,
+        "value_ops": value_ops,
         **sections,
     }
 
@@ -668,7 +745,28 @@ def _participant_channels(props, role, matrix=None, *, velocity_active=False):
         # A zero target with a positive Flow coupling rate is a drag field.
         # Static sources should emit no velocity rather than pinning nearby fluid.
         channels["couple_rate_velocity"] = 0.0
+    if role == "emitter":
+        value_ops, replaced = _source_operations(props)
+        channels["value_ops"] = value_ops
+        for name in replaced:
+            if channels[f"couple_rate_{name}"] > 0.0:
+                channels[f"couple_rate_{name}"] = _REPLACE_COUPLE_RATE
     return channels
+
+
+def _source_operations(props):
+    """Flow value-op bits and the channels that are in Replace mode."""
+    value_ops = 0
+    replaced = []
+    for channel, name in enumerate(_SOURCE_OPERATION_CHANNELS):
+        operation = getattr(props, f"source_op_{name}", "blend")
+        if operation == "add":
+            value_ops |= 1 << channel
+        elif operation == "max":
+            value_ops |= 1 << (4 + channel)
+        elif operation == "replace":
+            replaced.append(name)
+    return value_ops, replaced
 
 
 def _transform_moved(participant, matrix):
@@ -691,7 +789,14 @@ def _disable_inactive_point_velocity_coupling(velocities, values):
     coupling = values.get("couple_rate_velocities")
     if coupling is None:
         return
-    for index in range(min(len(coupling), len(velocities) // 3)):
+    count = min(len(coupling), len(velocities) // 3)
+    if np is not None:
+        vectors = np.frombuffer(velocities, dtype=np.float32, count=count * 3)
+        active = np.any(
+            np.abs(vectors.astype(np.float64)).reshape((-1, 3)) > 1e-6, axis=1)
+        np.frombuffer(coupling, dtype=np.float32, count=count)[~active] = 0.0
+        return
+    for index in range(count):
         offset = index * 3
         if not _vector_active(velocities[offset:offset + 3]):
             coupling[index] = 0.0
@@ -738,8 +843,14 @@ def _mesh_distances(props, role):
     return -distance, distance
 
 
+def _data_version(frame):
+    # Flow and the collider cache treat version 0 as never cached, which
+    # would re-upload a static mesh every frame of a simulation begun there.
+    return int(frame) or _FRAME_ZERO_VERSION
+
+
 def _versioned(payload, values, frame):
-    return {**_append_array(payload, values), "version": frame}
+    return {**_append_array(payload, values), "version": _data_version(frame)}
 
 
 def _append_array(payload, values):

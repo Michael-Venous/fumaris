@@ -101,6 +101,19 @@ def _draw_emitter_shape(box, obj, props):
             box.label(text="Uses evaluated Geometry Nodes volume grids")
     elif props.participant_type == "openvdb":
         box.prop(props, "volume_filepath")
+        row = box.row(align=True)
+        row.prop(props, "volume_use_sequence")
+        sub = row.row(align=True)
+        sub.enabled = props.volume_use_sequence
+        sub.prop(props, "volume_frame_offset")
+        box.prop(props, "volume_use_velocity")
+        grids, grids_open = _nested_foldout(box, props, "show_volume_grids", "Grid Names")
+        if grids_open:
+            grids.prop(props, "volume_grid_density", text="Smoke")
+            grids.prop(props, "volume_grid_temperature", text="Temperature")
+            grids.prop(props, "volume_grid_fuel", text="Fuel")
+            grids.prop(props, "volume_grid_burn", text="Burn")
+            grids.prop(props, "volume_grid_velocity", text="Velocity")
     elif props.participant_type == "collection_points":
         box.prop(props, "source_collection")
         box.prop(props, "collection_point_center")
@@ -145,10 +158,10 @@ def _draw_emitter(layout, obj, props):
     box = layout.box()
     column, opened = _nested_foldout(box, props, "show_emitter_coupling", "Channel Coupling")
     if opened:
-        column.prop(props, "couple_rate_smoke")
-        column.prop(props, "couple_rate_temperature")
-        column.prop(props, "couple_rate_fuel")
-        column.prop(props, "couple_rate_burn")
+        for channel in ("smoke", "temperature", "fuel", "burn"):
+            row = column.row(align=True)
+            row.prop(props, f"couple_rate_{channel}")
+            row.prop(props, f"source_op_{channel}", text="")
         column.prop(props, "couple_rate_velocity")
         column.prop(props, "couple_rate_divergence")
 
@@ -208,6 +221,15 @@ def _draw_effector(layout, props):
             noise.prop(props, "effector_noise_size")
             noise.prop(props, "effector_noise_w")
             noise.prop(props, "effector_noise_seed")
+
+    mask, mask_open = _nested_foldout(box, props, "show_panel_mask", "Field Mask")
+    if mask_open:
+        mask.prop(props, "effector_mask_field")
+        if props.effector_mask_field != "none":
+            row = mask.row(align=True)
+            row.prop(props, "effector_mask_min")
+            row.prop(props, "effector_mask_max")
+            mask.prop(props, "effector_mask_invert")
 
     falloff, falloff_open = _nested_foldout(box, props, "show_panel_falloff", "Falloff")
     if falloff_open:
@@ -487,6 +509,7 @@ def _draw_domain(layout, scene, props):
         preview.prop(props, "preview_max_ray_steps")
         preview.prop(props, "preview_tone_mapping")
         preview.prop(props, "preview_exposure", slider=True)
+        preview.prop(props, "preview_occlusion")
         preview.prop(props, "preview_shadows")
         light = preview.column()
         light.enabled = props.preview_shadows

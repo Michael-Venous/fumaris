@@ -11,6 +11,7 @@ from . import diagnostics
 from .exporters import bridge_executable, build_frame, build_session
 from .importers import (
     delete_generated_data,
+    delete_temporary_writes,
     hide_generated_volumes,
     migrate_legacy_cache,
     restore_generated_volumes,
@@ -503,9 +504,20 @@ class FrameRangeJob:
                 diagnostics.add_log(getattr(self, "_diagnostic_key", None), line)
         cleanup(self._restore_imported_volumes)
         cleanup(self._cleanup_volume_staging)
+        cleanup(self._delete_interrupted_writes)
         cleanup(self._release_cache_lock)
         if getattr(self, "_restore_frame", False) and context.scene.frame_current != self._original_frame:
             cleanup(context.scene.frame_set, self._original_frame)
+
+    def _delete_interrupted_writes(self):
+        """A stopped bridge can leave the frame it was writing as a .tmp file."""
+        if getattr(self, "_cache_lock", None) is None:
+            return
+        try:
+            delete_temporary_writes(self._directory, self._prefix)
+        except OSError:
+            # Still held by the exiting bridge; the next bake or load removes it.
+            pass
 
     def _sample_memory(self, *, force=False):
         if not self._track_metrics:

@@ -234,21 +234,59 @@ def _particle_arrays(obj, props, depsgraph):
     widths = array("f")
     velocities = array("f")
     values = _point_value_arrays()
+    # Every exported particle shares the emitter's channel values.
+    defaults = _point_value_arrays()
+    _append_point_defaults(defaults, props)
+    radius = array("f", [_point_radius(props.point_radius)])
+    initial_velocity = Vector(_world_vector(evaluated.matrix_world, props.velocity))
+    motion_scale = float(props.motion_velocity_scale)
+    velocity_scale = float(props.velocity_scale)
+    exported = 0
     for system in systems:
-        for particle in system.particles:
-            if getattr(particle, "alive_state", "ALIVE") != "ALIVE":
-                continue
-            location = Vector(particle.location[:])
-            velocity = Vector(particle.velocity[:])
-            initial_velocity = Vector(_world_vector(evaluated.matrix_world, props.velocity))
-            exported_velocity = (
-                initial_velocity + velocity * float(props.motion_velocity_scale)
-            ) * float(props.velocity_scale)
-            positions.extend((location.x, location.y, location.z))
-            widths.append(_point_radius(props.point_radius))
-            velocities.extend((exported_velocity.x, exported_velocity.y, exported_velocity.z))
-            _append_point_defaults(values, props)
+        particles = system.particles
+        count = len(particles)
+        alive = _alive_particles(particles, count)
+        if alive is None:
+            for particle in particles:
+                if getattr(particle, "alive_state", "ALIVE") != "ALIVE":
+                    continue
+                exported_velocity = (
+                    initial_velocity + Vector(particle.velocity[:]) * motion_scale
+                ) * velocity_scale
+                positions.extend(particle.location[:])
+                velocities.extend(exported_velocity[:])
+                exported += 1
+            continue
+        locations = np.empty(count * 3, dtype=np.float32)
+        motion = np.empty(count * 3, dtype=np.float32)
+        particles.foreach_get("location", locations)
+        particles.foreach_get("velocity", motion)
+        locations = locations.reshape((-1, 3))[alive]
+        motion = motion.reshape((-1, 3))[alive]
+        # Separate float32 products and sums, as mathutils evaluates them.
+        motion = motion * np.float32(motion_scale)
+        motion = np.asarray(initial_velocity, dtype=np.float32) + motion
+        motion = motion * np.float32(velocity_scale)
+        positions.frombytes(locations.tobytes())
+        velocities.frombytes(motion.tobytes())
+        exported += len(locations)
+    widths.extend(radius * exported)
+    for name, value in defaults.items():
+        values[name].extend(value * exported)
     return positions, widths, velocities, values
+
+
+def _alive_particles(particles, count):
+    """Boolean mask of live particles, or None when bulk access is unavailable."""
+    if np is None or not count:
+        return None
+    try:
+        alive_value = particles[0].bl_rna.properties["alive_state"].enum_items["ALIVE"].value
+        states = np.empty(count, dtype=np.int32)
+        particles.foreach_get("alive_state", states)
+    except (AttributeError, KeyError, TypeError, ValueError, RuntimeError):
+        return None
+    return states == alive_value
 
 
 def _direct_point_arrays(evaluated, props):

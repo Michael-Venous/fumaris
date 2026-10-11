@@ -33,6 +33,7 @@ from .protocol import (
     SESSION_END,
     SESSION_RESET,
     read_message,
+    split_scene_depth,
     write_message,
 )
 from .utils import process_environment
@@ -61,7 +62,12 @@ class BridgeWorker:
         self._requests.put_nowait((FRAME, frame.header, frame.payload))
 
     def send_preview(self, preview):
-        self._requests.put_nowait((PREVIEW_RENDER, preview, b""))
+        preview, depth = split_scene_depth(preview)
+        payload = b""
+        if depth is not None:
+            payload = depth.tobytes()
+            preview = {**preview, "scene_depth": {"offset": 0, "count": int(depth.size)}}
+        self._requests.put_nowait((PREVIEW_RENDER, preview, payload))
 
     def send_cache_flush(self):
         self._requests.put_nowait((CACHE_FLUSH, {}, b""))

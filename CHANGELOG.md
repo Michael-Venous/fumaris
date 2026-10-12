@@ -29,8 +29,13 @@ defaults to the 1.2.1 behavior.
   longer reserve simulation space along their whole length.
 - Air Margin, Long-Range Pressure and Fast-Motion Safeguards are on for
   domains created in 1.3.0 (Air Margin 0.5 m). Domains from earlier versions
-  keep them off and look the same; turn them on under Advanced. Air Margin
+  keep them off and look the same; Air Margin is below Sparse Block Capacity
+  and the other two are under Advanced. Air Margin
   uses more sparse blocks, so check the capacity readout.
+- The Advanced section is grouped into Solver and Sparse Blocks. Air Margin
+  and Move With Object moved up beside Resolution, and Allocate Neighbor
+  Blocks, which stops smoke spreading when off, is shown only in a scene that
+  has it off.
 - **Dissipation** accepts typed values above 1 for dense smoke that must clear
   quickly.
 - **Source operations.** Smoke, Temperature, Fuel and Burn each choose Blend

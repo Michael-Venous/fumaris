@@ -250,7 +250,7 @@ terraces, and a plume with too little air around it rises as a column instead
 of rolling into a mushroom cap. Both are most visible at high resolution and
 low Sub-Steps, where blocks are small and the smoke crosses several per frame.
 
-- `Air Margin` (Advanced) is the distance of clear air kept on every side of
+- `Air Margin` (below Sparse Block Capacity) is the distance of clear air kept on every side of
   the smoke. It also reaches further ahead of moving smoke, by how far the
   smoke will travel before the next allocation. 0.5 m suits most plumes;
   large explosions can use 1 m or more. 0 restores the 1.2.1 allocation.
@@ -270,7 +270,8 @@ frame ahead; most scenes can leave it off.
 ### Fast Emitters, Vehicles And Move With Object
 
 An emitter or collider that crosses many voxels per frame is the hardest case
-for any grid solver. Three settings under Advanced deal with it.
+for any grid solver. Fast-Motion Safeguards (under Advanced) and Move With
+Object with Carry Air (below Sub-Steps) deal with it.
 
 `Fast-Motion Safeguards` (on for new domains) keeps such scenes stable and
 compact:

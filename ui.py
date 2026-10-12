@@ -456,7 +456,13 @@ def _draw_domain(layout, scene, props):
     row.prop(props, "sim_end_frame")
     settings.prop(props, "resolution")
     settings.prop(props, "sparse_block_capacity")
+    row = settings.row(align=True)
+    row.enabled = props.allocate_neighbor_blocks
+    row.prop(props, "air_margin")
     settings.prop(props, "num_sub_steps")
+    settings.prop(props, "follow_object")
+    if props.follow_object:
+        settings.prop(props, "carry_air", slider=True)
 
     appearance, appearance_open = _nested_foldout(
         settings,
@@ -563,30 +569,36 @@ def _draw_domain(layout, scene, props):
     advanced = layout.box()
     advanced.enabled = not is_baking
     if _foldout(advanced, props, "show_panel_advanced", "Advanced"):
+        # Set-and-forget switches. What a shot is tuned with (Air Margin, Move
+        # With Object) lives with Resolution above.
         advanced.prop(props, "simulation_speed")
-        advanced.prop(props, "auto_cell_size")
-        advanced.prop(props, "small_sparse_blocks")
-        advanced.prop(props, "physics_convex_collision")
-        advanced.prop(props, "sparse_block_min_lifetime")
-        advanced.prop(props, "allocation_smoke_threshold")
-        advanced.prop(props, "allocation_speed_threshold")
-        advanced.prop(props, "allocation_speed_min_smoke")
-        advanced.prop(props, "allocate_neighbor_blocks")
-        row = advanced.row()
-        row.enabled = props.allocate_neighbor_blocks
-        row.prop(props, "air_margin")
-        advanced.prop(props, "pressure_long_range")
-        advanced.prop(props, "motion_safeguards")
-        advanced.prop(props, "follow_object")
-        row = advanced.row()
-        row.enabled = props.follow_object
-        row.prop(props, "carry_air", slider=True)
-        row = advanced.row()
+        advanced.separator()
+        solver = advanced.column(align=True)
+        solver.label(text="Solver")
+        solver.prop(props, "pressure_long_range")
+        solver.prop(props, "motion_safeguards")
+        solver.prop(props, "boundary_safe_advection")
+        solver.prop(props, "physics_convex_collision")
+
+        advanced.separator()
+        blocks = advanced.column(align=True)
+        blocks.label(text="Sparse Blocks")
+        blocks.prop(props, "small_sparse_blocks")
+        blocks.prop(props, "auto_cell_size")
+        blocks.prop(props, "sparse_block_min_lifetime")
+        blocks.prop(props, "allocation_smoke_threshold")
+        blocks.prop(props, "allocation_speed_threshold")
+        blocks.prop(props, "allocation_speed_min_smoke")
+        row = blocks.row(align=True)
         row.enabled = props.allocate_neighbor_blocks
         row.prop(props, "adaptive_boundary_padding")
         if props.allocate_neighbor_blocks and props.adaptive_boundary_padding:
-            advanced.label(text="Extra GPU time and memory", icon="INFO")
-        advanced.prop(props, "boundary_safe_advection")
+            blocks.label(text="Extra GPU time and memory", icon="INFO")
+        if not props.allocate_neighbor_blocks:
+            # Off, smoke cannot leave the blocks its emitters occupy. Only
+            # shown so a scene saved that way can be repaired.
+            blocks.prop(props, "allocate_neighbor_blocks")
+            blocks.label(text="Smoke cannot spread without neighbor blocks", icon="ERROR")
 
     _draw_diagnostics(layout, props)
 

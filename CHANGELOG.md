@@ -59,6 +59,12 @@ sparse blocks are in use. Check the capacity readout after updating.
 
 Fixes
 
+- Valid empty frames in OpenVDB source sequences now pause emission instead
+  of aborting the bake; emission resumes when a populated frame arrives.
+- Changing Move With Object during preview restarts the simulation instead
+  of shifting existing smoke. Changing it during a bake reports an error.
+- Scene Occlusion retains depth changes made during its redraw delay, so a
+  paused preview updates after an object moves.
 - Baked VDBs are now positioned exactly where the simulation is. Earlier
   versions wrote every grid half a voxel toward -X, -Y and -Z, so a bake sat
   slightly off its emitters, colliders and the live preview. Re-baking shifts

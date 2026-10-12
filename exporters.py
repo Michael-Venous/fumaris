@@ -99,6 +99,7 @@ def session_structure_signature(domain):
     return (
         int(props.sparse_block_capacity),
         bool(props.small_sparse_blocks),
+        bool(props.follow_object),
         sim_start,
         sim_end,
         _collection_signature(props.emitter_collection),

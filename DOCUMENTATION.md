@@ -311,6 +311,8 @@ object's location and rotation are used; its scale and its mesh are ignored.
   each frame. Particle and VDB sources that are fixed in the scene are placed
   once per frame, so they smear slightly when the domain moves fast.
 - Move With Object cannot be combined with Upres.
+- Changing Move With Object during preview restarts the simulation. Keep it
+  fixed throughout a bake; animating this setting stops the bake with an error.
 
 For a vehicle the camera follows, Move With Object is usually the better
 choice. For a vehicle that passes a still camera and leaves a long trail in
@@ -376,8 +378,9 @@ resampled onto the smoke grid.
 
 `Sequence` treats the trailing number in the file name as a frame and loads the
 matching file for every simulated frame. `Frame Offset` shifts which file a
-scene frame reads. Frames with no file emit nothing, so a sequence can start
-late or end early. To feed a Fumaris bake back in, pick any frame of the bake,
+scene frame reads. Missing files and valid empty grids emit nothing, so a
+sequence can start late, contain gaps, or end early. Unreadable files still
+report an error. To feed a Fumaris bake back in, pick any frame of the bake,
 enable `Sequence`, and keep the original cache untouched while it is in use.
 
 `Emit Velocity Grid` drives the simulation with the file's velocity at the

@@ -83,12 +83,19 @@ def capture_volume_preview(context, domain):
 
 
 def _scene_depth_request(props, view_id, width, height):
+    global _SCENE_DEPTH_SERIAL
     if not getattr(props, "preview_occlusion", False):
         return {}
     depth = _SCENE_DEPTHS.get(view_id)
     if depth is None or depth["size"] != (width, height):
         # The draw handler has not seen this size yet; it triggers a rerender.
         return {}
+    # Preview requests are polled even while paused and without another draw.
+    # Publish a throttled change once the quiet period ends.
+    if depth.get("pending", False) and time.monotonic() >= _SCENE_DEPTH_QUIET_UNTIL:
+        _SCENE_DEPTH_SERIAL += 1
+        depth["serial"] = _SCENE_DEPTH_SERIAL
+        depth["pending"] = False
     return {"depth_serial": depth["serial"], SCENE_DEPTH_KEY: depth["data"]}
 
 
@@ -295,10 +302,13 @@ def _capture_scene_depth(view_id, width, height):
     if same_size and np.array_equal(previous["data"], sampled):
         return
     serial = previous["serial"] if previous else 0
-    if not same_size or time.monotonic() >= _SCENE_DEPTH_QUIET_UNTIL:
+    pending = same_size and time.monotonic() < _SCENE_DEPTH_QUIET_UNTIL
+    if not pending:
         _SCENE_DEPTH_SERIAL += 1
         serial = _SCENE_DEPTH_SERIAL
-    _SCENE_DEPTHS[view_id] = {"size": (width, height), "data": sampled, "serial": serial}
+    _SCENE_DEPTHS[view_id] = {
+        "size": (width, height), "data": sampled, "serial": serial, "pending": pending,
+    }
 
 
 def _volume_texture(preview):

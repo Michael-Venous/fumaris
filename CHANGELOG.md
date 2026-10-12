@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Preview **Flame Light.** Flames now light the smoke around them in the live
+  preview: a warm glow that is strongest beside the fire, fades with distance
+  and is dimmed by smoke in the way. On by default at 1; 0 turns it off. It
+  added about half a millisecond or less per frame on an RTX 4060 Ti in
+  testing. Preview-only.
 - Preview **Light Scattering** gently fills shadowed billows using the existing
   light field. Default 0.5; set it to zero for direct lighting only. Preview-only.
 - Smoke opacity and fire brightness vary less with Ray Steps. Smoke-only previews

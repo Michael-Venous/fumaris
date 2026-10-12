@@ -143,7 +143,15 @@ Useful preview controls:
 - `Light Scattering` spreads light into shadowed smoke with a fast approximation
   using the existing shadow field. The default is 0.5; zero uses direct lighting
   only. It updates while paused and changes preview shading only. It does not
-  calculate illumination from flames or Blender scene lights.
+  calculate illumination from Blender scene lights.
+- `Flame Light` makes flames light the smoke around them. The glow takes the
+  flame's color, is strongest beside the fire, falls off with distance and is
+  dimmed by smoke in between; darker Smoke Color reflects less of it. 1 is the
+  default, 0 turns it off, and it follows Flame Brightness. It is an
+  approximation for the preview only: light spreads equally in all directions
+  from each flame and does not cast sharp shadows, and it does not light
+  objects in the scene. Baked volumes and the generated material are not
+  changed; Cycles and EEVEE compute their own fire lighting.
 - `Shadow` sets the minimum light reaching smoke: zero permits deep shadows;
   raising it fills them in. `Azimuth` rotates light around world Z without
   changing its height; `Elevation` sets that height (0 degrees horizontal,

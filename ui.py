@@ -514,6 +514,9 @@ def _draw_domain(layout, scene, props):
         preview.prop(props, "preview_tone_mapping")
         preview.prop(props, "preview_exposure", slider=True)
         preview.prop(props, "preview_occlusion")
+        flame_light = preview.row()
+        flame_light.enabled = props.shader_flame_enabled
+        flame_light.prop(props, "preview_flame_light", slider=True)
         preview.prop(props, "preview_shadows")
         light = preview.column()
         light.enabled = props.preview_shadows

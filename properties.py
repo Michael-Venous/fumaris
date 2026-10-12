@@ -449,6 +449,12 @@ class FumarisSettings(PropertyGroup):
         default=0.5, min=0.0, max=1.0, subtype="FACTOR",
     )
 
+    preview_flame_light: FloatProperty(
+        name="Flame Light",
+        description="How strongly flames light the smoke around them. 0 turns it off. Preview only; does not change baked volumes or materials",
+        default=1.0, min=0.0, soft_max=2.0, max=4.0,
+    )
+
     preview_tone_mapping: EnumProperty(
         name="Tone Mapping",
         description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",

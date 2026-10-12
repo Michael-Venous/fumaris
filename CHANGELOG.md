@@ -4,17 +4,19 @@ All notable customer-facing changes are recorded here.
 
 ## 1.3.0 — 2026-10-11
 
-New controls. Existing scenes simulate as before: every new simulation option
-defaults to the 1.2.1 behavior.
+New controls, and fewer switches. The solver now always takes its best path
+instead of offering it as an option, so **scenes from earlier versions
+simulate differently**: edges are cleaner, large plumes roll up, and more
+sparse blocks are in use. Check the capacity readout after updating.
 
 - **Air Margin.** Simulates a set distance of clear air on every side of the
   smoke and reaches further in the direction the smoke is moving. It removes
   the horizontal steps that fast smoke could leave at the edge of the
-  simulated region, for a fraction of the cost of Adaptive Boundary Padding,
-  and gives large plumes the surrounding air they need to roll up.
-- **Long-Range Pressure.** Lets the pressure solve reach across large plumes
-  so mushroom caps and big rolling shapes form at high resolution and low
-  Sub-Steps.
+  simulated region and gives large plumes the surrounding air they need to
+  roll up. 0.5 m by default; it sits below Sparse Block Capacity.
+- **Large plumes roll up.** The pressure solve now reaches across large
+  plumes, so mushroom caps and big rolling shapes form at high resolution and
+  low Sub-Steps.
 - **Move With Object.** A domain can now simulate in its own object's space:
   parent the domain to a vehicle, or animate it, and the simulation travels
   and turns with it. Emitters and colliders that ride along stay put in the
@@ -22,20 +24,24 @@ defaults to the 1.2.1 behavior.
   The air stays still in the scene, so smoke trails behind as it would
   outdoors; `Carry Air` carries it along instead, as inside a closed cabin.
   Bakes are written in scene space as before. Not available with Upres.
-- **Fast-Motion Safeguards.** Very fast emitters and colliders with few
-  Sub-Steps no longer make the motion explode: vorticity can still sharpen
-  swirls but cannot feed on itself. Fast emitters leave a continuous trail
-  instead of separate stamps, and colliders at rest (a long road, a wall) no
-  longer reserve simulation space along their whole length.
-- Air Margin, Long-Range Pressure and Fast-Motion Safeguards are on for
-  domains created in 1.3.0 (Air Margin 0.5 m). Domains from earlier versions
-  keep them off and look the same; Air Margin is below Sparse Block Capacity
-  and the other two are under Advanced. Air Margin
-  uses more sparse blocks, so check the capacity readout.
-- The Advanced section is grouped into Solver and Sparse Blocks. Air Margin
-  and Move With Object moved up beside Resolution, and Allocate Neighbor
-  Blocks, which stops smoke spreading when off, is shown only in a scene that
-  has it off.
+- **Fast emitters and colliders stay stable.** Very fast emitters and
+  colliders with few Sub-Steps no longer make the motion explode: vorticity
+  can still sharpen swirls but cannot feed on itself. Fast emitters leave a
+  continuous trail instead of separate stamps, and colliders at rest (a long
+  road, a wall) no longer reserve simulation space along their whole length.
+- **Removed settings.** Adaptive Boundary Padding is gone; Air Margin replaces
+  it. Allocate Neighbor Blocks, Boundary-Safe Advection and Speed Minimum
+  Smoke are gone too: the solver always behaves as it did with them at their
+  recommended values. A scene that had changed one of them now uses the
+  recommended behavior.
+- **Small Sparse Blocks is off by default.** Standard blocks measured about
+  20% faster for the same GPU memory. The setting stays under Advanced; a
+  domain that never changed it now uses standard blocks. Sparse Block Capacity
+  means the same amount of space either way.
+- **A shorter Advanced section.** It now holds Simulation Speed, Small Sparse
+  Blocks, Auto Cell Size, Convex Collision, Block Minimum Lifetime and the two
+  allocation thresholds. Air Margin and Move With Object are beside
+  Resolution.
 - **Dissipation** accepts typed values above 1 for dense smoke that must clear
   quickly.
 - **Source operations.** Smoke, Temperature, Fuel and Burn each choose Blend
@@ -69,7 +75,7 @@ Fixes
 - When Sparse Block Capacity is full, a newly active emitter now gets blocks
   ahead of empty blocks that were only waiting out Block Minimum Lifetime.
 - Baked velocity grids no longer contain stray values when Small Sparse
-  Blocks is on (the default). Parts of the velocity field were being
+  Blocks is on (the default before 1.3.0). Parts of the velocity field were being
   overwritten with unrelated data from neighboring blocks, differently on
   each run and graphics card, which could streak motion blur and distorted
   bakes fed back in as VDB sources. Re-bake to get correct velocity.

@@ -237,12 +237,14 @@ Start with the defaults. For energetic or high-resolution effects, raise
 Sub-Steps until motion and combustion stop changing materially. Sub-Steps are
 complete solver steps and may be set from 1 to 40; cost rises roughly linearly.
 
-`Small Sparse Blocks` usually reduces memory and improves speed, but larger
-blocks can produce smoother continuity in demanding high-resolution effects at
-a substantial performance cost. Leave `Allocate Neighbor Blocks` and
-`Boundary-Safe Advection` enabled for fast-moving smoke.
+`Small Sparse Blocks` (Advanced, off by default) divides space into chunks an
+eighth of the size. They follow the smoke more closely, but each chunk carries
+its own border and the pressure solve has one level fewer to work with, so in
+most scenes it is about 20% slower for the same GPU memory. It can save memory
+for thin, wispy smoke when Air Margin is 0. It does not add detail, and Sparse
+Block Capacity means the same amount of space with it on or off.
 
-### Air Margin And Long-Range Pressure
+### Air Margin
 
 Only the space near smoke is simulated. Smoke that reaches the edge of that
 space before the surrounding air exists shows horizontal steps or block-shaped
@@ -250,31 +252,29 @@ terraces, and a plume with too little air around it rises as a column instead
 of rolling into a mushroom cap. Both are most visible at high resolution and
 low Sub-Steps, where blocks are small and the smoke crosses several per frame.
 
-- `Air Margin` (below Sparse Block Capacity) is the distance of clear air kept on every side of
-  the smoke. It also reaches further ahead of moving smoke, by how far the
-  smoke will travel before the next allocation. 0.5 m suits most plumes;
-  large explosions can use 1 m or more. 0 restores the 1.2.1 allocation.
-- `Long-Range Pressure` (Advanced) makes the pressure solve reach across large
-  plumes instead of a few dozen voxels, at a small cost per step.
+`Air Margin` (below Sparse Block Capacity) is the distance of clear air kept
+on every side of the smoke. It also reaches further ahead of moving smoke, by
+how far the smoke will travel before the next allocation. The default of 0.5 m
+suits most plumes; large explosions can use 1 m or more. At 0 the smoke still
+gets one complete layer of blocks around it, the least the solver needs.
 
-New domains start with Air Margin 0.5 m and Long-Range Pressure on. Domains
-saved by earlier versions keep both off so they simulate as before; turn them
-on to fix stepping or columns in an old scene. Air Margin adds sparse blocks
-(typically 1.5x to 2.5x), so watch the capacity readout; when capacity runs
-out, smoke and emitters keep their blocks and the margin shrinks.
+Air Margin adds sparse blocks (typically 1.5x to 2.5x over a margin of 0), so
+watch the capacity readout; when capacity runs out, smoke and emitters keep
+their blocks and the margin shrinks. The pressure solve always reaches across
+the whole plume, so no separate setting is needed for large shapes.
 
-`Adaptive Boundary Padding` is the older, much more expensive answer to the
-same stepping. With Air Margin above 0 it only makes the margin look one more
-frame ahead; most scenes can leave it off.
+A domain saved by an earlier version uses 0.5 m unless its Air Margin was set
+by hand, and so simulates differently from 1.2.1. `Adaptive Boundary Padding`,
+the earlier answer to the same stepping, has been removed.
 
 ### Fast Emitters, Vehicles And Move With Object
 
 An emitter or collider that crosses many voxels per frame is the hardest case
-for any grid solver. Fast-Motion Safeguards (under Advanced) and Move With
-Object with Carry Air (below Sub-Steps) deal with it.
+for any grid solver. The solver guards against it in every scene, and Move
+With Object with Carry Air (below Sub-Steps) removes most of the motion in the
+first place.
 
-`Fast-Motion Safeguards` (on for new domains) keeps such scenes stable and
-compact:
+The built-in safeguards keep such scenes stable and compact:
 
 - Vorticity can sharpen swirls up to the speeds around them but cannot push
   past them, so a high Vorticity value with few Sub-Steps no longer runs away
@@ -584,8 +584,7 @@ For a faster or more memory-efficient simulation:
 3. Lower Preview Resolution, Viewport Scale, or Ray Steps for viewport work.
 4. Increase resolution and sparse capacity in measured steps.
 5. Use the lowest Sub-Step count that gives a converged result.
-   For stepping at the smoke's edge, raise Air Margin before Sub-Steps or
-   Adaptive Boundary Padding.
+   For stepping at the smoke's edge, raise Air Margin before Sub-Steps.
 6. Keep caches on a fast local drive.
 7. Split point clouds with widely different radii and reduce excessive point
    counts when point emission dominates a frame.

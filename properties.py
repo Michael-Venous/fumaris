@@ -535,8 +535,8 @@ class FumarisSettings(PropertyGroup):
 
     small_sparse_blocks: BoolProperty(
         name="Small Sparse Blocks",
-        description="Use smaller chunks of space to fit the smoke more closely. Can save GPU memory, but may run slower; does not increase simulation detail",
-        default=True,
+        description="Use smaller chunks of space to fit the smoke more closely. Usually slower for about the same GPU memory; can save memory for thin smoke when Air Margin is 0. Does not increase simulation detail",
+        default=False,
     )
 
 

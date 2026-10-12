@@ -74,17 +74,6 @@ _SOURCE_OPERATIONS = (
 )
 
 
-# Solver settings given to newly created simulations. Existing simulations keep
-# their stored (or default, pre-1.3) values so their results do not change.
-MODERN_SOLVER_SETTINGS = {"air_margin": 0.5, "pressure_long_range": True, "motion_safeguards": True}
-
-
-def _object_type_updated(self, _context):
-    if self.smoke_object_type == "domain":
-        for name, value in MODERN_SOLVER_SETTINGS.items():
-            setattr(self, name, value)
-
-
 class FumarisSettings(PropertyGroup):
     """Custom PropertyGroup storing all simulation parameters for Fumaris smoke simulation."""
 
@@ -102,7 +91,6 @@ class FumarisSettings(PropertyGroup):
             ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
-        update=_object_type_updated,
     )
 
     participant_enabled: BoolProperty(
@@ -582,42 +570,14 @@ class FumarisSettings(PropertyGroup):
         soft_max=100.0,
     )
 
-    allocation_speed_min_smoke: FloatProperty(
-        name="Speed Minimum Smoke",
-        description="Minimum smoke required before velocity alone retains a sparse block",
-        default=0.0,
-        min=0.0,
-        soft_max=1.0,
-    )
-
-    allocate_neighbor_blocks: BoolProperty(
-        name="Allocate Neighbor Blocks",
-        description="Keep neighboring blocks available for advection; disabling saves memory but can clip fast-moving smoke",
-        default=True,
-    )
-
-    adaptive_boundary_padding: BoolProperty(
-        name="Adaptive Boundary Padding",
-        description="Give moving smoke extra surrounding air, including diagonal neighbors, to reduce sparse-block bands. Uses more GPU time and memory, especially with Smoke Detail; leave off for the faster compact allocation. With an Air Margin it only lengthens the margin's motion forecast",
-        default=False,
-    )
-
-    # Zero and False reproduce simulations made before 1.3; new simulations
-    # receive MODERN_SOLVER_SETTINGS when the object becomes a domain.
     air_margin: FloatProperty(
         name="Air Margin",
-        description="World-space air simulated on every side of the smoke and further along its motion. Removes block-shaped stepping in fast smoke and gives plumes room to roll into caps; uses more GPU time and memory. 0 uses the compact allocation of earlier versions",
-        default=0.0,
+        description="Distance of clear air simulated on every side of the smoke, beyond the nearest blocks, and further along its motion. More room lets large plumes roll into caps; it uses more GPU time and memory",
+        default=0.5,
         min=0.0,
         soft_max=4.0,
         max=1000.0,
         subtype="DISTANCE",
-    )
-
-    pressure_long_range: BoolProperty(
-        name="Long-Range Pressure",
-        description="Solve pressure across the whole plume each step, so large shapes such as mushroom caps form at high resolution and with few sub-steps. Works best with an Air Margin. Off matches earlier versions",
-        default=False,
     )
 
     follow_object: BoolProperty(
@@ -633,18 +593,6 @@ class FumarisSettings(PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
-    )
-
-    motion_safeguards: BoolProperty(
-        name="Fast-Motion Safeguards",
-        description="Keep the simulation stable and compact with very fast emitters and colliders and few sub-steps: vorticity can sharpen swirls but no longer feeds on itself until the motion explodes, fast emitters leave a continuous trail instead of separate stamps, and colliders at rest or air with only a trace of smoke stop reserving simulation space. Off matches earlier versions",
-        default=False,
-    )
-
-    boundary_safe_advection: BoolProperty(
-        name="Boundary-Safe Advection",
-        description="Allow fast smoke to advect across sparse block boundaries without Flow's local displacement clamp; costs some simulation performance",
-        default=True,
     )
 
     simulation_speed: FloatProperty(

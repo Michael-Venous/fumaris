@@ -16,7 +16,7 @@ The packaged runtime may include:
 | SPIR-V Headers used by Slang | Modified MIT |
 | SPIR-V Tools used by Slang | Apache-2.0 |
 | ankerl::unordered_dense used by Slang | MIT |
-| OpenVDB | MPL-2.0 |
+| OpenVDB and NanoVDB 13 | Apache-2.0 |
 | oneTBB | Apache-2.0 |
 | Imath | BSD-3-Clause |
 | Boost | BSL-1.0 |
@@ -30,10 +30,9 @@ The packaged runtime may include:
 | Zstandard | BSD-3-Clause or GPL-2.0-only |
 | bzip2 | bzip2-1.0.6 |
 | liblzma from XZ Utils | 0BSD |
-| GCC runtime libraries | GPL with GCC Runtime Library Exception |
-
-Release engineering must include complete applicable license texts for every
-binary shipped by a particular platform package before public sale.
+| GCC runtime libraries (Linux package) | GPL-3.0 with GCC Runtime Library Exception |
+| LLVM libc++ runtime (macOS package) | Apache-2.0 WITH LLVM-exception (licenses/LLVM-libcxx-LICENSE.txt) |
+| MoltenVK (macOS package) | Apache-2.0 (licenses/MoltenVK-Apache-2.0.txt) |
 
 Project home pages:
 
@@ -56,6 +55,8 @@ Project home pages:
 - https://github.com/google/snappy
 - https://github.com/madler/zlib
 - https://github.com/facebook/zstd
+- https://github.com/llvm/llvm-project
+- https://github.com/KhronosGroup/MoltenVK
 
 Applicable license texts are included in the `licenses` directory. The exact
 set of native libraries differs by platform package.

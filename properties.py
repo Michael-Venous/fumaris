@@ -443,6 +443,12 @@ class FumarisSettings(PropertyGroup):
         default=0.0, min=0.0, max=1.0, subtype="FACTOR",
     )
 
+    preview_light_scattering: FloatProperty(
+        name="Light Scattering",
+        description="Approximate light spreading into self-shadowed smoke, retaining dark cores. 0 uses direct lighting only. Preview only; does not change baked volumes or materials",
+        default=0.5, min=0.0, max=1.0, subtype="FACTOR",
+    )
+
     preview_tone_mapping: EnumProperty(
         name="Tone Mapping",
         description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",

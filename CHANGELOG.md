@@ -2,6 +2,13 @@
 
 All notable customer-facing changes are recorded here.
 
+## Unreleased
+
+- Preview **Light Scattering** gently fills shadowed billows using the existing
+  light field. Default 0.5; set it to zero for direct lighting only. Preview-only.
+- Smoke opacity and fire brightness vary less with Ray Steps. Smoke-only previews
+  skip flame shading, and opaque smoke skips hidden samples to limit GPU cost.
+
 ## 1.3.0 — 2026-10-11
 
 New controls, and fewer switches. The solver now always takes its best path

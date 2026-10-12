@@ -140,6 +140,10 @@ Useful preview controls:
 - `Self Shadows` traces directional light through the visible smoke density at
   additional GPU cost. Changing Appearance Density also rebuilds this field so
   light and camera attenuation stay consistent.
+- `Light Scattering` spreads light into shadowed smoke with a fast approximation
+  using the existing shadow field. The default is 0.5; zero uses direct lighting
+  only. It updates while paused and changes preview shading only. It does not
+  calculate illumination from flames or Blender scene lights.
 - `Shadow` sets the minimum light reaching smoke: zero permits deep shadows;
   raising it fills them in. `Azimuth` rotates light around world Z without
   changing its height; `Elevation` sets that height (0 degrees horizontal,
@@ -147,8 +151,9 @@ Useful preview controls:
 - `Preview Bake` shows the selected preview during a final bake, with some
   performance cost.
 
-The live volume preview uses a simple Flow shader and currently does not use
-Blender's scene depth for object occlusion. Its Filmic option is an ACES-style
+The live volume preview uses a simplified Flow shader. `Scene Occlusion` uses
+viewport depth to hide smoke behind solid objects; transparent objects also
+occlude. Its Filmic option is an ACES-style
 approximation; AgX (Preview) uses a polynomial approximation of the original
 AgX transform. Neither is Blender's full OCIO view transform. The preview does not
 follow scene color-management settings; final OpenVDB shading and rendering

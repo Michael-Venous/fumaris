@@ -518,6 +518,7 @@ def _draw_domain(layout, scene, props):
         light = preview.column()
         light.enabled = props.preview_shadows
         light.prop(props, "preview_shadow_min_light", slider=True)
+        light.prop(props, "preview_light_scattering", slider=True)
         light.label(text="Light Direction")
         light.prop(props, "preview_light_azimuth")
         light.prop(props, "preview_light_elevation")

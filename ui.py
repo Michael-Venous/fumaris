@@ -4,6 +4,8 @@ from bpy.types import Panel
 
 from .runtime import active_job, active_mode
 from . import diagnostics
+from .cache import is_protected
+from .utils import peek_output_directory_for_object
 
 
 def _foldout(layout, props, property_name, label):
@@ -373,16 +375,20 @@ def _draw_domain(layout, scene, props):
 
     controls = layout.box().column(align=True)
     controls.label(text="Simulate", icon="PHYSICS")
+    slot_directory = peek_output_directory_for_object(props.id_data)
+    slot_protected = is_protected(slot_directory)
     row = controls.row(align=True)
     sub = row.row(align=True)
-    sub.enabled = mode is None
+    sub.enabled = mode is None and not slot_protected
     sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
     stop = row.row(align=True)
     stop.enabled = is_baking
     stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
     delete = row.row(align=True)
-    delete.enabled = mode is None
+    delete.enabled = mode is None and not slot_protected
     delete.operator("fumaris.delete", icon="TRASH", text="Delete")
+    if slot_protected:
+        controls.label(text=f"Cache slot '{props.cache_slot}' is protected", icon="LOCKED")
 
     preview = controls.row(align=True)
     play = preview.row(align=True)
@@ -490,7 +496,15 @@ def _draw_domain(layout, scene, props):
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
     if output_open:
         output.prop(props, "output_dir")
-        output.prop(props, "cache_slot")
+        slot = output.row(align=True)
+        slot.prop(props, "cache_slot")
+        slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
+        slot.operator(
+            "fumaris.cache_protect",
+            icon="LOCKED" if slot_protected else "UNLOCKED",
+            text="",
+            depress=slot_protected,
+        )
         output.prop(props, "output_prefix")
         output.prop(props, "vdb_compression")
         output.prop(props, "volume_material")

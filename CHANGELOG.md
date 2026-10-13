@@ -4,6 +4,16 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- **Bakes are harder to lose.** Delete now asks before removing a bake, and
+  Bake asks before replacing one that is already in the cache slot.
+- **New Slot** (the + beside Cache Slot) switches to the next unused version
+  of the slot name, `main` to `main_001` to `main_002`, so the next bake is
+  kept alongside the earlier ones, like Save Incremental.
+- **Protect** (the lock beside Cache Slot) locks a slot: Bake and Delete are
+  refused until it is unlocked. The lock is stored in the slot's folder.
+- Switching Cache Slot now shows that slot's bake and hides the other slots'
+  volumes instead of leaving them all visible on top of each other, and the
+  status line follows the slot.
 - Preview **Flame Light.** Flames now light the smoke around them in the live
   preview: a warm glow that is strongest beside the fire, fades with distance
   and is dimmed by smoke in the way. On by default at 1; 0 turns it off. It

@@ -187,8 +187,23 @@ Under `Output`:
   directory (system temporary storage if unavailable). An explicit absolute
   output directory is respected. After saving, project-relative output is
   resolved beside the `.blend`; earlier caches stay at their original location.
-- Use descriptive Cache Slot names to keep multiple bakes without overwriting
-  earlier versions.
+- `Cache Slot` names an independent bake. Each name has its own folder, so
+  changing it before baking keeps the earlier bake. Switching slots shows that
+  slot's bake, hides the others' volumes and updates the status line; nothing
+  is deleted, and switching back brings the earlier bake up again.
+  - The `+` button (`New Slot`) moves to the next unused version of the name:
+    `main`, `main_001`, `main_002`, or `v2`, `v3`. Versions that already hold
+    a bake are skipped.
+  - The lock button (`Protect`) locks the current slot. While it is locked,
+    Bake and Delete are refused and the Simulate box says so. The lock is a
+    small file in the slot's folder, so it also holds if another scene points
+    at the same folder. Preview recordings can still be added to a locked
+    slot; they never overwrite a bake.
+- Bake clears the current slot before writing. If the slot already holds a
+  bake, the Bake button asks first. Delete asks before removing a bake or
+  recorded preview takes, and removes only the current slot's files. Scripts
+  that call the operators directly are not asked, but a locked slot still
+  refuses them.
 - Assign a material to apply it automatically to the imported volume.
 - Use `Selectable Volume` to control whether the imported object can be
   selected in the viewport.

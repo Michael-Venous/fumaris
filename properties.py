@@ -19,6 +19,11 @@ TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
 
 
+def _cache_slot_updated(self, _context):
+    from .bake_state import sync_cache_slot
+    sync_cache_slot(self.id_data)
+
+
 def _appearance_updated(self, _context):
     from .importers import update_generated_materials
     from .preview import refresh_preview_display
@@ -631,8 +636,9 @@ class FumarisSettings(PropertyGroup):
 
     cache_slot: StringProperty(
         name="Cache Slot",
-        description="Independent baked simulation slot; changing it preserves other baked slots",
+        description="Independent baked simulation slot. Each name keeps its own bake; switching shows that slot's bake and hides the others without deleting anything",
         default="main",
+        update=_cache_slot_updated,
     )
 
     cache_id: StringProperty(

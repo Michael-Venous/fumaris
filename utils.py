@@ -172,6 +172,30 @@ def output_directory_for_object(obj):
     )
 
 
+def cache_slot_directory(obj, slot):
+    """Folder of another slot of this domain's cache."""
+    return os.path.join(os.path.dirname(output_directory_for_object(obj)), _safe_cache_slot(slot))
+
+
+def peek_output_directory_for_object(obj):
+    """output_directory_for_object for draw code: creates nothing, writes no property.
+
+    Returns None for a domain that has never been given a cache identity,
+    which also means it has nothing baked.
+    """
+    props = obj.fumaris
+    identity = props.cache_id.strip()
+    if not identity:
+        return None
+    configured = props.output_dir.strip() or "//fumaris_cache/"
+    return os.path.join(
+        _absolute_cache_directory(configured, "fumaris_cache", create=False),
+        ".fumaris_caches",
+        identity,
+        _safe_cache_slot(getattr(props, "cache_slot", "main")),
+    )
+
+
 def legacy_output_directories_for_object(obj):
     props = obj.fumaris
     current_base = base_output_directory_for_object(obj)

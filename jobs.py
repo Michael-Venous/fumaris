@@ -5,7 +5,7 @@ import time
 import bpy
 
 from .bridge import BridgeWorker, process_memory_bytes
-from .cache import cache_lock
+from .cache import cache_lock, require_unprotected
 from .diagnostics import console_log
 from . import diagnostics
 from .exporters import bridge_executable, build_frame, build_session
@@ -105,6 +105,8 @@ class FrameRangeJob:
                 "Output prefix may contain only letters, numbers, '.', '_', and '-'"
             )
 
+        if clear_cache:
+            require_unprotected(self._directory, "bake over it")
         os.makedirs(self._directory, exist_ok=True)
         self._legacy_directories = (
             () if output_directory else legacy_output_directories_for_object(domain)

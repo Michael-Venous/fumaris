@@ -19,6 +19,15 @@ TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
 
 
+def _object_type_updated(self, _context):
+    # A new domain follows the timeline, so its range matches the scene
+    # without editing (customer request). Domains whose Start/End were
+    # already changed, and scenes saved earlier, keep their own range.
+    if (self.smoke_object_type == "domain" and not self.use_scene_frame_range
+            and self.sim_start_frame == 1 and self.sim_end_frame == 250):
+        self.use_scene_frame_range = True
+
+
 def _cache_slot_updated(self, _context):
     from .bake_state import sync_cache_slot
     sync_cache_slot(self.id_data)
@@ -96,6 +105,7 @@ class FumarisSettings(PropertyGroup):
             ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
+        update=_object_type_updated,
     )
 
     participant_enabled: BoolProperty(
@@ -379,7 +389,7 @@ class FumarisSettings(PropertyGroup):
 
     use_scene_frame_range: BoolProperty(
         name="Use Timeline",
-        description="Simulate the scene's timeline range, starting Warmup frames early, instead of a separate Start and End",
+        description="Simulate the scene's timeline range, starting Warmup frames early, instead of a separate Start and End. On for new domains",
         default=False,
     )
 

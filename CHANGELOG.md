@@ -6,8 +6,10 @@ All notable customer-facing changes are recorded here.
 
 - **Use Timeline.** A clock button beside Start and End makes the simulation
   follow the scene's frame range, with a `Warmup` count of frames simulated
-  before it starts. Off by default; turning it off restores the domain's own
-  Start and End.
+  before it starts, so the range no longer has to be matched to the scene by
+  hand. New domains and Quick Setup start with it on (Quick Setup effects with
+  a fixed length, such as Explosion, keep their own range); domains in scenes
+  saved earlier keep their Start and End. Turning it off restores them.
 - **Bakes are harder to lose.** Delete now asks before removing a bake, and
   Bake asks before replacing one that is already in the cache slot.
 - **New Slot** (the + beside Cache Slot) switches to the next unused version

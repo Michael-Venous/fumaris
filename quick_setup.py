@@ -237,6 +237,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         props.smoke_object_type = "domain"
         props.sim_start_frame = context.scene.frame_start
         props.sim_end_frame = props.sim_start_frame + preset["duration"] - 1 if "duration" in preset else context.scene.frame_end
+        # Short effects keep their own length; the rest follow the timeline.
+        props.use_scene_frame_range = "duration" not in preset
         _apply_settings(props, _DOMAIN_DEFAULTS)
         _apply_settings(props, preset["domain"])
         for role, collection in collections.items():

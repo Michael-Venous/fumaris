@@ -103,6 +103,10 @@ simulated before the timeline starts, so the smoke is already moving on the
 first visible frame. Warmup frames are baked like any other frame, before the
 timeline start. Changing the timeline restarts a running preview. Turning the
 button off brings back the domain's own Start and End, unchanged.
+
+New domains, and Quick Setup presets without a fixed length, start with
+`Use Timeline` on. Explosion keeps its own short range, and domains in scenes
+saved by earlier versions keep the range they had.
 The live grid and preview resources remain allocated in VRAM so camera-only
 rerenders stay responsive. This is expected; press `Stop` to close the session
 and release its GPU working set.

@@ -377,6 +377,20 @@ class FumarisSettings(PropertyGroup):
         soft_max=16,
     )
 
+    use_scene_frame_range: BoolProperty(
+        name="Use Timeline",
+        description="Simulate the scene's timeline range, starting Warmup frames early, instead of a separate Start and End",
+        default=False,
+    )
+
+    warmup_frames: IntProperty(
+        name="Warmup",
+        description="Frames simulated before the timeline's start so the smoke is already established on the first visible frame",
+        default=0,
+        min=0,
+        soft_max=100,
+    )
+
     sim_start_frame: IntProperty(
         name="Start Frame",
         description="First Fumaris simulation frame; can be below 0 for warmup before the visible timeline",

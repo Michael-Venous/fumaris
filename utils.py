@@ -225,10 +225,26 @@ def legacy_output_directories_for_object(obj):
     ))
 
 
+def _domain_scene(domain):
+    scenes = getattr(domain, "users_scene", ())
+    current = bpy.context.scene
+    if current is not None and (not scenes or current in scenes):
+        return current
+    return scenes[0] if scenes else current
+
+
 def simulation_frame_range(domain):
     props = domain.fumaris
-    start = int(getattr(props, "sim_start_frame", 1))
-    end = int(getattr(props, "sim_end_frame", start))
+    if getattr(props, "use_scene_frame_range", False):
+        # Follow the timeline, starting early enough that the smoke is
+        # already moving on the first visible frame.
+        scene = _domain_scene(domain)
+        warmup = max(0, int(getattr(props, "warmup_frames", 0)))
+        start = int(scene.frame_start) - warmup
+        end = int(scene.frame_end)
+    else:
+        start = int(getattr(props, "sim_start_frame", 1))
+        end = int(getattr(props, "sim_end_frame", start))
     return start, max(start, end)
 
 

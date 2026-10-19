@@ -458,8 +458,12 @@ def _draw_domain(layout, scene, props):
     settings = controls.column(align=True)
     settings.enabled = not is_baking
     row = settings.row(align=True)
-    row.prop(props, "sim_start_frame")
-    row.prop(props, "sim_end_frame")
+    row.prop(props, "use_scene_frame_range", text="", icon="TIME")
+    if props.use_scene_frame_range:
+        row.prop(props, "warmup_frames")
+    else:
+        row.prop(props, "sim_start_frame", text="Start")
+        row.prop(props, "sim_end_frame", text="End")
     settings.prop(props, "resolution")
     settings.prop(props, "sparse_block_capacity")
     settings.prop(props, "air_margin")

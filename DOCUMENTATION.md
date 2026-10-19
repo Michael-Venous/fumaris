@@ -95,6 +95,14 @@ exclude it without removing it from the collection.
 `Play` starts a persistent Flow session. Fumaris advances the timeline only
 after each simulated frame is ready and loops over the domain's own Start and
 End Frame range. These values are independent of Blender's timeline range.
+
+To follow the timeline instead, press the clock button beside Start and End
+(`Use Timeline`). The simulation then runs the scene's Start to End frames, and
+the Start and End fields are replaced by `Warmup`: the number of frames
+simulated before the timeline starts, so the smoke is already moving on the
+first visible frame. Warmup frames are baked like any other frame, before the
+timeline start. Changing the timeline restarts a running preview. Turning the
+button off brings back the domain's own Start and End, unchanged.
 The live grid and preview resources remain allocated in VRAM so camera-only
 rerenders stay responsive. This is expected; press `Stop` to close the session
 and release its GPU working set.

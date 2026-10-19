@@ -4,6 +4,10 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- **Use Timeline.** A clock button beside Start and End makes the simulation
+  follow the scene's frame range, with a `Warmup` count of frames simulated
+  before it starts. Off by default; turning it off restores the domain's own
+  Start and End.
 - **Bakes are harder to lose.** Delete now asks before removing a bake, and
   Bake asks before replacing one that is already in the cache slot.
 - **New Slot** (the + beside Cache Slot) switches to the next unused version

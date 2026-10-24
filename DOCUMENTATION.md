@@ -774,3 +774,24 @@ values; older unset properties inherit the new defaults. The Rising Smoke setup
 explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
 divergence 2; Steady Fire fuel is 0.5 and Explosion fuel is 2. The general emitter
 divergence default is 2.
+
+
+### Choosing the simulation GPU
+
+Use **GPU** in the domain's **Simulate** controls, or **Simulation GPU** in
+Fumaris preferences. Click the refresh icon to list Vulkan GPUs, then choose a
+card. The choice applies to new Preview and Bake jobs and is shared across
+scenes. Save Blender preferences to keep it after restarting Blender.
+
+**Automatic** prefers a discrete GPU and preserves launch environment overrides.
+An explicit choice uses the card's UUID, so a driver changing device order does
+not redirect the simulation. An unavailable saved GPU stops the job with an
+error; refresh and choose another card or Automatic. Changing the choice does
+not move an already running or paused preview to another GPU; stop it first.
+Diagnostics reports the GPU actually used by the worker.
+
+Discovery lists identifiable Vulkan GPUs, excluding software CPU devices. It
+does not qualify driver compatibility; an unsupported device or driver reports
+its startup error when the simulation starts. A custom bridge must support
+`--list-devices` and UUID selection. This feature does not expand the officially
+tested hardware list.

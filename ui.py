@@ -5,7 +5,7 @@ from bpy.types import Panel
 from .runtime import active_job, active_mode
 from . import diagnostics
 from .cache import is_protected
-from .utils import peek_output_directory_for_object
+from .utils import peek_output_directory_for_object, get_addon_preferences
 
 
 def _foldout(layout, props, property_name, label):
@@ -375,6 +375,12 @@ def _draw_domain(layout, scene, props):
 
     controls = layout.box().column(align=True)
     controls.label(text="Simulate", icon="PHYSICS")
+    prefs = get_addon_preferences()
+    if prefs:
+        gpu = controls.row(align=True)
+        gpu.enabled = mode is None
+        gpu.prop(prefs, "simulation_gpu", text="GPU")
+        gpu.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
     slot_directory = peek_output_directory_for_object(props.id_data)
     slot_protected = is_protected(slot_directory)
     row = controls.row(align=True)

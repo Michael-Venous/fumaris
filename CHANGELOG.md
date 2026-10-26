@@ -2,7 +2,15 @@
 
 All notable customer-facing changes are recorded here.
 
-## Unreleased
+## 1.3.1 — 2026-10-26
+
+- **Simulation GPU selector.** Choose a supported GPU beside the simulation
+  controls or in Fumaris preferences. Refresh the list after changing hardware,
+  and save Blender preferences to retain the choice. Selection uses the device
+  UUID, so a changed device order does not silently select a different card.
+  A missing saved GPU reports an error instead of falling back to another GPU.
+  Stop the current job before changing its GPU; Automatic retains the existing
+  device-selection behavior.
 
 - **Use Timeline.** A clock button beside Start and End makes the simulation
   follow the scene's frame range, with a `Warmup` count of frames simulated

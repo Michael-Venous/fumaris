@@ -1,13 +1,14 @@
-# Fumaris 1.3.0 Documentation
+# Fumaris 1.3.1 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.3.0 adds per-channel source operations, field masks for effectors,
-scene occlusion in the live preview, and OpenVDB sources with grid mapping and
-file sequences. See [CHANGELOG.md](CHANGELOG.md) for release details and the
-Updating section below before replacing an installation.
+Fumaris 1.3.1 adds a persistent Simulation GPU selector, timeline-linked ranges,
+safer cache versions and protection, and Flame Light / Light Scattering in the
+live preview. Preview shading controls do not change baked VDB materials.
+See [CHANGELOG.md](CHANGELOG.md) for release details and the Updating section
+below before replacing an installation.
 
 ## Requirements And Compatibility
 

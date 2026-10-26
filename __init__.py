@@ -2,7 +2,7 @@ bl_info = {
     "name": "Fumaris",
     "author": "Fumaris",
     "version": (1, 3, 1),
-    "blender": (5, 1, 0),
+    "blender": (5, 2, 0),
     "location": "Properties > Physics",
     "description": "Interactive GPU smoke and fire simulation",
     "category": "Physics",

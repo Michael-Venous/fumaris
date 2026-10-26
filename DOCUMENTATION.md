@@ -1,13 +1,14 @@
-# Fumaris 1.3.0 Documentation
+# Fumaris 1.3.1 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.3.0 adds per-channel source operations, field masks for effectors,
-scene occlusion in the live preview, and OpenVDB sources with grid mapping and
-file sequences. See [CHANGELOG.md](CHANGELOG.md) for release details and the
-Updating section below before replacing an installation.
+Fumaris 1.3.1 adds a persistent Simulation GPU selector, timeline-linked ranges,
+safer cache versions and protection, and Flame Light / Light Scattering in the
+live preview. Preview shading controls do not change baked VDB materials.
+See [CHANGELOG.md](CHANGELOG.md) for release details and the Updating section
+below before replacing an installation.
 
 ## Requirements And Compatibility
 
@@ -95,6 +96,18 @@ exclude it without removing it from the collection.
 `Play` starts a persistent Flow session. Fumaris advances the timeline only
 after each simulated frame is ready and loops over the domain's own Start and
 End Frame range. These values are independent of Blender's timeline range.
+
+To follow the timeline instead, press the clock button beside Start and End
+(`Use Timeline`). The simulation then runs the scene's Start to End frames, and
+the Start and End fields are replaced by `Warmup`: the number of frames
+simulated before the timeline starts, so the smoke is already moving on the
+first visible frame. Warmup frames are baked like any other frame, before the
+timeline start. Changing the timeline restarts a running preview. Turning the
+button off brings back the domain's own Start and End, unchanged.
+
+New domains, and Quick Setup presets without a fixed length, start with
+`Use Timeline` on. Explosion keeps its own short range, and domains in scenes
+saved by earlier versions keep the range they had.
 The live grid and preview resources remain allocated in VRAM so camera-only
 rerenders stay responsive. This is expected; press `Stop` to close the session
 and release its GPU working set.
@@ -140,6 +153,18 @@ Useful preview controls:
 - `Self Shadows` traces directional light through the visible smoke density at
   additional GPU cost. Changing Appearance Density also rebuilds this field so
   light and camera attenuation stay consistent.
+- `Light Scattering` spreads light into shadowed smoke with a fast approximation
+  using the existing shadow field. The default is 0.5; zero uses direct lighting
+  only. It updates while paused and changes preview shading only. It does not
+  calculate illumination from Blender scene lights.
+- `Flame Light` makes flames light the smoke around them. The glow takes the
+  flame's color, is strongest beside the fire, falls off with distance and is
+  dimmed by smoke in between; darker Smoke Color reflects less of it. 1 is the
+  default, 0 turns it off, and it follows Flame Brightness. It is an
+  approximation for the preview only: light spreads equally in all directions
+  from each flame and does not cast sharp shadows, and it does not light
+  objects in the scene. Baked volumes and the generated material are not
+  changed; Cycles and EEVEE compute their own fire lighting.
 - `Shadow` sets the minimum light reaching smoke: zero permits deep shadows;
   raising it fills them in. `Azimuth` rotates light around world Z without
   changing its height; `Elevation` sets that height (0 degrees horizontal,
@@ -147,8 +172,9 @@ Useful preview controls:
 - `Preview Bake` shows the selected preview during a final bake, with some
   performance cost.
 
-The live volume preview uses a simple Flow shader and currently does not use
-Blender's scene depth for object occlusion. Its Filmic option is an ACES-style
+The live volume preview uses a simplified Flow shader. `Scene Occlusion` uses
+viewport depth to hide smoke behind solid objects; transparent objects also
+occlude. Its Filmic option is an ACES-style
 approximation; AgX (Preview) uses a polynomial approximation of the original
 AgX transform. Neither is Blender's full OCIO view transform. The preview does not
 follow scene color-management settings; final OpenVDB shading and rendering
@@ -174,8 +200,23 @@ Under `Output`:
   directory (system temporary storage if unavailable). An explicit absolute
   output directory is respected. After saving, project-relative output is
   resolved beside the `.blend`; earlier caches stay at their original location.
-- Use descriptive Cache Slot names to keep multiple bakes without overwriting
-  earlier versions.
+- `Cache Slot` names an independent bake. Each name has its own folder, so
+  changing it before baking keeps the earlier bake. Switching slots shows that
+  slot's bake, hides the others' volumes and updates the status line; nothing
+  is deleted, and switching back brings the earlier bake up again.
+  - The `+` button (`New Slot`) moves to the next unused version of the name:
+    `main`, `main_001`, `main_002`, or `v2`, `v3`. Versions that already hold
+    a bake are skipped.
+  - The lock button (`Protect`) locks the current slot. While it is locked,
+    Bake and Delete are refused and the Simulate box says so. The lock is a
+    small file in the slot's folder, so it also holds if another scene points
+    at the same folder. Preview recordings can still be added to a locked
+    slot; they never overwrite a bake.
+- Bake clears the current slot before writing. If the slot already holds a
+  bake, the Bake button asks first. Delete asks before removing a bake or
+  recorded preview takes, and removes only the current slot's files. Scripts
+  that call the operators directly are not asked, but a locked slot still
+  refuses them.
 - Assign a material to apply it automatically to the imported volume.
 - Use `Selectable Volume` to control whether the imported object can be
   selected in the viewport.
@@ -734,3 +775,24 @@ values; older unset properties inherit the new defaults. The Rising Smoke setup
 explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
 divergence 2; Steady Fire fuel is 0.5 and Explosion fuel is 2. The general emitter
 divergence default is 2.
+
+
+### Choosing the simulation GPU
+
+Use **GPU** in the domain's **Simulate** controls, or **Simulation GPU** in
+Fumaris preferences. Click the refresh icon to list Vulkan GPUs, then choose a
+card. The choice applies to new Preview and Bake jobs and is shared across
+scenes. Save Blender preferences to keep it after restarting Blender.
+
+**Automatic** prefers a discrete GPU and preserves launch environment overrides.
+An explicit choice uses the card's UUID, so a driver changing device order does
+not redirect the simulation. An unavailable saved GPU stops the job with an
+error; refresh and choose another card or Automatic. Changing the choice does
+not move an already running or paused preview to another GPU; stop it first.
+Diagnostics reports the GPU actually used by the worker.
+
+Discovery lists identifiable Vulkan GPUs, excluding software CPU devices. It
+does not qualify driver compatibility; an unsupported device or driver reports
+its startup error when the simulation starts. A custom bridge must support
+`--list-devices` and UUID selection. This feature does not expand the officially
+tested hardware list.

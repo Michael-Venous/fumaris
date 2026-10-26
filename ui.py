@@ -4,6 +4,8 @@ from bpy.types import Panel
 
 from .runtime import active_job, active_mode
 from . import diagnostics
+from .cache import is_protected
+from .utils import peek_output_directory_for_object, get_addon_preferences
 
 
 def _foldout(layout, props, property_name, label):
@@ -373,16 +375,26 @@ def _draw_domain(layout, scene, props):
 
     controls = layout.box().column(align=True)
     controls.label(text="Simulate", icon="PHYSICS")
+    prefs = get_addon_preferences()
+    if prefs:
+        gpu = controls.row(align=True)
+        gpu.enabled = mode is None
+        gpu.prop(prefs, "simulation_gpu", text="GPU")
+        gpu.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
+    slot_directory = peek_output_directory_for_object(props.id_data)
+    slot_protected = is_protected(slot_directory)
     row = controls.row(align=True)
     sub = row.row(align=True)
-    sub.enabled = mode is None
+    sub.enabled = mode is None and not slot_protected
     sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
     stop = row.row(align=True)
     stop.enabled = is_baking
     stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
     delete = row.row(align=True)
-    delete.enabled = mode is None
+    delete.enabled = mode is None and not slot_protected
     delete.operator("fumaris.delete", icon="TRASH", text="Delete")
+    if slot_protected:
+        controls.label(text=f"Cache slot '{props.cache_slot}' is protected", icon="LOCKED")
 
     preview = controls.row(align=True)
     play = preview.row(align=True)
@@ -452,8 +464,12 @@ def _draw_domain(layout, scene, props):
     settings = controls.column(align=True)
     settings.enabled = not is_baking
     row = settings.row(align=True)
-    row.prop(props, "sim_start_frame")
-    row.prop(props, "sim_end_frame")
+    row.prop(props, "use_scene_frame_range", text="", icon="TIME")
+    if props.use_scene_frame_range:
+        row.prop(props, "warmup_frames")
+    else:
+        row.prop(props, "sim_start_frame", text="Start")
+        row.prop(props, "sim_end_frame", text="End")
     settings.prop(props, "resolution")
     settings.prop(props, "sparse_block_capacity")
     settings.prop(props, "air_margin")
@@ -490,7 +506,15 @@ def _draw_domain(layout, scene, props):
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
     if output_open:
         output.prop(props, "output_dir")
-        output.prop(props, "cache_slot")
+        slot = output.row(align=True)
+        slot.prop(props, "cache_slot")
+        slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
+        slot.operator(
+            "fumaris.cache_protect",
+            icon="LOCKED" if slot_protected else "UNLOCKED",
+            text="",
+            depress=slot_protected,
+        )
         output.prop(props, "output_prefix")
         output.prop(props, "vdb_compression")
         output.prop(props, "volume_material")
@@ -514,10 +538,14 @@ def _draw_domain(layout, scene, props):
         preview.prop(props, "preview_tone_mapping")
         preview.prop(props, "preview_exposure", slider=True)
         preview.prop(props, "preview_occlusion")
+        flame_light = preview.row()
+        flame_light.enabled = props.shader_flame_enabled
+        flame_light.prop(props, "preview_flame_light", slider=True)
         preview.prop(props, "preview_shadows")
         light = preview.column()
         light.enabled = props.preview_shadows
         light.prop(props, "preview_shadow_min_light", slider=True)
+        light.prop(props, "preview_light_scattering", slider=True)
         light.label(text="Light Direction")
         light.prop(props, "preview_light_azimuth")
         light.prop(props, "preview_light_elevation")

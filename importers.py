@@ -92,6 +92,39 @@ def restore_recorded_previews(states):
             obj.update_tag()
 
 
+def baked_frame_count(directory, prefix=PREFIX):
+    """Frames a bake has written to this cache slot folder."""
+    return len(_frame_files(directory, prefix)) or (
+        len(_frame_files(directory, LEGACY_PREFIX)) if prefix != LEGACY_PREFIX else 0)
+
+
+def show_only_slot_volumes(root, current):
+    """Show the current slot's baked volume and hide the other slots' volumes.
+
+    Every slot of a domain lives below `root`. Their imported volumes stay in
+    the scene so switching back is instant; without this they would overlap.
+    """
+    root = os.path.normpath(root) + os.sep
+    current = os.path.normpath(current)
+    for obj in bpy.data.objects:
+        marker = obj.get(VOLUME_MARKER) or obj.get(LEGACY_VOLUME_MARKER)
+        if not marker:
+            continue
+        marker = os.path.normpath(marker)
+        if not marker.startswith(root):
+            continue
+        if marker == current:
+            hidden = False
+        elif marker.startswith(current + os.sep):
+            continue  # this slot's preview recordings keep their own state
+        else:
+            hidden = True
+        if obj.hide_viewport != hidden or obj.hide_render != hidden:
+            obj.hide_viewport = hidden
+            obj.hide_render = hidden
+            obj.update_tag()
+
+
 def delete_generated_data(directory, prefix=PREFIX):
     normalized = os.path.normpath(directory)
     for obj in list(bpy.data.objects):

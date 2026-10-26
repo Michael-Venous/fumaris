@@ -36,11 +36,17 @@ from .protocol import (
     split_scene_depth,
     write_message,
 )
-from .utils import process_environment
+from .utils import process_environment, get_addon_preferences
+from .devices import device_environment, discover_devices
 
 
 class BridgeWorker:
     def __init__(self, executable, session, *, keep_alive=False):
+        # Read Blender RNA on the main thread, before the worker is started.
+        prefs = get_addon_preferences()
+        self._gpu_uuid = getattr(prefs, "gpu_device_uuid", "")
+        self._environment = device_environment(
+            process_environment(executable), self._gpu_uuid)
         self.responses = queue.Queue()
         self._requests = queue.Queue(maxsize=2)
         self._executable = executable
@@ -129,6 +135,11 @@ class BridgeWorker:
 
     def _run(self):
         try:
+            if self._gpu_uuid:
+                available = discover_devices(self._executable, self._environment)
+                if not any(device["uuid"] == self._gpu_uuid for device in available):
+                    raise RuntimeError(
+                        "Selected Fumaris GPU is unavailable; refresh GPUs or choose Automatic in preferences")
             with self._process_lock:
                 if self._cancel_requested.is_set():
                     return
@@ -137,7 +148,7 @@ class BridgeWorker:
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    env=process_environment(self._executable),
+                    env=self._environment,
                     **_popen_options(),
                 )
             self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)

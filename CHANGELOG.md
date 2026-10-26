@@ -2,6 +2,42 @@
 
 All notable customer-facing changes are recorded here.
 
+## 1.3.1 — 2026-10-26
+
+- **Simulation GPU selector.** Choose a supported GPU beside the simulation
+  controls or in Fumaris preferences. Refresh the list after changing hardware,
+  and save Blender preferences to retain the choice. Selection uses the device
+  UUID, so a changed device order does not silently select a different card.
+  A missing saved GPU reports an error instead of falling back to another GPU.
+  Stop the current job before changing its GPU; Automatic retains the existing
+  device-selection behavior.
+
+- **Use Timeline.** A clock button beside Start and End makes the simulation
+  follow the scene's frame range, with a `Warmup` count of frames simulated
+  before it starts, so the range no longer has to be matched to the scene by
+  hand. New domains and Quick Setup start with it on (Quick Setup effects with
+  a fixed length, such as Explosion, keep their own range); domains in scenes
+  saved earlier keep their Start and End. Turning it off restores them.
+- **Bakes are harder to lose.** Delete now asks before removing a bake, and
+  Bake asks before replacing one that is already in the cache slot.
+- **New Slot** (the + beside Cache Slot) switches to the next unused version
+  of the slot name, `main` to `main_001` to `main_002`, so the next bake is
+  kept alongside the earlier ones, like Save Incremental.
+- **Protect** (the lock beside Cache Slot) locks a slot: Bake and Delete are
+  refused until it is unlocked. The lock is stored in the slot's folder.
+- Switching Cache Slot now shows that slot's bake and hides the other slots'
+  volumes instead of leaving them all visible on top of each other, and the
+  status line follows the slot.
+- Preview **Flame Light.** Flames now light the smoke around them in the live
+  preview: a warm glow that is strongest beside the fire, fades with distance
+  and is dimmed by smoke in the way. On by default at 1; 0 turns it off. It
+  added about half a millisecond or less per frame on an RTX 4060 Ti in
+  testing. Preview-only.
+- Preview **Light Scattering** gently fills shadowed billows using the existing
+  light field. Default 0.5; set it to zero for direct lighting only. Preview-only.
+- Smoke opacity and fire brightness vary less with Ray Steps. Smoke-only previews
+  skip flame shading, and opaque smoke skips hidden samples to limit GPU cost.
+
 ## 1.3.0 — 2026-10-11
 
 New controls, and fewer switches. The solver now always takes its best path

@@ -1,12 +1,17 @@
 import ctypes
 import json
 import os
+import re
 import shutil
 import tempfile
 import time
 
 LOCK_FILE = ".fumaris.lock"
 GUARD_FILE = ".fumaris.guard"
+# Present in a cache slot's folder while the user has protected its bake.
+# It lives with the files it guards, so it holds whichever scene or domain
+# points at that folder.
+PROTECT_FILE = ".fumaris_protected"
 _OBSOLETE_FILES = ("fumaris_cache.json", "plume_forge_cache.json")
 _OBSOLETE_DIRECTORIES = (
     ".fumaris_preview_cache",
@@ -59,6 +64,46 @@ def owned_preview_takes(directory):
         except (OSError, ValueError, TypeError, AttributeError):
             # Unrelated folders and damaged metadata are never deletion targets.
             continue
+
+
+def is_protected(directory):
+    return bool(directory) and os.path.isfile(os.path.join(directory, PROTECT_FILE))
+
+
+def set_protected(directory, protected):
+    path = os.path.join(directory, PROTECT_FILE)
+    if protected:
+        os.makedirs(directory, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as stream:
+            stream.write("Fumaris will not bake over or delete this cache slot while this file exists.\n")
+    else:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+
+def require_unprotected(directory, action):
+    if is_protected(directory):
+        slot = os.path.basename(os.path.normpath(directory))
+        raise RuntimeError(
+            f"Cache slot '{slot}' is protected. Turn off Protect under Output to {action}, "
+            "or use New Slot to keep it and bake a new version"
+        )
+
+
+def next_slot_name(current, taken):
+    """Next free version of a slot name: main, main_001, main_002; v2, v3."""
+    match = re.fullmatch(r"(.*?)([0-9]+)", current or "")
+    if match:
+        stem, number, width = match.group(1), int(match.group(2)), len(match.group(2))
+    else:
+        stem, number, width = (current or "main") + "_", 0, 3
+    while True:
+        number += 1
+        candidate = f"{stem}{number:0{width}d}"
+        if not taken(candidate):
+            return candidate
 
 
 def delete_obsolete_cache_state(directory):

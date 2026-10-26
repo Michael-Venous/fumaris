@@ -19,6 +19,20 @@ TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
 
 
+def _object_type_updated(self, _context):
+    # A new domain follows the timeline, so its range matches the scene
+    # without editing (customer request). Domains whose Start/End were
+    # already changed, and scenes saved earlier, keep their own range.
+    if (self.smoke_object_type == "domain" and not self.use_scene_frame_range
+            and self.sim_start_frame == 1 and self.sim_end_frame == 250):
+        self.use_scene_frame_range = True
+
+
+def _cache_slot_updated(self, _context):
+    from .bake_state import sync_cache_slot
+    sync_cache_slot(self.id_data)
+
+
 def _appearance_updated(self, _context):
     from .importers import update_generated_materials
     from .preview import refresh_preview_display
@@ -91,6 +105,7 @@ class FumarisSettings(PropertyGroup):
             ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
+        update=_object_type_updated,
     )
 
     participant_enabled: BoolProperty(
@@ -372,6 +387,20 @@ class FumarisSettings(PropertyGroup):
         soft_max=16,
     )
 
+    use_scene_frame_range: BoolProperty(
+        name="Use Timeline",
+        description="Simulate the scene's timeline range, starting Warmup frames early, instead of a separate Start and End. On for new domains",
+        default=False,
+    )
+
+    warmup_frames: IntProperty(
+        name="Warmup",
+        description="Frames simulated before the timeline's start so the smoke is already established on the first visible frame",
+        default=0,
+        min=0,
+        soft_max=100,
+    )
+
     sim_start_frame: IntProperty(
         name="Start Frame",
         description="First Fumaris simulation frame; can be below 0 for warmup before the visible timeline",
@@ -441,6 +470,18 @@ class FumarisSettings(PropertyGroup):
         name="Shadow Min Light",
         description="Minimum light in shadowed smoke. Lower for deeper shadows and more contrast; 0 allows black shadows, 1 removes shadow darkening. Preview only",
         default=0.0, min=0.0, max=1.0, subtype="FACTOR",
+    )
+
+    preview_light_scattering: FloatProperty(
+        name="Light Scattering",
+        description="Approximate light spreading into self-shadowed smoke, retaining dark cores. 0 uses direct lighting only. Preview only; does not change baked volumes or materials",
+        default=0.5, min=0.0, max=1.0, subtype="FACTOR",
+    )
+
+    preview_flame_light: FloatProperty(
+        name="Flame Light",
+        description="How strongly flames light the smoke around them. 0 turns it off. Preview only; does not change baked volumes or materials",
+        default=1.0, min=0.0, soft_max=2.0, max=4.0,
     )
 
     preview_tone_mapping: EnumProperty(
@@ -619,8 +660,9 @@ class FumarisSettings(PropertyGroup):
 
     cache_slot: StringProperty(
         name="Cache Slot",
-        description="Independent baked simulation slot; changing it preserves other baked slots",
+        description="Independent baked simulation slot. Each name keeps its own bake; switching shows that slot's bake and hides the others without deleting anything",
         default="main",
+        update=_cache_slot_updated,
     )
 
     cache_id: StringProperty(

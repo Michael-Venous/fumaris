@@ -5,12 +5,17 @@ import json
 
 import bpy
 from bpy.app.handlers import persistent
+from bpy.props import BoolProperty
 from bpy.types import Operator
 
 from .bake_state import mark_bake_cancelled, mark_bake_complete, mark_bake_running
 from .cache import (
     cache_lock,
     create_preview_take,
+    is_protected,
+    next_slot_name,
+    require_unprotected,
+    set_protected,
     delete_obsolete_cache_state,
     owned_preview_takes,
     recover_cache_lock,
@@ -21,6 +26,7 @@ from . import diagnostics
 from .exporters import build_session, session_structure_signature
 from .importers import (
     VOLUME_MARKER,
+    baked_frame_count,
     PREVIEW_OWNER_MARKER,
     delete_generated_data,
     delete_temporary_writes,
@@ -42,6 +48,7 @@ from .preview import (
     volume_preview_signature,
 )
 from .utils import (
+    cache_slot_directory,
     legacy_output_directories_for_object,
     output_directory_for_object,
     simulation_frame_range,
@@ -77,10 +84,28 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     _completed_frames = ()
     _timer_interval = 0.001
 
+    replace_confirmed: BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
         return bool(domain and not active_job())
+
+    def invoke(self, context, _event):
+        # Pressing Bake clears the slot first. Ask before that destroys an
+        # earlier bake; scripts calling the operator directly are not asked.
+        domain = _active_domain(context)
+        if domain and not self.replace_confirmed:
+            directory = output_directory_for_object(domain)
+            try:
+                require_unprotected(directory, "bake over it")
+            except RuntimeError as error:
+                self.report({"ERROR"}, str(error))
+                return {"CANCELLED"}
+            if baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
+                bpy.ops.fumaris.bake_replace("INVOKE_DEFAULT")
+                return {"CANCELLED"}
+        return self.execute(context)
 
     def execute(self, context):
         domain = _active_domain(context)
@@ -811,15 +836,135 @@ def _stop_active_job():
         _cancel_job(bpy.context, job)
 
 
+def _slot_contents(domain):
+    """(folder, baked frames, recorded preview takes) of the domain's current slot."""
+    directory = output_directory_for_object(domain)
+    frames = baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_")
+    takes = sum(
+        1 for take_directory, manifest in owned_preview_takes(directory)
+        if baked_frame_count(take_directory, manifest["session"]["output_prefix"])
+    )
+    return directory, frames, takes
+
+
+class FUMARIS_OT_bake_replace(Operator):
+    bl_idname = "fumaris.bake_replace"
+    bl_label = "Replace Existing Bake?"
+    bl_description = "Bake over the bake already in this cache slot"
+    bl_options = {"INTERNAL"}
+
+    @classmethod
+    def poll(cls, context):
+        return FUMARIS_OT_bake.poll(context)
+
+    def invoke(self, context, event):
+        domain = _active_domain(context)
+        _directory, frames, _takes = _slot_contents(domain)
+        return context.window_manager.invoke_confirm(
+            self,
+            event,
+            title="Replace Existing Bake?",
+            message=(
+                f"Cache slot '{domain.fumaris.cache_slot}' holds {frames} baked frames. "
+                "Baking deletes them first. Use New Slot under Output to keep them."
+            ),
+            confirm_text="Replace",
+            icon="WARNING",
+        )
+
+    def execute(self, _context):
+        # Started through invoke so the bake's modal handler is installed
+        # the same way as from the Bake button.
+        bpy.ops.fumaris.bake("INVOKE_DEFAULT", replace_confirmed=True)
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_cache_slot_new(Operator):
+    bl_idname = "fumaris.cache_slot_new"
+    bl_label = "New Slot"
+    bl_description = "Switch to the next unused version of this cache slot name, keeping the current bake on disk"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_active_domain(context) and not active_job())
+
+    def execute(self, context):
+        domain = _active_domain(context)
+        props = domain.fumaris
+
+        def taken(slot):
+            directory = cache_slot_directory(domain, slot)
+            return bool(
+                is_protected(directory)
+                or baked_frame_count(directory, props.output_prefix or "fumaris_")
+                or os.path.isdir(os.path.join(directory, "preview_takes"))
+            )
+
+        previous = props.cache_slot
+        props.cache_slot = next_slot_name(previous.strip() or "main", taken)
+        self.report({"INFO"}, f"Cache slot '{props.cache_slot}'. '{previous}' is kept on disk")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_cache_protect(Operator):
+    bl_idname = "fumaris.cache_protect"
+    bl_label = "Protect"
+    bl_description = "Lock this cache slot: Bake and Delete are refused until it is unlocked"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_active_domain(context) and not active_job())
+
+    def execute(self, context):
+        domain = _active_domain(context)
+        directory = output_directory_for_object(domain)
+        protect = not is_protected(directory)
+        try:
+            set_protected(directory, protect)
+        except OSError as error:
+            self.report({"ERROR"}, f"Could not change protection: {error}")
+            return {"CANCELLED"}
+        self.report(
+            {"INFO"},
+            f"Cache slot '{domain.fumaris.cache_slot}' is "
+            + ("protected" if protect else "no longer protected"),
+        )
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_delete(Operator):
     bl_idname = "fumaris.delete"
     bl_label = "Delete Baked"
-    bl_description = "Delete this domain's baked and recorded preview VDB files, imported volumes, and live preview"
+    bl_description = "Delete this cache slot's baked and recorded preview VDB files, imported volumes, and live preview"
 
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
         return bool(domain and not active_job())
+
+    def invoke(self, context, event):
+        domain = _active_domain(context)
+        if not domain:
+            return self.execute(context)
+        directory, frames, takes = _slot_contents(domain)
+        if is_protected(directory) or not (frames or takes):
+            return self.execute(context)
+        parts = []
+        if frames:
+            parts.append(f"{frames} baked frames")
+        if takes:
+            parts.append(f"{takes} recorded preview take" + ("s" if takes != 1 else ""))
+        return context.window_manager.invoke_confirm(
+            self,
+            event,
+            title="Delete Bake?",
+            message=(
+                f"Delete {' and '.join(parts)} from cache slot "
+                f"'{domain.fumaris.cache_slot}'? The files cannot be recovered."
+            ),
+            confirm_text="Delete",
+            icon="WARNING",
+        )
 
     def execute(self, context):
         domain = _active_domain(context)
@@ -832,6 +977,7 @@ class FUMARIS_OT_delete(Operator):
         prefix = domain.fumaris.output_prefix or "fumaris_"
         directory = output_directory_for_object(domain)
         try:
+            require_unprotected(directory, "delete it")
             for legacy_directory in legacy_output_directories_for_object(domain):
                 recover_cache_lock(legacy_directory, owner_pid=os.getpid())
                 with cache_lock(legacy_directory):
@@ -946,6 +1092,9 @@ class FUMARIS_OT_copy_diagnostics(Operator):
 CLASSES = (
     FUMARIS_OT_copy_diagnostics,
     FUMARIS_OT_bake,
+    FUMARIS_OT_bake_replace,
+    FUMARIS_OT_cache_slot_new,
+    FUMARIS_OT_cache_protect,
     FUMARIS_OT_preview_play,
     FUMARIS_OT_preview_pause,
     FUMARIS_OT_preview_stop,

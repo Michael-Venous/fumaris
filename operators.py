@@ -44,6 +44,7 @@ from .preview import (
     capture_volume_preview,
     clear_all_previews,
     clear_preview,
+    preview_image_pending,
     show_preview_payload,
     volume_preview_signature,
 )
@@ -336,6 +337,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._session_signature = signature
         self._next_submit_at = 0.0
         self._preview_render_submitted = False
+        self._preview_display_deadline = 0.0
         self._preview_rerendered_since_frame = False
         self._has_volume_preview_frame = False
         self._last_preview_signature = None
@@ -380,6 +382,15 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     def _ready_to_submit(self, context):
         if getattr(self, "_preview_render_submitted", False):
             return False
+        # Do not block the main thread preparing the next frame before Blender
+        # has had an opportunity to upload and draw the image just received.
+        # A hidden/closed viewport must never stall the simulation indefinitely.
+        deadline = getattr(self, "_preview_display_deadline", 0.0)
+        if deadline:
+            domain = bpy.data.objects.get(self._domain_name)
+            if time.monotonic() < deadline and preview_image_pending(domain):
+                return False
+            self._preview_display_deadline = 0.0
         if getattr(self, "_recording_enabled", False):
             if self._recording_flush_pending or self._ending_session:
                 return False
@@ -596,6 +607,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         preview = data.get("preview") or {}
         self._has_volume_preview_frame = preview.get("type") == "volume_rgba8"
         if self._has_volume_preview_frame:
+            self._preview_display_deadline = time.monotonic() + 0.1
             self._last_preview_signature = volume_preview_signature(
                 getattr(self, "_last_submitted_volume_preview", None)
             )
@@ -609,6 +621,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
                 data,
                 payload,
             )
+            if (data.get("preview") or {}).get("type") == "volume_rgba8":
+                self._preview_display_deadline = time.monotonic() + 0.1
         self._preview_render_count = getattr(self, "_preview_render_count", 0) + 1
         console_log(
             "Fumaris viewport rerender: "

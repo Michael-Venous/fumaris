@@ -182,6 +182,13 @@ def _has_preview(domain):
     )
 
 
+def preview_image_pending(domain):
+    """True until the latest image has reached the viewport draw callback."""
+    preview = _PREVIEWS.get(domain.name) if domain else None
+    return bool(preview and preview.get("pixels") is not None and
+                not preview.get("upload_failed"))
+
+
 def clear_preview(domain):
     # The job's original name remains usable after the object is deleted/renamed.
     name = domain if isinstance(domain, str) else domain.name

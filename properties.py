@@ -710,6 +710,16 @@ class FumarisSettings(PropertyGroup):
         default="active_mask",
     )
 
+    vdb_precision: EnumProperty(
+        name="VDB Precision",
+        description="Number precision of the written VDB files",
+        items=[
+            ("half", "Half (16-bit)", "Half the disk space and write time; differences are far below what renders show. Default"),
+            ("full", "Full (32-bit)", "Exact simulation values, for pipelines that read the VDBs back as data"),
+        ],
+        default="half",
+    )
+
     # Object References
     emitter_collection: PointerProperty(
         name="Emitters Collection",

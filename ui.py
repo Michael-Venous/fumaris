@@ -546,6 +546,7 @@ def _draw_domain(layout, scene, props):
         )
         output.prop(props, "output_prefix")
         output.prop(props, "vdb_compression")
+        output.prop(props, "vdb_precision")
         output.prop(props, "volume_material")
         output.prop(props, "volume_selectable")
         output.separator()

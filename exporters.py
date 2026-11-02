@@ -92,6 +92,7 @@ def build_session(
         "output_directory": output_directory_for_object(domain),
         "output_prefix": domain.fumaris.output_prefix or "fumaris_",
         "vdb_compression": getattr(domain.fumaris, "vdb_compression", "active_mask"),
+        "vdb_precision": getattr(domain.fumaris, "vdb_precision", "half"),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
         "flow_profile_enabled": (

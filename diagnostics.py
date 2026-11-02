@@ -130,9 +130,9 @@ def warnings(state):
     capacity = value(state, "flow_active_block_capacity")
     active = value(state, "flow_active_blocks")
     if capacity_status(state) == "full":
-        result.append("Simulation capacity reached: smoke may be cut off. Increase Sparse Block Capacity or lower Resolution, then restart.")
+        result.append("Simulation capacity reached: smoke may be cut off. Increase Simulation Memory or lower Resolution, then restart.")
     elif capacity and active / capacity >= 0.85:
-        result.append("Sparse blocks nearly full: increase capacity or lower resolution.")
+        result.append("Sparse blocks nearly full: increase Simulation Memory or lower Resolution.")
     requested = value(state, "flow_requested_resolution")
     actual = value(state, "flow_effective_resolution")
     if requested and actual and actual < requested * 0.95:
@@ -144,7 +144,39 @@ def warnings(state):
             "warning", "error", "failed", "fallback", "exceed", "capacity",
         )) and line not in result:
             result.append(line)
+    # Last, so it stays among the warnings the panel shows.
+    message = memory_spill_warning(state)
+    if message:
+        result.append(message)
     return result
+
+
+def memory_usage(state):
+    """Return (used_bytes, allocated_bytes) for the simulation, or None.
+
+    The pool is allocated in full when the simulation starts, so "used" is the
+    share of that allocation holding active smoke blocks.
+    """
+    if not state:
+        return None
+    allocated = value(state, "flow_device_memory_bytes")
+    capacity = value(state, "flow_active_block_capacity")
+    active = value(state, "flow_active_blocks")
+    if allocated <= 0 or capacity <= 0:
+        return None
+    return allocated * min(1.0, active / capacity), allocated
+
+
+def memory_spill_warning(state):
+    """Explain a simulation that no longer fits in GPU memory."""
+    spilled = value(state, "flow_system_memory_fallback_bytes") if state else 0.0
+    if spilled <= 0:
+        return ""
+    return (
+        f"GPU memory is full: {spilled / 1073741824:.1f} GB of simulation data went to "
+        "system memory, so it runs very slowly. Lower Simulation Memory, or close "
+        "other GPU work such as Cycles renders, then restart."
+    )
 
 
 def report(domain):

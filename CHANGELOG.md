@@ -2,6 +2,21 @@
 
 All notable customer-facing changes are recorded here.
 
+## Unreleased
+
+- **Simulation Memory replaces Sparse Block Capacity.** Set the GPU memory
+  for the simulation in GB; Fumaris turns it into space for smoke for the
+  current settings. The full amount is allocated at the start, so GPU memory
+  stays flat instead of spiking by 30–60% each time the smoke outgrew its
+  space, and heavy bakes can use more of the GPU safely. Scenes saved with a
+  Sparse Block Capacity keep it until Simulation Memory is changed.
+- **GPU memory full warning.** When a simulation no longer fits in GPU memory
+  and the driver moves it to system memory, the panel now says so instead of
+  the simulation silently slowing to a crawl.
+- **Lower VDB export memory.** VDB export buffers are sized once for the
+  capacity instead of being doubled as the smoke grows, which could leave up
+  to half of several GiB of GPU memory unused.
+
 ## 1.3.1 — 2026-10-26
 
 - **Simulation GPU selector.** Choose a supported GPU beside the simulation

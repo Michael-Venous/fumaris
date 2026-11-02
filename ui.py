@@ -4,6 +4,7 @@ from bpy.types import Panel
 
 from .runtime import active_job, active_mode
 from . import diagnostics
+from .exporters import simulation_memory_mb
 from .cache import is_protected
 from .utils import peek_output_directory_for_object, get_addon_preferences
 
@@ -345,8 +346,32 @@ def _draw_diagnostics(layout, props):
         box.operator("fumaris.copy_diagnostics", icon="COPYDOWN")
 
 
+def _draw_memory_usage(layout, domain):
+    state = diagnostics.snapshot(domain)
+    usage = diagnostics.memory_usage(state)
+    if not usage:
+        return
+    used, allocated = usage
+    fraction = used / allocated
+    gib = 1073741824.0
+    text = f"Memory in use: {used / gib:.1f} of {allocated / gib:.1f} GB ({fraction:.0%})"
+    if not state.get("active"):
+        text = "Last run · " + text
+    try:
+        layout.progress(factor=fraction, type="BAR", text=text)
+    except (AttributeError, TypeError):
+        layout.label(text=text, icon="MEMORY")
+
+
 def _draw_capacity_warning(layout, domain):
     state = diagnostics.snapshot(domain)
+    if diagnostics.memory_spill_warning(state):
+        box = layout.column(align=True)
+        title = box.row(align=True)
+        title.alert = True
+        title.label(text="GPU memory full — simulation slowed", icon="ERROR")
+        box.label(text="Lower Simulation Memory or free")
+        box.label(text="GPU memory, then restart.")
     status = diagnostics.capacity_status(state)
     if not status:
         return
@@ -357,7 +382,7 @@ def _draw_capacity_warning(layout, domain):
         title.label(text="Capacity reached — smoke may clip", icon="ERROR")
     else:
         title.label(text="Capacity almost full — smoke may clip", icon="ERROR")
-    box.label(text="Increase Sparse Block Capacity")
+    box.label(text="Increase Simulation Memory")
     box.label(text="or lower Resolution, then restart.")
     if status == "full" and state and not state.get("active"):
         box.label(text="Last run", icon="INFO")
@@ -460,6 +485,7 @@ def _draw_domain(layout, scene, props):
         status.label(text="Unhide the domain to see the preview")
 
     _draw_capacity_warning(status, domain)
+    _draw_memory_usage(status, domain)
 
     settings = controls.column(align=True)
     settings.enabled = not is_baking
@@ -471,7 +497,10 @@ def _draw_domain(layout, scene, props):
         row.prop(props, "sim_start_frame", text="Start")
         row.prop(props, "sim_end_frame", text="End")
     settings.prop(props, "resolution")
-    settings.prop(props, "sparse_block_capacity")
+    settings.prop(props, "simulation_memory")
+    if simulation_memory_mb(props) == 0.0:
+        legacy = settings.row()
+        legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")
     settings.prop(props, "air_margin")
     settings.prop(props, "num_sub_steps")
     settings.prop(props, "follow_object")
@@ -580,6 +609,7 @@ def _draw_domain(layout, scene, props):
     behavior.prop(props, "buoyancy_per_smoke")
     behavior.prop(props, "vorticity")
     behavior.prop(props, "dissipation")
+    behavior.prop(props, "smoke_decay")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:

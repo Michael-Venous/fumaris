@@ -52,6 +52,17 @@ def bridge_executable():
     return executable if executable and os.path.isfile(executable) else None
 
 
+def simulation_memory_mb(props):
+    """Simulation Memory in MiB, or 0 to keep a stored Sparse Block Capacity.
+
+    Scenes and scripts that set Sparse Block Capacity keep it until Simulation
+    Memory is changed; the bridge then sizes the pool from the memory budget.
+    """
+    if props.get("simulation_memory") is None and props.get("sparse_block_capacity") is not None:
+        return 0.0
+    return float(props.simulation_memory) * 1024.0
+
+
 def build_session(
     context,
     start_frame=None,
@@ -89,6 +100,8 @@ def build_session(
         ).strip().lower() in {"1", "true", "yes", "on"},
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
+    # Mesh participants add a closest-face texture that the memory budget must hold.
+    settings["initial_domain"]["mesh_sources"] = any(item["kind"] == "mesh" for item in participants)
     return settings, participants
 
 
@@ -98,6 +111,7 @@ def session_structure_signature(domain):
     participants = _participants(props)
     return (
         int(props.sparse_block_capacity),
+        simulation_memory_mb(props),
         bool(props.small_sparse_blocks),
         bool(props.follow_object),
         sim_start,
@@ -240,6 +254,7 @@ def _domain_state(props, resolution_scale=1.0):
         "upres_scale": props.upres_scale,
         "upres_memory_mb": props.upres_memory_mb,
         "small_sparse_blocks": props.small_sparse_blocks,
+        "simulation_memory_mb": simulation_memory_mb(props),
         "physics_convex_collision": props.physics_convex_collision,
         "sparse_block_min_lifetime": props.sparse_block_min_lifetime,
         "auto_cell_size": props.auto_cell_size,
@@ -251,6 +266,7 @@ def _domain_state(props, resolution_scale=1.0):
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
         "vorticity": props.vorticity,
         "dissipation": props.dissipation,
+        "smoke_decay": props.smoke_decay,
         "temperature_input_scale": props.temperature_input_scale,
         "ignition_temperature": props.ignition_temperature,
         "burn_per_temp": props.burn_per_temp,

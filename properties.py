@@ -561,11 +561,22 @@ class FumarisSettings(PropertyGroup):
 
     sparse_block_capacity: IntProperty(
         name="Sparse Block Capacity",
-        description="How much space smoke can occupy before it gets cut off. Raise this for larger or higher-resolution clouds; actual GPU memory grows as the smoke fills that space",
+        description="Legacy space limit in sparse blocks, kept for scenes and scripts that set it. Simulation Memory replaces it once changed",
         default=16384,
         min=256,
         max=524288,
         soft_max=131072,
+    )
+
+    simulation_memory: FloatProperty(
+        name="Simulation Memory",
+        description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant. Upres detail uses its own Detail Memory Limit on top of this",
+        default=1.0,
+        min=0.1,
+        max=1024.0,
+        soft_max=24.0,
+        step=25,
+        precision=2,
     )
 
     auto_cell_size: BoolProperty(
@@ -1249,6 +1260,15 @@ class FumarisSettings(PropertyGroup):
         min=0.0,
         soft_max=1.0,
         max=100.0,
+    )
+
+    smoke_decay: FloatProperty(
+        name="Smoke Decay",
+        description="Fraction of the smoke removed per second, in proportion to its density. Flow applies whichever removes more each step, this or Dissipation, so dense smoke ignores Dissipation and fades only at this rate. Raise it when dense leftovers linger after the thin smoke is gone. Flow's built-in value is 0.3",
+        default=0.3,
+        min=0.0,
+        max=0.99,
+        subtype="FACTOR",
     )
 
     # VDB export controls

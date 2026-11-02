@@ -15,7 +15,7 @@ below before replacing an installation.
 - Blender 5.2 or newer (officially supported on all platforms)
 - The Windows x64, Linux x64, or macOS ARM64 Fumaris package for your operating system
 - Windows/Linux: a Vulkan-capable GPU with a current driver; Mac: Apple Silicon
-- Enough GPU memory for the selected resolution and sparse block capacity
+- Enough GPU memory for the selected Simulation Memory
 - Local writable storage for baked OpenVDB sequences
 
 Fumaris has been exercised on NVIDIA GPUs under Windows and Linux and Intel
@@ -264,15 +264,28 @@ and applies coarse-field losses proportionally to reduce plateaus and holes
 under strong shear. Very high detail strength/vorticity can still expose
 unresolved base-grid structure.
 
-### Resolution And Sparse Capacity
+### Resolution And Simulation Memory
 
-Resolution determines density cell size. Sparse Block Capacity controls how
-much of the world may become active and is also a practical GPU memory ceiling.
-Increasing resolution without enough blocks can clip growth or trigger Auto
-Cell Size. Increase capacity carefully because a large value reserves more
-GPU memory. Resolution has no artificial maximum: values above the slider's
-suggested range can be typed directly, but extreme values can exhaust VRAM or
-produce no extra detail when sparse capacity or Auto Cell Size is limiting.
+Resolution determines density cell size. `Simulation Memory` is the GPU memory,
+in GB, given to the simulation. Fumaris allocates all of it when the
+simulation starts and turns it into space for smoke, accounting for the
+settings that change how much each piece of space costs (Small Sparse Blocks,
+exported VDB channels, mesh emitters and colliders). Memory use therefore stays
+flat for the whole bake instead of spiking as the smoke grows. When the smoke
+fills that space it is cut off or, with Auto Cell Size, simulated more
+coarsely; the panel then asks for more Simulation Memory. At the same memory,
+higher resolution covers a smaller region.
+
+Leave room for Blender and anything else on the same GPU, such as Cycles
+renders. If the simulation does not fit, Fumaris shows "GPU memory full": the
+driver moves data to system memory and the simulation runs very slowly, so
+lower Simulation Memory and restart. Upres detail uses its own Detail Memory
+Limit on top of Simulation Memory. Scenes saved before Simulation Memory
+existed keep their Sparse Block Capacity until Simulation Memory is changed.
+
+Resolution has no artificial maximum: values above the slider's suggested
+range can be typed directly, but extreme values produce no extra detail when
+Simulation Memory or Auto Cell Size is limiting.
 
 Start with the defaults. For energetic or high-resolution effects, raise
 Sub-Steps until motion and combustion stop changing materially. Sub-Steps are
@@ -281,9 +294,9 @@ complete solver steps and may be set from 1 to 40; cost rises roughly linearly.
 `Small Sparse Blocks` (Advanced, off by default) divides space into chunks an
 eighth of the size. They follow the smoke more closely, but each chunk carries
 its own border and the pressure solve has one level fewer to work with, so in
-most scenes it is about 20% slower for the same GPU memory. It can save memory
-for thin, wispy smoke when Air Margin is 0. It does not add detail, and Sparse
-Block Capacity means the same amount of space with it on or off.
+most scenes it is about 20% slower. Because of those borders the same
+Simulation Memory covers less space, but thin, wispy smoke with Air Margin 0
+can fit more of itself. It does not add detail.
 
 ### Air Margin
 
@@ -293,7 +306,7 @@ terraces, and a plume with too little air around it rises as a column instead
 of rolling into a mushroom cap. Both are most visible at high resolution and
 low Sub-Steps, where blocks are small and the smoke crosses several per frame.
 
-`Air Margin` (below Sparse Block Capacity) is the distance of clear air kept
+`Air Margin` (below Simulation Memory) is the distance of clear air kept
 on every side of the smoke. It also reaches further ahead of moving smoke, by
 how far the smoke will travel before the next allocation. The default of 0.5 m
 suits most plumes; large explosions can use 1 m or more. At 0 the smoke still

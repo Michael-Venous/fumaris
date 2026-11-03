@@ -570,7 +570,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_memory: FloatProperty(
         name="Simulation Memory",
-        description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant. Upres detail uses its own Detail Memory Limit on top of this",
+        description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant. With Upres on, it also holds the detail volume",
         default=1.0,
         min=0.1,
         max=1024.0,

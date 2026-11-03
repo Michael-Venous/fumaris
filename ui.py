@@ -497,7 +497,9 @@ def _draw_domain(layout, scene, props):
         row.prop(props, "sim_start_frame", text="Start")
         row.prop(props, "sim_end_frame", text="End")
     settings.prop(props, "resolution")
-    settings.prop(props, "simulation_memory")
+    memory_row = settings.row(align=True)
+    memory_row.prop(props, "simulation_memory")
+    memory_row.label(text="GB")
     if simulation_memory_mb(props) == 0.0:
         legacy = settings.row()
         legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")

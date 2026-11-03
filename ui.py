@@ -611,6 +611,7 @@ def _draw_domain(layout, scene, props):
     behavior.prop(props, "vorticity")
     behavior.prop(props, "dissipation")
     behavior.prop(props, "smoke_decay")
+    behavior.prop(props, "velocity_damping")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:

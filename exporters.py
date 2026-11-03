@@ -268,6 +268,7 @@ def _domain_state(props, resolution_scale=1.0):
         "vorticity": props.vorticity,
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,
+        "velocity_damping": props.velocity_damping,
         "temperature_input_scale": props.temperature_input_scale,
         "ignition_temperature": props.ignition_temperature,
         "burn_per_temp": props.burn_per_temp,

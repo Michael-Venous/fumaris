@@ -221,7 +221,10 @@ Under `Output`:
 - Use `Selectable Volume` to control whether the imported object can be
   selected in the viewport.
 - Enable only the VDB channels needed by your material. Each extra grid adds
-  GPU readback, conversion time, memory use, and disk space.
+  GPU readback, conversion time and disk space; velocity also adds GPU memory.
+- `VDB Precision` sets how values are stored in the files. **Half** (the
+  default) halves file size and write time and is ample for rendering;
+  **Full** keeps 32-bit floats for downstream processing that needs them.
 
 `Stop` during a bake imports every valid frame already written. Flow's complete
 solver state cannot currently be serialized, so a stopped bake cannot resume;
@@ -270,7 +273,7 @@ Resolution determines density cell size. `Simulation Memory` is the GPU memory,
 in GB, given to the simulation. Fumaris allocates all of it when the
 simulation starts and turns it into space for smoke, accounting for the
 settings that change how much each piece of space costs (Small Sparse Blocks,
-exported VDB channels, mesh emitters and colliders). Memory use therefore stays
+velocity export, mesh emitters and colliders). Memory use therefore stays
 flat for the whole bake instead of spiking as the smoke grows. When the smoke
 fills that space it is cut off or, with Auto Cell Size, simulated more
 coarsely; the panel then asks for more Simulation Memory. At the same memory,
@@ -380,6 +383,11 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 - `Vorticity` restores small rotational motion lost through advection.
 - `Dissipation` fades smoke over time, by that much density per second. The
   slider stops at 1; type a larger value for dense smoke that must clear fast.
+- `Smoke Decay` removes a fraction of the smoke per second, in proportion to
+  its density.
+- `Velocity Damping` removes a fraction of the motion per second. The default
+  **0.01** is close to free air; raise it to calm turbulence and shorten how
+  far smoke travels.
 
 Combustion is active when its coefficients require it. Fuel burns above the
 ignition threshold, producing configurable smoke, heat, and expansion. Large
@@ -550,10 +558,13 @@ Mesh, box, and sphere colliders transfer boundary velocity into smoke. Mesh
 unsupported meshes fall back to the regular shell behavior. Increase Collider
 Margin for fast smoke or thin geometry.
 
-Fumaris strengthens Flow's stock collision emitters with pre- and post-pressure
-velocity treatment and interior density removal. This improves practical
-containment, but it is not a mathematically sealed no-flux pressure boundary.
-Very fast smoke may still leak through thin or complex colliders.
+Colliders are walls for the pressure solve: smoke cannot be pushed into
+them, so it stops at, spreads along and wraps around their surfaces, and the
+collider's own motion pushes the air. Fumaris also sets the collider's velocity
+inside it and removes any smoke that still gets in. Geometry thinner than
+about one velocity cell (two density cells) is too thin to form a wall and
+only applies its velocity, so very fast smoke can still pass through thin
+sheets; give them some thickness or raise Resolution.
 
 ### Effectors
 

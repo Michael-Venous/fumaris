@@ -13,9 +13,25 @@ All notable customer-facing changes are recorded here.
 - **GPU memory full warning.** When a simulation no longer fits in GPU memory
   and the driver moves it to system memory, the panel now says so instead of
   the simulation silently slowing to a crawl.
-- **Lower VDB export memory.** VDB export buffers are sized once for the
-  capacity instead of being doubled as the smoke grows, which could leave up
-  to half of several GiB of GPU memory unused.
+- **Faster, smaller VDB bakes.** Density channels are packed on the GPU and
+  only cells holding smoke are copied back, so a VDB bake no longer reserves
+  GPU memory for exported density channels and spends far less time copying:
+  the same memory now holds up to a third more smoke, and bakes of the test
+  scenes ran about 20% faster (up to 80% on Apple silicon). VDB files are
+  written by more threads.
+- **VDB Precision** (export panel). Half (default) stores 16-bit values,
+  halving file size and write time; Full keeps 32-bit values.
+- **Colliders are walls.** Smoke is no longer pushed into colliders by the
+  pressure solve, so it spreads along and wraps around them instead of
+  thinning out against them.
+- **More lively default motion.** Flow removed a constant 1 m/s of velocity
+  per second, which stalled large plumes early. Motion now only loses a small
+  fraction per second, set by the new **Velocity Damping**; plumes rise
+  higher and keep their turbulence longer. Scenes tuned for the old look can
+  raise Velocity Damping.
+- **More accurate pressure solve.** A sign error in the solver's multigrid
+  step (inherited from NVIDIA Flow) is fixed, removing slightly more of the
+  compression the solver is meant to remove.
 
 ## 1.3.1 — 2026-10-26
 

@@ -1272,6 +1272,15 @@ class FumarisSettings(PropertyGroup):
         max=100.0,
     )
 
+    velocity_damping: FloatProperty(
+        name="Velocity Damping",
+        description="Fraction of the motion removed per second. The default is close to free air; raise it to calm turbulence and shorten how far smoke travels",
+        default=0.01,
+        min=0.0,
+        max=0.99,
+        subtype="FACTOR",
+    )
+
     smoke_decay: FloatProperty(
         name="Smoke Decay",
         description="Fraction of the smoke removed per second, in proportion to its density. Flow applies whichever removes more each step, this or Dissipation, so dense smoke ignores Dissipation and fades only at this rate. Raise it when dense leftovers linger after the thin smoke is gone. Flow's built-in value is 0.3",

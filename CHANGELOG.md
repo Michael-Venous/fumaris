@@ -34,7 +34,8 @@ All notable customer-facing changes are recorded here.
   higher and keep their turbulence longer. Scenes tuned for the old look can
   raise Velocity Damping.
 - **Adaptive Sub-Steps.** A toggle beside Sub-Steps uses only as many steps
-  as the motion needs each frame, up to Sub-Steps.
+  as the motion needs each frame, up to Sub-Steps; `Cells per Step` sets how
+  far the fastest flow may move per step.
 - **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
   dense smoke, flames or everything.
 - **Sharper fire in renders.** The generated material gains `Sharpness`

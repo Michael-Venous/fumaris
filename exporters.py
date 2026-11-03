@@ -252,6 +252,7 @@ def _domain_state(props, resolution_scale=1.0):
         "simulation_speed": props.simulation_speed,
         "num_sub_steps": props.num_sub_steps,
         "adaptive_sub_steps": props.adaptive_sub_steps,
+        "adaptive_cfl": props.adaptive_cfl,
         "upres_enabled": props.upres_enabled,
         "upres_strength": props.upres_strength,
         "upres_fire_strength": props.upres_fire_strength,

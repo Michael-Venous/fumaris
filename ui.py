@@ -508,6 +508,8 @@ def _draw_domain(layout, scene, props):
     substeps_label = {"text": "Max Sub-Steps"} if props.adaptive_sub_steps else {}
     substeps_row.prop(props, "num_sub_steps", **substeps_label)
     substeps_row.prop(props, "adaptive_sub_steps", toggle=True)
+    if props.adaptive_sub_steps:
+        settings.prop(props, "adaptive_cfl")
     settings.prop(props, "follow_object")
     if props.follow_object:
         settings.prop(props, "carry_air", slider=True)

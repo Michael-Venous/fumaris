@@ -295,8 +295,10 @@ Start with the defaults. For energetic or high-resolution effects, raise
 Sub-Steps until motion and combustion stop changing materially. Sub-Steps are
 complete solver steps and may be set from 1 to 40; cost rises roughly linearly.
 `Adaptive` (beside Sub-Steps) makes Sub-Steps the maximum: each frame uses only
-as many as the previous frame's fastest flow needs (about four density cells
-per step), all of them while the motion is fast. With Sub-Steps at 6 the test
+as many as the previous frame's fastest flow needs, all of them while the
+motion is fast. `Cells per Step` (shown when Adaptive is on, default 4) is how
+many voxels the fastest flow may cross per step: lower is more accurate and
+slower; around 8 is fast but changes the result noticeably. With Sub-Steps at 6 the test
 scenes used 3–5 on average and baked 23–34% faster, with the fast phases close
 to always using 6; the result is not identical to a fixed count.
 
@@ -650,10 +652,11 @@ flame = 1 - exp(-source)
 is `1.0`; changing it, the smoke settings, or the fire settings does not require
 a rebake.
 
-`Sharpness` raises the source to that power before the exponential
-(`flame = 1 - exp(-source^Sharpness)`): at 1 (default) flames glow softly
-through the fireball; around 2–3 thin, cool regions fade while hot cores stay
-bright, giving crisp flame tongues under dark smoke. `Blue Core` blends the
+`Sharpness` adds contrast to the source around a typical strong flame
+(`source' = 0.5 * (source / 0.5)^Sharpness` before the exponential): at 1
+(default) flames glow softly through the fireball; at 1.5–3 weak, diffuse glow
+fades into the smoke while the strongest flames get brighter, giving crisp
+flame tongues instead of an all-over glow. `Blue Core` blends the
 emission toward blue where fuel is still present near ignition temperature,
 as at a gas burner's base; it needs fuel in the simulation (the generated
 material then exports the fuel grid) and stays subtle in fireballs, where fuel

@@ -30,6 +30,9 @@ NODE_FIRE_TEMPERATURE = "Fumaris Fire Temperature"
 NODE_TEMPERATURE_MULTIPLIER = "Fumaris Color Temperature"
 NODE_TIMESTEP_NORMALIZATION = "Fumaris Timestep Normalization"
 NODE_FLAME_SHARPNESS = "Fumaris Flame Sharpness"
+# Measured 2026-11-02: flame source of burning cells in an explosion had
+# median 0.02, 90th percentile 0.47, 99th 0.83.
+FLAME_SHARPNESS_PIVOT = 0.5
 NODE_FLAME_CORE = "Fumaris Flame Core"
 
 
@@ -308,6 +311,17 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     sharpness.name = NODE_FLAME_SHARPNESS
     sharpness.label = "Flame Sharpness"
     sharpness.inputs[1].default_value = 1.0
+    # Contrast around a typical strong-flame source (most burning cells are
+    # far below 1), so Sharpness thins weak flame and brightens cores
+    # instead of dimming everything: source' = k * (source / k)^Sharpness.
+    pivot_in = nodes.new("ShaderNodeMath")
+    pivot_in.operation = "DIVIDE"
+    pivot_in.inputs[1].default_value = FLAME_SHARPNESS_PIVOT
+    pivot_in.label = "Sharpness Pivot"
+    pivot_out = nodes.new("ShaderNodeMath")
+    pivot_out.operation = "MULTIPLY"
+    pivot_out.inputs[1].default_value = FLAME_SHARPNESS_PIVOT
+    pivot_out.label = "Sharpness Pivot"
     # Blue where fuel is still burning: fresh flame near the source.
     fuel = nodes.new("ShaderNodeAttribute")
     fuel.attribute_name = "fuel"
@@ -347,7 +361,9 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     negate.location = (-250, 300)
     exponential.location = (-50, 300)
     smooth_flame.location = (150, 300)
+    pivot_in.location = (-450, 520)
     sharpness.location = (-350, 420)
+    pivot_out.location = (-250, 520)
     fire_intensity.location = (350, 300)
     fuel.location = (-650, -320)
     fuel_presence.location = (-430, -320)
@@ -365,8 +381,10 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     links.new(volume_info.outputs["Temperature"], fire_temperature.inputs[0])
     links.new(_socket(fire_temperature.outputs, "Result"), burn_heat.inputs[1])
     links.new(burn_heat.outputs[0], timestep.inputs[0])
-    links.new(timestep.outputs[0], sharpness.inputs[0])
-    links.new(sharpness.outputs[0], negate.inputs[0])
+    links.new(timestep.outputs[0], pivot_in.inputs[0])
+    links.new(pivot_in.outputs[0], sharpness.inputs[0])
+    links.new(sharpness.outputs[0], pivot_out.inputs[0])
+    links.new(pivot_out.outputs[0], negate.inputs[0])
     links.new(negate.outputs[0], exponential.inputs[0])
     links.new(exponential.outputs[0], smooth_flame.inputs[1])
     links.new(smooth_flame.outputs[0], fire_intensity.inputs[0])

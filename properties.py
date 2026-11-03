@@ -1457,6 +1457,16 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
+    adaptive_cfl: FloatProperty(
+        name="Cells per Step",
+        description="With Adaptive on: how many voxels the fastest flow may cross per step before another Sub-Step is added. Lower is more accurate and slower; around 8 is fast but changes the result noticeably",
+        default=4.0,
+        min=0.5,
+        max=40.0,
+        soft_min=1.0,
+        soft_max=10.0,
+    )
+
     num_sub_steps: IntProperty(
         name="Sub-Steps",
         description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation",

@@ -200,14 +200,6 @@ def legacy_output_directories_for_object(obj):
     props = obj.fumaris
     current_base = base_output_directory_for_object(obj)
     bases = [current_base]
-    if not props.output_dir.strip():
-        bases.append(
-            _absolute_cache_directory(
-                "//plume_forge_cache/",
-                "plume_forge_cache",
-                create=False,
-            )
-        )
 
     identity = cache_identity_for_object(obj)
     slot = _safe_cache_slot(getattr(props, "cache_slot", "main"))

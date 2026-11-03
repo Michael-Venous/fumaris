@@ -12,10 +12,9 @@ GUARD_FILE = ".fumaris.guard"
 # It lives with the files it guards, so it holds whichever scene or domain
 # points at that folder.
 PROTECT_FILE = ".fumaris_protected"
-_OBSOLETE_FILES = ("fumaris_cache.json", "plume_forge_cache.json")
+_OBSOLETE_FILES = ("fumaris_cache.json",)
 _OBSOLETE_DIRECTORIES = (
     ".fumaris_preview_cache",
-    ".plume_forge_preview_cache",
 )
 
 

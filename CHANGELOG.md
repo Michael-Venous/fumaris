@@ -2,7 +2,7 @@
 
 All notable customer-facing changes are recorded here.
 
-## Unreleased
+## 1.4.0 — Unreleased
 
 - **Simulation Memory replaces Sparse Block Capacity.** Set the GPU memory
   for the simulation in GB; Fumaris turns it into space for smoke for the
@@ -63,6 +63,9 @@ All notable customer-facing changes are recorded here.
 - **More accurate pressure solve.** A sign error in the solver's multigrid
   step (inherited from NVIDIA Flow) is fixed, removing slightly more of the
   compression the solver is meant to remove.
+- **Pre-1.0 beta data is no longer recognised.** Caches, preview objects and
+  imported volumes made by the beta under its old name are left alone instead
+  of being managed by Fumaris. Delete them by hand if a scene still has any.
 
 ## 1.3.1 — 2026-10-26
 

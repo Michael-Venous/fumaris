@@ -95,10 +95,8 @@ def build_session(
         "vdb_precision": getattr(domain.fumaris, "vdb_precision", "half"),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
-        "flow_profile_enabled": (
-            os.environ.get("FUMARIS_FLOW_PROFILE")
-            or os.environ.get("PLUME_FORGE_FLOW_PROFILE", "")
-        ).strip().lower() in {"1", "true", "yes", "on"},
+        "flow_profile_enabled": os.environ.get("FUMARIS_FLOW_PROFILE", "").strip().lower()
+        in {"1", "true", "yes", "on"},
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
     # Mesh participants add a closest-face texture that the memory budget must hold.

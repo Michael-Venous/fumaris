@@ -14,7 +14,6 @@ except ImportError:
     np = None
 
 PREVIEW_MARKER = "fumaris_preview"
-LEGACY_PREVIEW_MARKER = "plume_forge_preview"
 PREVIEW_NAME = "Fumaris Preview"
 _PREVIEWS = {}
 _IMAGE_DRAW_HANDLE = None
@@ -210,7 +209,7 @@ def clear_all_previews():
     objects = getattr(bpy.data, "objects", None)
     if objects is not None:
         for obj in list(objects):
-            if obj.get(PREVIEW_MARKER) or obj.get(LEGACY_PREVIEW_MARKER):
+            if obj.get(PREVIEW_MARKER):
                 _remove_object(obj)
     _tag_viewports()
 
@@ -495,10 +494,7 @@ def _remove_legacy_preview_objects(domain_name):
     if objects is None:
         return
     for obj in list(objects):
-        if (
-            obj.get(PREVIEW_MARKER) == domain_name
-            or obj.get(LEGACY_PREVIEW_MARKER) == domain_name
-        ):
+        if obj.get(PREVIEW_MARKER) == domain_name:
             _remove_object(obj)
 
 

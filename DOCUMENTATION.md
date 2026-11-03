@@ -65,10 +65,6 @@ check final appearance with a short VDB bake in your intended render engine.
 Stop active Fumaris jobs, close Blender, and install the newer ZIP from disk.
 Back up production `.blend` files before moving between versions.
 
-Fumaris replaces the former Plume Forge extension ID. Do not enable both
-extensions at once. Files made with development versions of Plume Forge may
-need their custom properties migrated before that old extension is removed.
-
 ## The Basic Workflow
 
 Fumaris uses one object as the domain settings host and collections to identify

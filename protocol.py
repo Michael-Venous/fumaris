@@ -2,7 +2,7 @@ import json
 import struct
 
 
-MAGIC = b"PFIP"
+MAGIC = b"FMIP"
 VERSION = 1
 HEADER = struct.Struct("<4sHHIQ")
 

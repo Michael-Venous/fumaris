@@ -13,14 +13,10 @@ from .diagnostics import console_log
 from .utils import flame_temperature_range
 
 PREFIX = "fumaris_"
-LEGACY_PREFIX = "plume_forge_"
 _FRAME_DIGITS = re.compile(r"-?[0-9]+")
 IMPORT_DIRECTORY = ".fumaris_import"
 VOLUME_MARKER = "fumaris_volume"
 VOLUME_PREFIX_MARKER = "fumaris_volume_prefix"
-LEGACY_IMPORT_DIRECTORY = ".plume_forge_import"
-LEGACY_VOLUME_MARKER = "plume_forge_volume"
-LEGACY_VOLUME_PREFIX_MARKER = "plume_forge_volume_prefix"
 GENERATED_MATERIAL_MARKER = "fumaris_generated_material"
 PREVIEW_OWNER_MARKER = "fumaris_preview_owner"
 
@@ -84,7 +80,7 @@ def replace_recorded_previews(owner, volume):
     for obj in list(bpy.data.objects):
         if (obj != volume and obj.type == "VOLUME"
                 and obj.get(PREVIEW_OWNER_MARKER) == owner
-                and (obj.get(VOLUME_MARKER) or obj.get(LEGACY_VOLUME_MARKER))):
+                and obj.get(VOLUME_MARKER)):
             _remove_generated_volume_object(obj)
 
 
@@ -99,8 +95,7 @@ def restore_recorded_previews(states):
 
 def baked_frame_count(directory, prefix=PREFIX):
     """Frames a bake has written to this cache slot folder."""
-    return len(_frame_files(directory, prefix)) or (
-        len(_frame_files(directory, LEGACY_PREFIX)) if prefix != LEGACY_PREFIX else 0)
+    return len(_frame_files(directory, prefix))
 
 
 def show_only_slot_volumes(root, current):
@@ -112,7 +107,7 @@ def show_only_slot_volumes(root, current):
     root = os.path.normpath(root) + os.sep
     current = os.path.normpath(current)
     for obj in bpy.data.objects:
-        marker = obj.get(VOLUME_MARKER) or obj.get(LEGACY_VOLUME_MARKER)
+        marker = obj.get(VOLUME_MARKER)
         if not marker:
             continue
         marker = os.path.normpath(marker)
@@ -133,17 +128,13 @@ def show_only_slot_volumes(root, current):
 def delete_generated_data(directory, prefix=PREFIX):
     normalized = os.path.normpath(directory)
     for obj in list(bpy.data.objects):
-        if (
-            obj.get(VOLUME_MARKER) == normalized
-            or obj.get(LEGACY_VOLUME_MARKER) == normalized
-        ):
+        if obj.get(VOLUME_MARKER) == normalized:
             _remove_generated_volume_object(obj)
 
     if os.path.isdir(directory):
-        for candidate_prefix in {prefix, LEGACY_PREFIX}:
-            for path in _frame_files(directory, candidate_prefix):
-                os.remove(path)
-            delete_temporary_writes(directory, candidate_prefix)
+        for path in _frame_files(directory, prefix):
+            os.remove(path)
+        delete_temporary_writes(directory, prefix)
         _delete_import_copies(directory)
 
 
@@ -161,10 +152,6 @@ def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
     if legacy_directory == directory:
         return False
     legacy_files = _frame_files(legacy_directory, prefix)
-    source_prefix = prefix
-    if not legacy_files and prefix != LEGACY_PREFIX:
-        legacy_files = _frame_files(legacy_directory, LEGACY_PREFIX)
-        source_prefix = LEGACY_PREFIX
     if not legacy_files:
         return False
     if _frame_files(directory, prefix):
@@ -172,10 +159,7 @@ def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
 
     os.makedirs(directory, exist_ok=True)
     for source in legacy_files:
-        name = os.path.basename(source)
-        if source_prefix != prefix:
-            name = prefix + name[len(source_prefix):]
-        os.replace(source, os.path.join(directory, name))
+        os.replace(source, os.path.join(directory, os.path.basename(source)))
     _remove_volume_for_directory(legacy_directory, prefix)
     console_log(
         f"Fumaris migrated {len(legacy_files)} legacy VDB frame(s) to "
@@ -608,10 +592,9 @@ def _stage_import_sequence(directory, files, prefix=PREFIX):
 
 
 def _delete_import_copies(directory):
-    for name in (IMPORT_DIRECTORY, LEGACY_IMPORT_DIRECTORY):
-        root = os.path.join(directory, name)
-        if os.path.isdir(root):
-            shutil.rmtree(root, ignore_errors=True)
+    root = os.path.join(directory, IMPORT_DIRECTORY)
+    if os.path.isdir(root):
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def _prune_import_copies(root, keep):
@@ -710,15 +693,11 @@ def _remove_generated_volume_object(obj):
 
 
 def _is_generated_volume(obj, directory, prefix):
-    marker = obj.get(VOLUME_MARKER) or obj.get(LEGACY_VOLUME_MARKER)
+    marker = obj.get(VOLUME_MARKER)
     if marker:
-        marker_prefix = obj.get(
-            VOLUME_PREFIX_MARKER,
-            obj.get(LEGACY_VOLUME_PREFIX_MARKER, prefix),
-        )
         return (
             os.path.normpath(marker) == directory
-            and marker_prefix in {prefix, LEGACY_PREFIX}
+            and obj.get(VOLUME_PREFIX_MARKER, prefix) == prefix
         )
     if obj.type != "VOLUME":
         return False
@@ -726,18 +705,12 @@ def _is_generated_volume(obj, directory, prefix):
     if not filepath:
         return False
     absolute = os.path.normpath(bpy.path.abspath(filepath))
-    import_roots = (
-        os.path.normpath(os.path.join(directory, IMPORT_DIRECTORY)),
-        os.path.normpath(os.path.join(directory, LEGACY_IMPORT_DIRECTORY)),
-    )
+    import_root = os.path.normpath(os.path.join(directory, IMPORT_DIRECTORY))
     try:
-        in_import_root = any(
-            os.path.commonpath((absolute, root)) == root
-            for root in import_roots
-        )
+        in_import_root = os.path.commonpath((absolute, import_root)) == import_root
     except ValueError:
         in_import_root = False
     return (
         (os.path.dirname(absolute) == directory or in_import_root)
-        and os.path.basename(absolute).startswith((prefix, LEGACY_PREFIX))
+        and os.path.basename(absolute).startswith(prefix)
     )

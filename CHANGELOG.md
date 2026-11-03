@@ -49,6 +49,8 @@ All notable customer-facing changes are recorded here.
 - **Consistent expansion across Sub-Steps.** Emitter Divergence no longer
   weakens as Sub-Steps rise, so raising Sub-Steps keeps the plume's push and
   amount of smoke closer to the default.
+- **Steady VRAM when adjusting a paused preview.** Changing an Appearance
+  setting while paused could briefly allocate up to several GB more GPU memory.
 - **More accurate pressure solve.** A sign error in the solver's multigrid
   step (inherited from NVIDIA Flow) is fixed, removing slightly more of the
   compression the solver is meant to remove.

@@ -659,8 +659,11 @@ fades into the smoke while the strongest flames get brighter, giving crisp
 flame tongues instead of an all-over glow. `Blue Core` blends the
 emission toward blue where fuel is still present near ignition temperature,
 as at a gas burner's base; it needs fuel in the simulation (the generated
-material then exports the fuel grid) and stays subtle in fireballs, where fuel
-is hot by the time it shows. Both apply to renders, not the live preview. Raw burn remains in the VDB for custom materials and compositing.
+material then exports the fuel grid, so bakes made without it need a rebake)
+and stays subtle in fireballs, where fuel is hot by the time it shows.
+Sharpness also applies to the live preview; Blue Core only to renders (the
+preview has no fuel channel). Volumes imported before these controls existed
+get them the first time an Appearance setting changes. Raw burn remains in the VDB for custom materials and compositing.
 
 When a custom `Volume Material` is assigned, enable the additional grids that
 material needs explicitly. Fumaris does not export a separate derived `flame`

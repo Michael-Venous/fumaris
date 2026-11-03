@@ -200,6 +200,12 @@ def apply_generated_material_settings(material, settings):
     if material is None or not material.use_nodes or material.node_tree is None:
         return False
     nodes = material.node_tree.nodes
+    # Materials generated before Sharpness and Blue Core lack their nodes:
+    # rebuild the graph in place, keeping its timestep normalization.
+    timestep = nodes.get(NODE_TIMESTEP_NORMALIZATION)
+    if timestep is not None and nodes.get(NODE_FLAME_SHARPNESS) is None:
+        _build_generated_material(material, timestep.inputs[1].default_value)
+        nodes = material.node_tree.nodes
     shader = nodes.get(NODE_VOLUME_SHADER)
     fire_intensity = nodes.get(NODE_FIRE_INTENSITY)
     fire_temperature = nodes.get(NODE_FIRE_TEMPERATURE)
@@ -256,6 +262,12 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     material = bpy.data.materials.new("Fumaris Material")
     material.use_nodes = True
     material[GENERATED_MATERIAL_MARKER] = True
+    _build_generated_material(material, flame_rate_scale)
+    apply_generated_material_settings(material, settings)
+    volume_object.data.materials.append(material)
+
+
+def _build_generated_material(material, flame_rate_scale):
     nodes = material.node_tree.nodes
     links = material.node_tree.links
     nodes.clear()
@@ -405,8 +417,6 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0
     links.new(shader.outputs["Volume"], output.inputs["Volume"])
-    apply_generated_material_settings(material, settings)
-    volume_object.data.materials.append(material)
 
 
 def update_generated_materials(domain, settings):

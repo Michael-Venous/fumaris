@@ -33,6 +33,8 @@ All notable customer-facing changes are recorded here.
   fraction per second, set by the new **Velocity Damping**; plumes rise
   higher and keep their turbulence longer. Scenes tuned for the old look can
   raise Velocity Damping.
+- **Steady flame brightness with Adaptive Sub-Steps.** Frames that ran fewer
+  steps no longer flash brighter in the preview and in baked VDBs.
 - **Adaptive Sub-Steps.** A toggle beside Sub-Steps uses only as many steps
   as the motion needs each frame, up to Sub-Steps; `Cells per Step` sets how
   far the fastest flow may move per step.

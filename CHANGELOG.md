@@ -16,9 +16,13 @@ All notable customer-facing changes are recorded here.
 - **Faster, smaller VDB bakes.** Density channels are packed on the GPU and
   only cells holding smoke are copied back, so a VDB bake no longer reserves
   GPU memory for exported density channels and spends far less time copying:
-  the same memory now holds up to a third more smoke, and bakes of the test
-  scenes ran about 20% faster (up to 80% on Apple silicon). VDB files are
-  written by more threads.
+  the same memory now holds up to a third more smoke. VDB files are written
+  by more threads.
+- **Faster bakes and more room.** Mesh emitters and colliders, vorticity and
+  bake frame handling were streamlined: bakes of the test scenes at 12 GB
+  run about 30% faster than 1.3.1 while holding 36–59% more smoke in the same
+  Simulation Memory (13–17% more without VDB export). Apple silicon bakes
+  run up to 80% faster.
 - **VDB Precision** (export panel). Half (default) stores 16-bit values,
   halving file size and write time; Full keeps 32-bit values.
 - **Colliders are walls.** Smoke is no longer pushed into colliders by the

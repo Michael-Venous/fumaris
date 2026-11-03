@@ -619,6 +619,14 @@ def _draw_domain(layout, scene, props):
     behavior.prop(props, "smoke_decay")
     behavior.prop(props, "velocity_damping")
 
+    turbulence, turbulence_open = _nested_foldout(behavior, props, "show_domain_turbulence", "Turbulence Detail")
+    if turbulence_open:
+        turbulence.prop(props, "disturb")
+        size_row = turbulence.row()
+        size_row.active = props.disturb > 0.0
+        size_row.prop(props, "disturb_size")
+        turbulence.prop(props, "shred")
+
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
         combustion.prop(props, "temperature_input_scale")

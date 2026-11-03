@@ -1263,6 +1263,33 @@ class FumarisSettings(PropertyGroup):
         max=10.0,
     )
 
+    disturb: FloatProperty(
+        name="Disturb",
+        description="Small random swirling pushes inside smoke and hot gas, for breakup and detail the base motion lacks. Strength in m/s²: about 50 is subtle and 300 strongly mixed on a fireball a few metres across; zero turns it off",
+        default=0.0,
+        min=0.0,
+        soft_max=200.0,
+        max=1000.0,
+    )
+
+    disturb_size: FloatProperty(
+        name="Disturb Size",
+        description="Size of the Disturb swirls in scene units. Use a few voxels or more; smaller swirls than the voxels cannot be resolved",
+        default=0.5,
+        min=0.001,
+        soft_max=10.0,
+        subtype="DISTANCE",
+    )
+
+    shred: FloatProperty(
+        name="Shred",
+        description="Tear flames into tongues by stretching the motion across sharp temperature edges. Zero turns it off; high values can make fire unstable",
+        default=0.0,
+        min=0.0,
+        soft_max=10.0,
+        max=100.0,
+    )
+
     vorticity_mask: EnumProperty(
         name="Vorticity Mask",
         description="Where Vorticity adds swirls",
@@ -1515,6 +1542,11 @@ class FumarisSettings(PropertyGroup):
 
     show_emitter_advanced: BoolProperty(
         name="Advanced Emitter",
+        default=False,
+    )
+
+    show_domain_turbulence: BoolProperty(
+        name="Turbulence Detail",
         default=False,
     )
 

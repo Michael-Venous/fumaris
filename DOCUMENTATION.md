@@ -389,6 +389,12 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   `Vorticity Mask` chooses where: `Fast Motion` (default), `Smoke` (in
   proportion to density, so thin edges stay calm), `Flames` (hot gas) or
   `Everywhere`.
+- `Turbulence Detail` (folded) adds artistic forces. `Disturb` pushes smoke and
+  hot gas with small random swirls of `Disturb Size` (scene units; keep it a
+  few voxels or larger), for breakup the base motion lacks: about 50 m/s² is
+  subtle and 300 strongly mixed on a fireball a few metres across. `Shred`
+  stretches the motion across sharp temperature edges, tearing flames into
+  tongues; values around 1–5 are typical.
 - `Dissipation` fades smoke over time, by that much density per second. The
   slider stops at 1; type a larger value for dense smoke that must clear fast.
 - `Smoke Decay` removes a fraction of the smoke per second, in proportion to

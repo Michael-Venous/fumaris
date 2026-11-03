@@ -33,6 +33,8 @@ All notable customer-facing changes are recorded here.
   as the motion needs each frame, up to Sub-Steps.
 - **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
   dense smoke, flames or everything.
+- **Disturb and Shred** (Behavior > Turbulence Detail). Disturb adds small
+  random swirls inside smoke and hot gas; Shred tears flames into tongues.
 - **Consistent expansion across Sub-Steps.** Emitter Divergence no longer
   weakens as Sub-Steps rise, so raising Sub-Steps keeps the plume's push and
   amount of smoke closer to the default.

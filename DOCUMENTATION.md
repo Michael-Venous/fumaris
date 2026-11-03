@@ -293,6 +293,11 @@ Simulation Memory or Auto Cell Size is limiting.
 Start with the defaults. For energetic or high-resolution effects, raise
 Sub-Steps until motion and combustion stop changing materially. Sub-Steps are
 complete solver steps and may be set from 1 to 40; cost rises roughly linearly.
+`Adaptive` (beside Sub-Steps) makes Sub-Steps the maximum: each frame uses only
+as many as the previous frame's fastest flow needs (about four density cells
+per step), all of them while the motion is fast. With Sub-Steps at 6 the test
+scenes used 3–5 on average and baked 23–34% faster, with the fast phases close
+to always using 6; the result is not identical to a fixed count.
 
 `Small Sparse Blocks` (Advanced, off by default) divides space into chunks an
 eighth of the size. They follow the smoke more closely, but each chunk carries
@@ -381,6 +386,9 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 - `Temperature Buoyancy` lifts hot gas.
 - `Smoke Buoyancy` controls density-driven lift or sinking.
 - `Vorticity` restores small rotational motion lost through advection.
+  `Vorticity Mask` chooses where: `Fast Motion` (default), `Smoke` (in
+  proportion to density, so thin edges stay calm), `Flames` (hot gas) or
+  `Everywhere`.
 - `Dissipation` fades smoke over time, by that much density per second. The
   slider stops at 1; type a larger value for dense smoke that must clear fast.
 - `Smoke Decay` removes a fraction of the smoke per second, in proportion to

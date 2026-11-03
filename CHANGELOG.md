@@ -29,6 +29,13 @@ All notable customer-facing changes are recorded here.
   fraction per second, set by the new **Velocity Damping**; plumes rise
   higher and keep their turbulence longer. Scenes tuned for the old look can
   raise Velocity Damping.
+- **Adaptive Sub-Steps.** A toggle beside Sub-Steps uses only as many steps
+  as the motion needs each frame, up to Sub-Steps.
+- **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
+  dense smoke, flames or everything.
+- **Consistent expansion across Sub-Steps.** Emitter Divergence no longer
+  weakens as Sub-Steps rise, so raising Sub-Steps keeps the plume's push and
+  amount of smoke closer to the default.
 - **More accurate pressure solve.** A sign error in the solver's multigrid
   step (inherited from NVIDIA Flow) is fixed, removing slightly more of the
   compression the solver is meant to remove.

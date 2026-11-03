@@ -502,7 +502,10 @@ def _draw_domain(layout, scene, props):
         legacy = settings.row()
         legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")
     settings.prop(props, "air_margin")
-    settings.prop(props, "num_sub_steps")
+    substeps_row = settings.row(align=True)
+    substeps_label = {"text": "Max Sub-Steps"} if props.adaptive_sub_steps else {}
+    substeps_row.prop(props, "num_sub_steps", **substeps_label)
+    substeps_row.prop(props, "adaptive_sub_steps", toggle=True)
     settings.prop(props, "follow_object")
     if props.follow_object:
         settings.prop(props, "carry_air", slider=True)
@@ -609,6 +612,9 @@ def _draw_domain(layout, scene, props):
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
     behavior.prop(props, "vorticity")
+    mask_row = behavior.row()
+    mask_row.active = props.vorticity > 0.0
+    mask_row.prop(props, "vorticity_mask")
     behavior.prop(props, "dissipation")
     behavior.prop(props, "smoke_decay")
     behavior.prop(props, "velocity_damping")

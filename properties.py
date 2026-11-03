@@ -1263,6 +1263,18 @@ class FumarisSettings(PropertyGroup):
         max=10.0,
     )
 
+    vorticity_mask: EnumProperty(
+        name="Vorticity Mask",
+        description="Where Vorticity adds swirls",
+        items=(
+            ("speed", "Fast Motion", "Strongest where the flow is fastest"),
+            ("smoke", "Smoke", "In proportion to smoke density, so thin edges stay calm"),
+            ("fire", "Flames", "Where the gas is hot, for licking flames over a calmer plume"),
+            ("everywhere", "Everywhere", "Evenly through the simulated air"),
+        ),
+        default="speed",
+    )
+
     dissipation: FloatProperty(
         name="Dissipation",
         description="How quickly smoke fades away over time, in smoke density per second; zero keeps it from fading through this setting. Type a value above 1 for dense smoke that must clear quickly",
@@ -1384,6 +1396,12 @@ class FumarisSettings(PropertyGroup):
     temperature_mapping_version: IntProperty(
         default=0,
         options={"HIDDEN"},
+    )
+
+    adaptive_sub_steps: BoolProperty(
+        name="Adaptive",
+        description="Use only as many Sub-Steps as the flow needs each frame, up to Sub-Steps: fewer while it is slow, all of them while it is fast. Saves time when Sub-Steps is high; the result differs a little from always using all of them",
+        default=False,
     )
 
     num_sub_steps: IntProperty(

@@ -1418,8 +1418,8 @@ class FumarisSettings(PropertyGroup):
 
     shader_flame_sharpness: FloatProperty(
         name="Sharpness",
-        description="How abruptly flames fade at their edges in renders: 1 keeps the soft default, higher values give crisper tongues and a thinner flame sheet",
-        default=1.0,
+        description="How abruptly flames fade at their edges: 1 glows softly through the fireball, higher values fade weak glow into the smoke and brighten the strongest flames for crisp tongues",
+        default=2.0,
         min=0.25,
         max=8.0,
         soft_max=4.0,
@@ -1427,7 +1427,7 @@ class FumarisSettings(PropertyGroup):
     )
 
     shader_flame_core: FloatProperty(
-        name="Blue Core",
+        name="Blue Core (Render Only)",
         description="Blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation; zero turns it off",
         default=0.0,
         min=0.0,

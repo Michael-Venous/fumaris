@@ -654,9 +654,10 @@ a rebake.
 
 `Sharpness` adds contrast to the source around a typical strong flame
 (`source' = 0.5 * (source / 0.5)^Sharpness` before the exponential): at 1
-(default) flames glow softly through the fireball; at 1.5–3 weak, diffuse glow
-fades into the smoke while the strongest flames get brighter, giving crisp
-flame tongues instead of an all-over glow. `Blue Core` blends the
+flames glow softly through the fireball; at 2 (default) and above, weak,
+diffuse glow fades into the smoke while the strongest flames get brighter,
+giving crisp flame tongues instead of an all-over glow. `Blue Core (Render
+Only)` blends the
 emission toward blue where fuel is still present near ignition temperature,
 as at a gas burner's base; it needs fuel in the simulation (the generated
 material then exports the fuel grid, so bakes made without it need a rebake)

@@ -248,7 +248,7 @@ def apply_generated_material_settings(material, settings):
     sharpness = nodes.get(NODE_FLAME_SHARPNESS)
     if sharpness is not None:
         sharpness.inputs[1].default_value = max(
-            0.25, float(_appearance_value(settings, "shader_flame_sharpness", 1.0)))
+            0.25, float(_appearance_value(settings, "shader_flame_sharpness", 2.0)))
     core = nodes.get(NODE_FLAME_CORE)
     if core is not None:
         core.inputs[1].default_value = max(

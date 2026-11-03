@@ -38,9 +38,10 @@ All notable customer-facing changes are recorded here.
   far the fastest flow may move per step.
 - **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
   dense smoke, flames or everything.
-- **Sharper fire in renders.** The generated material gains `Sharpness`
-  (crisp flame tongues instead of an all-over glow) and `Blue Core` (blue
-  where fuel is just igniting) under Appearance.
+- **Sharper fire.** Appearance gains `Sharpness` (default 2: crisp flame
+  tongues instead of an all-over glow, also in the live preview; set 1 for the
+  previous look) and `Blue Core (Render Only)` (blue where fuel is just
+  igniting).
 - **Preserve Turbulence** (Behavior > Turbulence Detail). Advection–reflection
   keeps much more of the flow's swirling energy for livelier, longer-lasting
   turbulence, at 6–26% more time.

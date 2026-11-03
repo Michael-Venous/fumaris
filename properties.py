@@ -1410,6 +1410,26 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
+    shader_flame_sharpness: FloatProperty(
+        name="Sharpness",
+        description="How abruptly flames fade at their edges in renders: 1 keeps the soft default, higher values give crisper tongues and a thinner flame sheet",
+        default=1.0,
+        min=0.25,
+        max=8.0,
+        soft_max=4.0,
+        update=_appearance_updated,
+    )
+
+    shader_flame_core: FloatProperty(
+        name="Blue Core",
+        description="Blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation; zero turns it off",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_appearance_updated,
+    )
+
     shader_temperature_multiplier: FloatProperty(
         name="Blackbody Scale",
         description="Multiplier applied to Kelvin-like temperature before Blackbody color; 1.0 preserves the baked temperature",

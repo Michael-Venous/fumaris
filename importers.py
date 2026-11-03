@@ -29,6 +29,8 @@ NODE_FIRE_INTENSITY = "Fumaris Fire Intensity"
 NODE_FIRE_TEMPERATURE = "Fumaris Fire Temperature"
 NODE_TEMPERATURE_MULTIPLIER = "Fumaris Color Temperature"
 NODE_TIMESTEP_NORMALIZATION = "Fumaris Timestep Normalization"
+NODE_FLAME_SHARPNESS = "Fumaris Flame Sharpness"
+NODE_FLAME_CORE = "Fumaris Flame Core"
 
 
 def hide_generated_volumes(directory, prefix=PREFIX, *, hide_render=False):
@@ -232,6 +234,16 @@ def apply_generated_material_settings(material, settings):
         0.01,
         float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)),
     )
+    # Materials generated before these controls lack the nodes; they keep
+    # the soft, all-blackbody flame.
+    sharpness = nodes.get(NODE_FLAME_SHARPNESS)
+    if sharpness is not None:
+        sharpness.inputs[1].default_value = max(
+            0.25, float(_appearance_value(settings, "shader_flame_sharpness", 1.0)))
+    core = nodes.get(NODE_FLAME_CORE)
+    if core is not None:
+        core.inputs[1].default_value = max(
+            0.0, min(1.0, float(_appearance_value(settings, "shader_flame_core", 0.0))))
     material.diffuse_color = (*smoke_color[:3], 1.0)
     material.node_tree.update_tag()
     return True
@@ -291,6 +303,40 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     fire_intensity.label = "Fire Intensity"
     fire_intensity.use_clamp = False
     fire_intensity.inputs[1].default_value = 1.0
+    sharpness = nodes.new("ShaderNodeMath")
+    sharpness.operation = "POWER"
+    sharpness.name = NODE_FLAME_SHARPNESS
+    sharpness.label = "Flame Sharpness"
+    sharpness.inputs[1].default_value = 1.0
+    # Blue where fuel is still burning: fresh flame near the source.
+    fuel = nodes.new("ShaderNodeAttribute")
+    fuel.attribute_name = "fuel"
+    fuel.label = "Fuel"
+    fuel_presence = nodes.new("ShaderNodeMath")
+    fuel_presence.operation = "MULTIPLY"
+    fuel_presence.use_clamp = True
+    fuel_presence.inputs[1].default_value = 4.0
+    fuel_presence.label = "Fuel Presence"
+    # Blue only where fuel is still near ignition temperature.
+    cool = nodes.new("ShaderNodeMath")
+    cool.operation = "SUBTRACT"
+    cool.inputs[0].default_value = 1.0
+    cool.label = "Near Ignition"
+    fresh_fuel = nodes.new("ShaderNodeMath")
+    fresh_fuel.operation = "MULTIPLY"
+    fresh_fuel.label = "Fresh Fuel"
+    core = nodes.new("ShaderNodeMath")
+    core.operation = "MULTIPLY"
+    core.use_clamp = True
+    core.name = NODE_FLAME_CORE
+    core.label = "Blue Core"
+    core.inputs[1].default_value = 0.0
+    core_mix = nodes.new("ShaderNodeMix")
+    core_mix.data_type = "RGBA"
+    core_mix.label = "Core Color"
+    for socket in core_mix.inputs:
+        if socket.name == "B" and socket.type == "RGBA":
+            socket.default_value = (0.12, 0.3, 1.0, 1.0)
 
     burn.location = (-1080, 300)
     positive_burn.location = (-880, 300)
@@ -301,7 +347,14 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     negate.location = (-250, 300)
     exponential.location = (-50, 300)
     smooth_flame.location = (150, 300)
+    sharpness.location = (-350, 420)
     fire_intensity.location = (350, 300)
+    fuel.location = (-650, -320)
+    fuel_presence.location = (-430, -320)
+    cool.location = (-650, -480)
+    fresh_fuel.location = (-430, -480)
+    core.location = (-230, -320)
+    core_mix.location = (-200, -120)
     temperature_multiplier.location = (-650, -120)
     blackbody.location = (-430, -120)
     shader.location = (590, 40)
@@ -312,13 +365,23 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     links.new(volume_info.outputs["Temperature"], fire_temperature.inputs[0])
     links.new(_socket(fire_temperature.outputs, "Result"), burn_heat.inputs[1])
     links.new(burn_heat.outputs[0], timestep.inputs[0])
-    links.new(timestep.outputs[0], negate.inputs[0])
+    links.new(timestep.outputs[0], sharpness.inputs[0])
+    links.new(sharpness.outputs[0], negate.inputs[0])
     links.new(negate.outputs[0], exponential.inputs[0])
     links.new(exponential.outputs[0], smooth_flame.inputs[1])
     links.new(smooth_flame.outputs[0], fire_intensity.inputs[0])
     links.new(volume_info.outputs["Temperature"], temperature_multiplier.inputs[0])
     links.new(temperature_multiplier.outputs[0], blackbody.inputs["Temperature"])
-    links.new(blackbody.outputs["Color"], shader.inputs["Emission Color"])
+    links.new(_socket(fuel.outputs, "Factor", "Fac"), fuel_presence.inputs[0])
+    links.new(_socket(fire_temperature.outputs, "Result"), cool.inputs[1])
+    links.new(fuel_presence.outputs[0], fresh_fuel.inputs[0])
+    links.new(cool.outputs[0], fresh_fuel.inputs[1])
+    links.new(fresh_fuel.outputs[0], core.inputs[0])
+    links.new(core.outputs[0], core_mix.inputs["Factor"])
+    rgba_inputs = [socket for socket in core_mix.inputs if socket.type == "RGBA"]
+    links.new(blackbody.outputs["Color"], rgba_inputs[0])
+    rgba_outputs = [socket for socket in core_mix.outputs if socket.type == "RGBA"]
+    links.new(rgba_outputs[0], shader.inputs["Emission Color"])
     links.new(fire_intensity.outputs[0], shader.inputs["Emission Strength"])
     shader.inputs["Density Attribute"].default_value = "density"
     shader.inputs["Temperature Attribute"].default_value = "temperature"

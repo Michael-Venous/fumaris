@@ -529,6 +529,8 @@ def _draw_domain(layout, scene, props):
         row.prop(props, "flame_temperature_min", text="Start")
         row.prop(props, "flame_temperature_max", text="Full")
         fire.prop(props, "shader_temperature_multiplier")
+        fire.prop(props, "shader_flame_sharpness")
+        fire.prop(props, "shader_flame_core")
         if props.volume_material is not None:
             appearance.label(
                 text="Custom Volume Material overrides baked appearance",

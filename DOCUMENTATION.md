@@ -643,7 +643,16 @@ flame = 1 - exp(-source)
 `flame * Brightness` drives Emission Strength. Temperature multiplied by
 `Blackbody Scale` drives a Blackbody node for Emission Color. The default scale
 is `1.0`; changing it, the smoke settings, or the fire settings does not require
-a rebake. Raw burn remains in the VDB for custom materials and compositing.
+a rebake.
+
+`Sharpness` raises the source to that power before the exponential
+(`flame = 1 - exp(-source^Sharpness)`): at 1 (default) flames glow softly
+through the fireball; around 2–3 thin, cool regions fade while hot cores stay
+bright, giving crisp flame tongues under dark smoke. `Blue Core` blends the
+emission toward blue where fuel is still present near ignition temperature,
+as at a gas burner's base; it needs fuel in the simulation (the generated
+material then exports the fuel grid) and stays subtle in fireballs, where fuel
+is hot by the time it shows. Both apply to renders, not the live preview. Raw burn remains in the VDB for custom materials and compositing.
 
 When a custom `Volume Material` is assigned, enable the additional grids that
 material needs explicitly. Fumaris does not export a separate derived `flame`

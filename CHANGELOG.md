@@ -33,6 +33,9 @@ All notable customer-facing changes are recorded here.
   as the motion needs each frame, up to Sub-Steps.
 - **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
   dense smoke, flames or everything.
+- **Sharper fire in renders.** The generated material gains `Sharpness`
+  (crisp flame tongues instead of an all-over glow) and `Blue Core` (blue
+  where fuel is just igniting) under Appearance.
 - **Disturb and Shred** (Behavior > Turbulence Detail). Disturb adds small
   random swirls inside smoke and hot gas; Shred tears flames into tongues.
 - **Consistent expansion across Sub-Steps.** Emitter Divergence no longer

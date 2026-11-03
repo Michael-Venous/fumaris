@@ -103,6 +103,8 @@ def build_session(
     }
     # Mesh participants add a closest-face texture that the memory budget must hold.
     settings["initial_domain"]["mesh_sources"] = any(item["kind"] == "mesh" for item in participants)
+    # Effectors add a velocity scratch texture after the pressure solve.
+    settings["initial_domain"]["effector_sources"] = any(item["kind"] == "effector" for item in participants)
     return settings, participants
 
 
@@ -283,7 +285,8 @@ def _domain_state(props, resolution_scale=1.0):
         "divergence_per_burn": props.divergence_per_burn,
         "cooling_rate": props.cooling_rate,
         "export_temperature_vdb": props.export_temperature_vdb or generated_material,
-        "export_fuel_vdb": props.export_fuel_vdb,
+        "export_fuel_vdb": props.export_fuel_vdb
+        or (generated_material and props.shader_flame_enabled and props.shader_flame_core > 0.0),
         "export_burn_vdb": props.export_burn_vdb or generated_material,
         "export_velocity_vdb": props.export_velocity_vdb,
     }

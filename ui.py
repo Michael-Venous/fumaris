@@ -325,6 +325,7 @@ def _draw_diagnostics(layout, props):
         if opened:
             box.label(text=f"Effective resolution: {number('flow_effective_resolution'):.0f} / {number('flow_requested_resolution'):.0f}")
             box.label(text=f"CFL (previous field): {number('flow_previous_courant'):.2f} cells/step")
+            box.label(text=f"Smoke CFL (drives Adaptive): {number('flow_previous_smoke_courant'):.2f} cells/step")
             box.label(text=f"Voxel size: {number('flow_density_voxel_size_x'):.5g} m")
             if number("flow_detail_working_bytes"):
                 box.label(text=f"Derived smoke resolution: {number('flow_detail_effective_resolution'):.0f}")

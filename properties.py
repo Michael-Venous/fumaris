@@ -1281,6 +1281,12 @@ class FumarisSettings(PropertyGroup):
         subtype="DISTANCE",
     )
 
+    advection_reflection: BoolProperty(
+        name="Preserve Turbulence",
+        description="Advection-reflection: Sub-Steps run in pairs that keep much more of the flow's swirling energy, for livelier, longer-lasting turbulence and larger plumes. About 10 to 25% slower; needs 2 or more Sub-Steps",
+        default=False,
+    )
+
     shred: FloatProperty(
         name="Shred",
         description="Tear flames into tongues by stretching the motion across sharp temperature edges. Zero turns it off; high values can make fire unstable",

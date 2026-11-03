@@ -630,6 +630,9 @@ def _draw_domain(layout, scene, props):
         size_row.active = props.disturb > 0.0
         size_row.prop(props, "disturb_size")
         turbulence.prop(props, "shred")
+        reflection_row = turbulence.row()
+        reflection_row.active = props.num_sub_steps >= 2
+        reflection_row.prop(props, "advection_reflection")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:

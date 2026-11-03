@@ -36,6 +36,9 @@ All notable customer-facing changes are recorded here.
 - **Sharper fire in renders.** The generated material gains `Sharpness`
   (crisp flame tongues instead of an all-over glow) and `Blue Core` (blue
   where fuel is just igniting) under Appearance.
+- **Preserve Turbulence** (Behavior > Turbulence Detail). Advection–reflection
+  keeps much more of the flow's swirling energy for livelier, longer-lasting
+  turbulence, at 6–26% more time.
 - **Disturb and Shred** (Behavior > Turbulence Detail). Disturb adds small
   random swirls inside smoke and hot gas; Shred tears flames into tongues.
 - **Consistent expansion across Sub-Steps.** Emitter Divergence no longer

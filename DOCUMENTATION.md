@@ -395,7 +395,11 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   few voxels or larger), for breakup the base motion lacks: about 50 m/s² is
   subtle and 300 strongly mixed on a fireball a few metres across. `Shred`
   stretches the motion across sharp temperature edges, tearing flames into
-  tongues; values around 1–5 are typical.
+  tongues; values around 1–5 are typical. `Preserve Turbulence`
+  (advection–reflection, Zehnder et al. 2018) runs Sub-Steps in pairs that
+  lose far less swirling energy to the solver itself: plumes stay lively
+  longer and grow larger (in the test scenes kinetic energy ×1.1–2.7, 10–50%
+  more space used) for 6–26% more time. It needs 2 or more Sub-Steps.
 - `Dissipation` fades smoke over time, by that much density per second. The
   slider stops at 1; type a larger value for dense smoke that must clear fast.
 - `Smoke Decay` removes a fraction of the smoke per second, in proportion to

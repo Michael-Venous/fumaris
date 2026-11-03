@@ -608,7 +608,9 @@ def _draw_domain(layout, scene, props):
         detail.prop(props, "upres_strength")
         detail.prop(props, "upres_fire_strength")
         detail.prop(props, "upres_scale")
-        detail.prop(props, "upres_memory_mb")
+        if simulation_memory_mb(props) == 0.0:
+            # Simulation Memory already covers the detail level.
+            detail.prop(props, "upres_memory_mb")
         detail.label(text="Shared detail motion; combustion stays at base resolution", icon="INFO")
     behavior.prop(props, "gravity")
     behavior.prop(props, "buoyancy_per_temp")

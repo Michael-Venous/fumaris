@@ -252,14 +252,15 @@ its allocation, so the toggle remains unavailable until you press Stop.
   2 share a minimum sampling size.
 - Strength and size accept typed values beyond their slider ranges. Large values
   can distort the volume or expose patterns; more is not always better.
-- Detail Memory Limit defaults to 4096 MiB (4 GiB). Its slider reaches 32768 MiB;
-  larger values can be typed, but this does not create additional VRAM.
-- The limit checks estimated peak allocation, not the current total shown by a
-  GPU monitor. The base solver, temporary resources, and Blender also need room.
-  System RAM does not replace GPU memory. Lower resolution or disable upres if
-  the budget is reached; raise it only when the GPU has sufficient headroom.
+- Simulation Memory includes the detail level: with Upres on, the same memory
+  holds far fewer blocks, because each carries a detail volume at twice the
+  resolution. Scenes saved with a Sparse Block Capacity instead use Detail
+  Memory Limit (default 4096 MiB), which checks estimated peak allocation, not
+  the current total shown by a GPU monitor.
 
-Compare a short bake with upres disabled and with a higher base resolution.
+Compare a short bake with upres disabled and with a higher base resolution. In
+the 2026-11 tests, rising smoke at resolution 900 with Upres took 1.8 times as
+long as simulating resolution 1800 directly in the same 12 GB.
 Depending on the effect, higher base resolution can be the better tradeoff.
 Upres is not a fix for sparse-boundary stepping or insufficient solver substeps.
 The advection correction falls back to ordinary advection when it overshoots,

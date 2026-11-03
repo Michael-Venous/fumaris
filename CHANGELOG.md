@@ -17,7 +17,8 @@ All notable customer-facing changes are recorded here.
   only cells holding smoke are copied back, so a VDB bake no longer reserves
   GPU memory for exported density channels and spends far less time copying:
   the same memory now holds up to a third more smoke. VDB files are written
-  by more threads.
+  by more threads, and a VDB bake uses less RAM: a large bake that took
+  about 52 GB now takes about 34 GB.
 - **Faster bakes and more room.** Mesh emitters and colliders, vorticity and
   bake frame handling were streamlined: bakes of the test scenes at 12 GB
   run about 30% faster than 1.3.1 while holding 36–59% more smoke in the same

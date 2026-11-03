@@ -38,6 +38,12 @@ All notable customer-facing changes are recorded here.
   far the fastest flow may move per step.
 - **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
   dense smoke, flames or everything.
+- **Realistic combustion** (new domains; earlier scenes keep Classic). Fuel
+  burns away gradually at a set **Flame Temperature**, so fires glow at real
+  flame colours and fade into embers and smoke instead of turning white-hot
+  and stopping at once. The Combustion panel uses Flame Temperature, Burn
+  Time, Cooling Time, Smoke Amount, Expansion and Ignition Temperature in
+  place of Flow's eight per-burn coefficients.
 - **Sharper fire.** Appearance gains `Sharpness` (default 2: crisp flame
   tongues instead of an all-over glow, also in the live preview; set 1 for the
   previous look) and `Blue Core (Render Only)` (blue where fuel is just

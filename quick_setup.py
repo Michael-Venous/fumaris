@@ -42,6 +42,9 @@ PRESETS = {
         "domain": {"shader_flame_enabled": True, "vorticity": 6.0,
                    "buoyancy_per_temp": 1.5, "burn_per_temp": 2.0,
                    "divergence_per_burn": 4.0, "cooling_rate": 0.5,
+                   # Realistic model (new domains): a short, hot burn whose
+                   # gas keeps glowing and rising for a few seconds.
+                   "burn_time": 1.5, "cooling_time": 3.0,
                    "shader_smoke_density": 3.0,
                    "shader_smoke_color": (0.3185545,) * 3},
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 1.0,

@@ -414,6 +414,30 @@ Combustion is active when its coefficients require it. Fuel burns above the
 ignition threshold, producing configurable smoke, heat, and expansion. Large
 changes can require retuning Sub-Steps because combustion adds velocity.
 
+`Combustion Model` (Behavior > Combustion) is **Realistic** for new domains;
+domains from files saved before it existed load as **Classic**, NVIDIA Flow's
+original model, so their look does not change.
+
+- **Realistic.** Once gas with fuel is hotter than `Ignition Temperature`, a
+  fixed share of its fuel burns each second (95% within `Burn Time`), heating
+  the gas toward `Flame Temperature`, the hottest any gas gets (emitters
+  included; Emitter Temperature 1 means Flame Temperature). When the fuel
+  thins out, burning can no longer keep the gas hot and it cools (95% of its
+  heat within `Cooling Time`), so flames fade into glowing embers and smoke
+  instead of stopping at once. `Smoke Amount` is soot per unit of fuel burnt
+  and `Expansion` how hard burning pushes the gas outward. Temperature
+  Buoyancy is measured at Flame Temperature, so a cooler flame still lifts.
+  Flame Temperature sets the colour: about 1500 K deep orange, 2000–2400 K
+  orange to yellow (most fuel fires), 3000 K and above pale yellow-white.
+  Fuel amounts of about 1–3 suit a source that burns where it emits; a
+  source that expands a lot before burning (a growing fireball) needs more,
+  about 10–30, because its fuel thins out as it mixes with air.
+- **Classic.** Burning heats gas in proportion to its temperature above
+  ignition, so unless cooling outpaces it, gas runs to the 5000 K limit
+  (white-hot) and burns at a constant rate until its fuel runs out at once.
+  `Temperature Input Scale`, `Burn Per Temperature`, `Fuel/Temperature/Smoke/
+  Expansion Per Burn` and `Cooling Rate` are Flow's coefficients.
+
 ## Emitters
 
 Fumaris supports:

@@ -17,6 +17,9 @@ from bpy.types import PropertyGroup
 LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
 TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
+# 1: domain created with the Realistic combustion model available. Domains from
+# earlier files load as Classic so their look does not change.
+COMBUSTION_VERSION = 1
 
 
 def _object_type_updated(self, _context):
@@ -26,6 +29,8 @@ def _object_type_updated(self, _context):
     if (self.smoke_object_type == "domain" and not self.use_scene_frame_range
             and self.sim_start_frame == 1 and self.sim_end_frame == 250):
         self.use_scene_frame_range = True
+    if self.smoke_object_type == "domain" and self.combustion_version == 0:
+        self.combustion_version = COMBUSTION_VERSION
 
 
 def _cache_slot_updated(self, _context):
@@ -1207,6 +1212,53 @@ class FumarisSettings(PropertyGroup):
         soft_max=1.0,
     )
 
+    combustion_model: EnumProperty(
+        name="Combustion Model",
+        description="How fuel burns",
+        items=(
+            ("realistic", "Realistic", "Fuel burns away gradually at a set flame temperature, so fires glow at real flame colours and fade out instead of stopping at once"),
+            ("classic", "Classic", "NVIDIA Flow's original model, kept for scenes made before Realistic existed: burning heats gas toward 5000 K and fuel runs out all at once"),
+        ),
+        default="realistic",
+    )
+
+    flame_temperature: FloatProperty(
+        name="Flame Temperature",
+        description="Hottest temperature gas reaches, in Kelvin. Sets the flame colour: about 1500 K deep orange, 2000 K yellow-orange (most fuel fires), 3000 K and above pale yellow-white. Emitter Temperature 1 means this temperature",
+        default=2000.0,
+        min=600.0,
+        max=5000.0,
+        soft_min=1000.0,
+        soft_max=3500.0,
+    )
+
+    burn_time: FloatProperty(
+        name="Burn Time",
+        description="Seconds for burning gas to use up 95% of its fuel. Longer keeps flames alive longer",
+        default=2.0,
+        min=0.05,
+        soft_max=10.0,
+        subtype="TIME_ABSOLUTE",
+    )
+
+    cooling_time: FloatProperty(
+        name="Cooling Time",
+        description="Seconds for hot gas to lose 95% of its heat once nothing heats it. Longer keeps embers glowing and smoke rising for longer",
+        default=2.0,
+        min=0.05,
+        soft_max=10.0,
+        subtype="TIME_ABSOLUTE",
+    )
+
+    ignition_temperature_k: FloatProperty(
+        name="Ignition Temperature",
+        description="Fuel burns only in gas at least this hot, in Kelvin; fuel carried into cooler air stops burning",
+        default=500.0,
+        min=0.0,
+        max=5000.0,
+        soft_max=1500.0,
+    )
+
     burn_per_temp: FloatProperty(
         name="Burn Per Temperature",
         description="How quickly hot fuel burns after ignition; higher values make combustion more intense and consume fuel faster",
@@ -1451,6 +1503,11 @@ class FumarisSettings(PropertyGroup):
         options={"HIDDEN"},
     )
 
+    combustion_version: IntProperty(
+        default=0,
+        options={"HIDDEN"},
+    )
+
     adaptive_sub_steps: BoolProperty(
         name="Adaptive",
         description="Use only as many Sub-Steps as the flow needs each frame, up to Sub-Steps: fewer while it is slow, all of them while it is fast. Saves time when Sub-Steps is high; the result differs a little from always using all of them",
@@ -1598,6 +1655,12 @@ class FumarisSettings(PropertyGroup):
 
 def _migrate_temperature_mapping():
     for obj in bpy.data.objects:
+        props = getattr(obj, "fumaris", None)
+        if (props is not None and props.smoke_object_type == "domain"
+                and props.combustion_version < COMBUSTION_VERSION):
+            # Saved before Realistic combustion existed: keep the old look.
+            props.combustion_model = "classic"
+            props.combustion_version = COMBUSTION_VERSION
         props = getattr(obj, "fumaris", None)
         if props is None or props.temperature_mapping_version >= TEMPERATURE_MAPPING_VERSION:
             continue

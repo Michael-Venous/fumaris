@@ -640,14 +640,23 @@ def _draw_domain(layout, scene, props):
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
-        combustion.prop(props, "temperature_input_scale")
-        combustion.prop(props, "ignition_temperature")
-        combustion.prop(props, "burn_per_temp")
-        combustion.prop(props, "fuel_per_burn")
-        combustion.prop(props, "temp_per_burn")
-        combustion.prop(props, "smoke_per_burn")
-        combustion.prop(props, "divergence_per_burn")
-        combustion.prop(props, "cooling_rate")
+        combustion.prop(props, "combustion_model")
+        if props.combustion_model == "realistic":
+            combustion.prop(props, "flame_temperature")
+            combustion.prop(props, "burn_time")
+            combustion.prop(props, "cooling_time")
+            combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
+            combustion.prop(props, "divergence_per_burn", text="Expansion")
+            combustion.prop(props, "ignition_temperature_k")
+        else:
+            combustion.prop(props, "temperature_input_scale")
+            combustion.prop(props, "ignition_temperature")
+            combustion.prop(props, "burn_per_temp")
+            combustion.prop(props, "fuel_per_burn")
+            combustion.prop(props, "temp_per_burn")
+            combustion.prop(props, "smoke_per_burn")
+            combustion.prop(props, "divergence_per_burn")
+            combustion.prop(props, "cooling_rate")
 
     advanced = layout.box()
     advanced.enabled = not is_baking

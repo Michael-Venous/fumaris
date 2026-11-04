@@ -271,6 +271,8 @@ def _domain_state(props, resolution_scale=1.0):
         "advection_reflection": props.advection_reflection,
         "sharp_advection": props.sharp_advection,
         "gas_expansion": props.gas_expansion,
+        "vorticity_overshoot": props.vorticity_overshoot,
+        "soot_radiation": props.soot_radiation,
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,
         "velocity_damping": props.velocity_damping,

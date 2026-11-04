@@ -31,6 +31,8 @@ def _object_type_updated(self, _context):
         self.use_scene_frame_range = True
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
+        # Saved domains keep the Burn look; new ones glow by temperature.
+        self.shader_flame_look = "TEMPERATURE"
 
 
 def _cache_slot_updated(self, _context):
@@ -1224,6 +1226,14 @@ class FumarisSettings(PropertyGroup):
         soft_max=1.0,
     )
 
+    soot_radiation: FloatProperty(
+        name="Soot Radiation",
+        description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",
+        default=0.0,
+        min=0.0,
+        soft_max=3.0,
+    )
+
     burn_time: FloatProperty(
         name="Burn Time",
         description="Seconds for burning gas to use up 95% of its fuel. Longer keeps flames alive longer",
@@ -1323,6 +1333,15 @@ class FumarisSettings(PropertyGroup):
         min=0.001,
         soft_max=10.0,
         subtype="DISTANCE",
+    )
+
+    vorticity_overshoot: FloatProperty(
+        name="Vorticity Overshoot",
+        description="Let vorticity sharpen swirls past the speeds around them by this fraction of their range, for the boiling, cells-within-cells surface of fireballs. 0 keeps it within its neighbours (smoothest); about 0.5 gives most of the detail. Raise Vorticity carefully with it",
+        default=0.0,
+        min=0.0,
+        max=4.0,
+        soft_max=1.0,
     )
 
     sharp_advection: BoolProperty(
@@ -1463,6 +1482,28 @@ class FumarisSettings(PropertyGroup):
         min=0.0,
         max=100.0,
         soft_max=10.0,
+        update=_appearance_updated,
+    )
+
+    shader_flame_look: EnumProperty(
+        name="Flame Look",
+        description="How the generated material lights fire",
+        items=(
+            ("BURN", "Burn (Classic)", "Glow where fuel is burning, colored by temperature"),
+            ("TEMPERATURE", "Temperature (Physical)",
+             "Soot glows by its temperature like real fire: hot gas blazes yellow-orange, cooler gas dims to deep red and dark crevices. Brightness is set at Flame Temperature"),
+        ),
+        default="BURN",
+        update=_appearance_updated,
+    )
+
+    shader_flame_contrast: FloatProperty(
+        name="Contrast",
+        description="How fast glow falls off as gas cools below Flame Temperature. 1 matches a real camera exposed for the hottest gas; lower values let cooler gas glow too",
+        default=1.0,
+        min=0.05,
+        max=3.0,
+        soft_max=2.0,
         update=_appearance_updated,
     )
 

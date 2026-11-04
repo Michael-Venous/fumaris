@@ -522,13 +522,18 @@ def _draw_domain(layout, scene, props):
         appearance.prop(props, "shader_flame_enabled")
         fire = appearance.column(align=True)
         fire.enabled = props.shader_flame_enabled
+        fire.prop(props, "shader_flame_look", text="")
         fire.prop(props, "shader_flame_brightness")
-        row = fire.row(align=True)
-        row.prop(props, "flame_temperature_min", text="Start")
-        row.prop(props, "flame_temperature_max", text="Full")
-        fire.prop(props, "shader_temperature_multiplier")
-        fire.prop(props, "shader_flame_sharpness")
-        fire.prop(props, "shader_flame_core")
+        if props.shader_flame_look == "TEMPERATURE":
+            fire.prop(props, "shader_flame_contrast")
+            fire.prop(props, "shader_temperature_multiplier")
+        else:
+            row = fire.row(align=True)
+            row.prop(props, "flame_temperature_min", text="Start")
+            row.prop(props, "flame_temperature_max", text="Full")
+            fire.prop(props, "shader_temperature_multiplier")
+            fire.prop(props, "shader_flame_sharpness")
+            fire.prop(props, "shader_flame_core")
         if props.volume_material is not None:
             appearance.label(
                 text="Custom Volume Material overrides baked appearance",
@@ -617,6 +622,9 @@ def _draw_domain(layout, scene, props):
         reflection_row.active = props.num_sub_steps >= 2
         reflection_row.prop(props, "advection_reflection")
         turbulence.prop(props, "sharp_advection")
+        overshoot_row = turbulence.row()
+        overshoot_row.active = props.vorticity > 0.0
+        overshoot_row.prop(props, "vorticity_overshoot")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
@@ -627,6 +635,7 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "cooling_time")
             combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
             combustion.prop(props, "gas_expansion")
+            combustion.prop(props, "soot_radiation")
             combustion.prop(props, "ignition_temperature_k")
         else:
             combustion.prop(props, "temperature_input_scale")

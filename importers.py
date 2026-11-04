@@ -30,6 +30,21 @@ NODE_FLAME_SHARPNESS = "Fumaris Flame Sharpness"
 # median 0.02, 90th percentile 0.47, 99th 0.83.
 FLAME_SHARPNESS_PIVOT = 0.5
 NODE_FLAME_CORE = "Fumaris Flame Core"
+# Temperature (Physical) look: soot absorbs, and by Kirchhoff emits in
+# proportion, with radiance from Wien's law at 550 nm,
+# exp(-c * 26160 K * (1/T - 1/Tref)), so gas at Flame Temperature glows at
+# Brightness and cooler gas falls off as it does on a camera exposed for the
+# hottest gas. Colour is blackbody, shifted and saturated like a camera's
+# clipped highlights (plain blackbody orange turns peach under AgX).
+NODE_FLAME_LOOK_STRENGTH = "Fumaris Flame Look Strength"
+NODE_FLAME_LOOK_COLOR = "Fumaris Flame Look Color"
+NODE_PHYSICAL_REFERENCE = "Fumaris Physical Reference"
+NODE_PHYSICAL_CONTRAST = "Fumaris Physical Contrast"
+NODE_PHYSICAL_GAIN = "Fumaris Physical Gain"
+NODE_PHYSICAL_COLOR_SCALE = "Fumaris Physical Color Scale"
+WIEN_KELVIN = 26160.0
+PHYSICAL_COLOR_SHIFT = 1.3
+PHYSICAL_SATURATION = 1.8
 
 
 def hide_generated_volumes(directory, prefix=PREFIX, *, hide_render=False):
@@ -187,7 +202,8 @@ def apply_generated_material_settings(material, settings):
     # Materials generated before Sharpness and Blue Core lack their nodes:
     # rebuild the graph in place, keeping its timestep normalization.
     timestep = nodes.get(NODE_TIMESTEP_NORMALIZATION)
-    if timestep is not None and nodes.get(NODE_FLAME_SHARPNESS) is None:
+    if timestep is not None and (nodes.get(NODE_FLAME_SHARPNESS) is None
+                                 or nodes.get(NODE_FLAME_LOOK_STRENGTH) is None):
         _build_generated_material(material, timestep.inputs[1].default_value)
         nodes = material.node_tree.nodes
     shader = nodes.get(NODE_VOLUME_SHADER)
@@ -237,6 +253,20 @@ def apply_generated_material_settings(material, settings):
     if core is not None:
         core.inputs[1].default_value = max(
             0.0, min(1.0, float(_appearance_value(settings, "shader_flame_core", 0.0))))
+    look_strength = nodes.get(NODE_FLAME_LOOK_STRENGTH)
+    look_color = nodes.get(NODE_FLAME_LOOK_COLOR)
+    if look_strength is not None and look_color is not None:
+        physical = _appearance_value(settings, "shader_flame_look", "BURN") == "TEMPERATURE"
+        for mix in (look_strength, look_color):
+            mix.inputs["Factor"].default_value = 1.0 if physical else 0.0
+        reference = max(1.0, float(_appearance_value(settings, "flame_temperature", 2000.0)))
+        contrast = max(0.05, float(_appearance_value(settings, "shader_flame_contrast", 1.0)))
+        nodes[NODE_PHYSICAL_REFERENCE].inputs[0].default_value = reference
+        nodes[NODE_PHYSICAL_CONTRAST].inputs[1].default_value = -contrast * WIEN_KELVIN / reference
+        density = shader.inputs["Density"].default_value
+        nodes[NODE_PHYSICAL_GAIN].inputs[1].default_value = (brightness * density) if enabled else 0.0
+        nodes[NODE_PHYSICAL_COLOR_SCALE].inputs[1].default_value = PHYSICAL_COLOR_SHIFT * max(
+            0.01, float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)))
     material.diffuse_color = (*smoke_color[:3], 1.0)
     material.node_tree.update_tag()
     return True
@@ -395,8 +425,66 @@ def _build_generated_material(material, flame_rate_scale):
     rgba_inputs = [socket for socket in core_mix.inputs if socket.type == "RGBA"]
     links.new(blackbody.outputs["Color"], rgba_inputs[0])
     rgba_outputs = [socket for socket in core_mix.outputs if socket.type == "RGBA"]
-    links.new(rgba_outputs[0], shader.inputs["Emission Color"])
-    links.new(fire_intensity.outputs[0], shader.inputs["Emission Strength"])
+
+    # Temperature (Physical) path; the look mixes pick it or the burn flame.
+    def math_node(operation, location, label, name=None):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = operation
+        node.label = label
+        node.location = location
+        if name:
+            node.name = name
+        return node
+
+    floor = math_node("MAXIMUM", (-880, -700), "Temperature Floor")
+    floor.inputs[1].default_value = 300.0
+    reference = math_node("DIVIDE", (-680, -700), "Flame Temperature / T", NODE_PHYSICAL_REFERENCE)
+    reference.inputs[0].default_value = 2000.0
+    offset = math_node("SUBTRACT", (-480, -700), "Below Flame")
+    offset.inputs[1].default_value = 1.0
+    contrast = math_node("MULTIPLY", (-280, -700), "Wien Contrast", NODE_PHYSICAL_CONTRAST)
+    contrast.inputs[1].default_value = -WIEN_KELVIN / 2000.0
+    radiance = math_node("EXPONENT", (-80, -700), "Radiance")
+    absorbed = math_node("MULTIPLY", (120, -700), "Soot Emission")
+    gain = math_node("MULTIPLY", (320, -700), "Brightness x Density", NODE_PHYSICAL_GAIN)
+    color_scale = math_node("MULTIPLY", (-680, -900), "Camera Color Shift", NODE_PHYSICAL_COLOR_SCALE)
+    color_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT
+    physical_blackbody = nodes.new("ShaderNodeBlackbody")
+    physical_blackbody.location = (-480, -900)
+    saturation = nodes.new("ShaderNodeHueSaturation")
+    saturation.location = (-280, -900)
+    saturation.inputs["Saturation"].default_value = PHYSICAL_SATURATION
+    look_strength = nodes.new("ShaderNodeMix")
+    look_strength.data_type = "FLOAT"
+    look_strength.name = NODE_FLAME_LOOK_STRENGTH
+    look_strength.label = "Flame Look"
+    look_strength.location = (420, 200)
+    look_color = nodes.new("ShaderNodeMix")
+    look_color.data_type = "RGBA"
+    look_color.name = NODE_FLAME_LOOK_COLOR
+    look_color.label = "Flame Look Color"
+    look_color.location = (420, -60)
+
+    links.new(volume_info.outputs["Temperature"], floor.inputs[0])
+    links.new(floor.outputs[0], reference.inputs[1])
+    links.new(reference.outputs[0], offset.inputs[0])
+    links.new(offset.outputs[0], contrast.inputs[0])
+    links.new(contrast.outputs[0], radiance.inputs[0])
+    links.new(radiance.outputs[0], absorbed.inputs[0])
+    links.new(volume_info.outputs["Density"], absorbed.inputs[1])
+    links.new(absorbed.outputs[0], gain.inputs[0])
+    links.new(volume_info.outputs["Temperature"], color_scale.inputs[0])
+    links.new(color_scale.outputs[0], physical_blackbody.inputs["Temperature"])
+    links.new(physical_blackbody.outputs["Color"], saturation.inputs["Color"])
+    float_inputs = [socket for socket in look_strength.inputs if socket.type == "VALUE" and socket.name in ("A", "B")]
+    links.new(fire_intensity.outputs[0], float_inputs[0])
+    links.new(gain.outputs[0], float_inputs[1])
+    color_inputs = [socket for socket in look_color.inputs if socket.type == "RGBA"]
+    links.new(rgba_outputs[0], color_inputs[0])
+    links.new(saturation.outputs["Color"], color_inputs[1])
+    links.new(_socket(look_strength.outputs, "Result"), shader.inputs["Emission Strength"])
+    color_outputs = [socket for socket in look_color.outputs if socket.type == "RGBA"]
+    links.new(color_outputs[0], shader.inputs["Emission Color"])
     shader.inputs["Density Attribute"].default_value = "density"
     shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0

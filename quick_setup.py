@@ -39,18 +39,29 @@ PRESETS = {
     "EXPLOSION": {
         "name": "Explosion",
         "description": "A short burst of expanding fire and smoke",
-        "domain": {"shader_flame_enabled": True, "vorticity": 6.0,
+        "domain": {"shader_flame_enabled": True, "vorticity": 3.0,
                    "buoyancy_per_temp": 1.5, "burn_per_temp": 2.0,
                    "divergence_per_burn": 4.0, "cooling_rate": 0.5,
-                   # Realistic model (new domains): a short, hot burn whose
-                   # gas keeps glowing and rising for a few seconds.
-                   "burn_time": 1.5, "cooling_time": 3.0, "gas_expansion": 2.0,
+                   # Realistic model (new domains): fuel released in one short
+                   # burst ignites and burns for a few seconds; burning gas
+                   # expands, soot radiation breaks up the evenly hot ball and
+                   # vorticity overshoot boils its surface into cells. The cells
+                   # need about 250 voxels across the fireball (resolution).
+                   "burn_time": 3.0, "cooling_time": 3.0, "gas_expansion": 2.0,
+                   "soot_radiation": 0.75, "vorticity_overshoot": 0.5,
+                   "sharp_advection": True, "shred": 2.0,
+                   "disturb": 40.0, "disturb_size": 0.1,
+                   "shader_flame_brightness": 3.0,
                    "shader_smoke_density": 3.0,
                    "shader_smoke_color": (0.3185545,) * 3},
-        "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 1.0,
-                    "emitter_fuel": 2.0, "normal_velocity": 1.0, "emitter_divergence": 2.0,
-                    "velocity": (0.0, 0.0, 7.0)},
-        "burst_frames": 10,
+        # No forced jet: a sustained upward push sheds stacked vortex rings.
+        # The source only ignites the fuel (Temperature 1 is Flame
+        # Temperature); burning heats it.
+        "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
+                    "couple_rate_temperature": 30.0,
+                    "emitter_fuel": 4.0, "normal_velocity": 2.0, "emitter_divergence": 2.0,
+                    "velocity": (0.0, 0.0, 0.0)},
+        "burst_frames": 4,
         "duration": 100,
     },
 }

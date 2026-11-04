@@ -507,8 +507,9 @@ def _mesh_normal_velocities(positions, indices, normal_velocity, matrix):
 
 def _mesh_normal_velocities_bulk(positions, indices, normal_velocity, matrix):
     """Area-weighted vertex normals as the per-triangle loop computes them."""
-    points = np.frombuffer(positions, dtype=np.float32).reshape((-1, 3)).astype(np.float64)
-    corners = np.frombuffer(indices, dtype=np.int32).reshape((-1, 3))
+    # Exporters pass array('f'/'i') buffers; plain sequences work too.
+    points = np.asarray(positions, dtype=np.float64).reshape((-1, 3))
+    corners = np.asarray(indices, dtype=np.int64).reshape((-1, 3))
     p0, p1, p2 = points[corners[:, 0]], points[corners[:, 1]], points[corners[:, 2]]
     face = np.cross(p1 - p0, p2 - p0)
     normals = np.zeros_like(points)

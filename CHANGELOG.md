@@ -21,6 +21,14 @@ All notable customer-facing changes are recorded here.
 - **Soot Radiation (Realistic combustion).** Sooty gas radiates its heat
   away, so dense pockets cool and darken while thin hot gas stays bright,
   instead of the whole fireball sitting at Flame Temperature. Off by default.
+- **Explosion Quick Setup reworked.** Fuel is released in one short burst
+  and ignited instead of pushed up as a jet (which shed stacked smoke rings);
+  burning gas expands, Soot Radiation and Vorticity Overshoot are on, and it
+  uses the Temperature flame look. The boiling cells need about 250 voxels
+  across the fireball.
+- **Fixed:** a VDB bake could stop with "No density readback" when the last
+  smoke vanished while warm air was still moving; those frames are now saved
+  as empty.
 - **Sharp Advection (Turbulence).** Carries motion with full-strength error
   correction, keeping smaller swirls and crisper billows for a modest cost.
   Stable at any Sub-Steps and Cells per Step. Off by default.

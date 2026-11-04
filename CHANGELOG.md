@@ -65,6 +65,10 @@ All notable customer-facing changes are recorded here.
   Overshoot was dropped as noisy and energy-draining).
 - **Linux: a failed bridge start now says what to fix:** a missing system
   library, a glibc that is too old, or no Vulkan driver.
+- **Faster emitters that do not move:** a static mesh emitter with Normal or
+  Initial Velocity (or a velocity attribute) was stamped up to 8 times per
+  step as if it moved; now once (12 Sub-Steps test: emitter GPU time 1.8 s →
+  0.2 s, bake 26% less GPU time).
 - **Fixed:** a VDB bake could stop with "No density readback" when the last
   smoke vanished while warm air was still moving; those frames are now saved
   as empty.

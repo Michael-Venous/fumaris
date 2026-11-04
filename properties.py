@@ -1229,7 +1229,7 @@ class FumarisSettings(PropertyGroup):
 
     gas_expansion: FloatProperty(
         name="Gas Expansion",
-        description="Physical expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 keeps the older Expansion behaviour. Start around 0.05-0.2 for fuel values of 10-50",
+        description="Expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 keeps the older Expansion behaviour. Start around 0.05-0.2 for fuel values of 10-50",
         default=0.0,
         min=0.0,
         soft_max=1.0,

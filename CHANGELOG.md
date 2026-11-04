@@ -51,6 +51,8 @@ All notable customer-facing changes are recorded here.
   uses the Temperature flame look. The boiling cells need about 250 voxels
   across the fireball (Vorticity raises it; an experimental Vorticity
   Overshoot was dropped as noisy and energy-draining).
+- **Linux: a failed bridge start now says what to fix:** a missing system
+  library, a glibc that is too old, or no Vulkan driver.
 - **Fixed:** a VDB bake could stop with "No density readback" when the last
   smoke vanished while warm air was still moving; those frames are now saved
   as empty.

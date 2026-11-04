@@ -513,7 +513,10 @@ def _draw_domain(layout, scene, props):
     if appearance_open:
         appearance.label(text="Smoke")
         appearance.prop(props, "shader_smoke_density")
-        appearance.prop(props, "shader_smoke_color", text="Color")
+        color = appearance.split(factor=0.3, align=True)
+        color.alignment = "RIGHT"
+        color.label(text="Color")
+        color.prop(props, "shader_smoke_color", text="")
         appearance.separator()
         appearance.prop(props, "shader_flame_enabled")
         fire = appearance.column(align=True)
@@ -530,8 +533,14 @@ def _draw_domain(layout, scene, props):
 
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
     if output_open:
-        slot = output.row(align=True)
-        slot.prop(props, "cache_slot")
+        # One label column for every row, so labels line up and none truncate.
+        split = output.split(factor=0.3, align=True)
+        labels = split.column(align=True)
+        labels.alignment = "RIGHT"
+        fields = split.column(align=True)
+        labels.label(text="Cache Slot")
+        slot = fields.row(align=True)
+        slot.prop(props, "cache_slot", text="")
         slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
         slot.operator(
             "fumaris.cache_protect",
@@ -539,13 +548,17 @@ def _draw_domain(layout, scene, props):
             text="",
             depress=slot_protected,
         )
-        output.prop(props, "output_dir")
-        output.prop(props, "output_prefix")
-        vdb = output.row(align=True)
-        vdb.prop(props, "vdb_compression")
+        labels.label(text="Directory")
+        fields.prop(props, "output_dir", text="")
+        labels.label(text="Prefix")
+        fields.prop(props, "output_prefix", text="")
+        labels.label(text="VDB")
+        vdb = fields.row(align=True)
+        vdb.prop(props, "vdb_compression", text="")
         vdb.prop(props, "vdb_precision", text="")
+        labels.label(text="Material")
+        fields.prop(props, "volume_material", text="")
         output.separator()
-        output.prop(props, "volume_material")
         output.prop(props, "volume_selectable")
         output.separator()
         output.prop(props, "export_temperature_vdb")

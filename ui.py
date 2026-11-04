@@ -515,7 +515,7 @@ def _draw_domain(layout, scene, props):
     if appearance_open:
         appearance.label(text="Smoke")
         appearance.prop(props, "shader_smoke_density")
-        color = appearance.split(factor=0.3, align=True)
+        color = appearance.split(factor=0.2, align=True)
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")
         appearance.separator()
@@ -535,7 +535,7 @@ def _draw_domain(layout, scene, props):
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
     if output_open:
         # One label column for every row, so labels line up and none truncate.
-        split = output.split(factor=0.3, align=True)
+        split = output.split(factor=0.2, align=True)
         labels = split.column(align=True)
         fields = split.column(align=True)
         labels.label(text="Cache Slot")

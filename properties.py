@@ -34,8 +34,9 @@ def _object_type_updated(self, _context):
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
         # Saved domains keep the older heat; new ones take their heat from
-        # the fuel burnt.
+        # the fuel burnt and keep their turbulence (Preserve Turbulence).
         self.physical_heat = True
+        self.advection_reflection = True
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
         # New domains: Cells per Step 0 means fixed Sub-Steps (Adaptive off).
         if not self.adaptive_sub_steps:

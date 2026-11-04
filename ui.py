@@ -604,15 +604,15 @@ def _draw_domain(layout, scene, props):
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
     behavior.separator()
+    behavior.prop(props, "dissipation")
+    behavior.prop(props, "smoke_decay")
+    behavior.prop(props, "velocity_damping")
+    behavior.separator()
     vorticity_row = behavior.row(align=True)
     vorticity_row.prop(props, "vorticity")
     mask = vorticity_row.row(align=True)
     mask.active = props.vorticity > 0.0
     mask.prop(props, "vorticity_mask", text="")
-    behavior.separator()
-    behavior.prop(props, "dissipation")
-    behavior.prop(props, "smoke_decay")
-    behavior.prop(props, "velocity_damping")
 
     turbulence, turbulence_open = _nested_foldout(behavior, props, "show_domain_turbulence", "Turbulence Detail")
     if turbulence_open:
@@ -626,9 +626,6 @@ def _draw_domain(layout, scene, props):
         overshoot_row.active = props.vorticity > 0.0
         overshoot_row.prop(props, "vorticity_overshoot")
         turbulence.separator()
-        reflection_row = turbulence.row(align=True)
-        reflection_row.active = props.num_sub_steps >= 2
-        reflection_row.prop(props, "advection_reflection")
         turbulence.prop(props, "sharp_advection")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
@@ -663,6 +660,9 @@ def _draw_domain(layout, scene, props):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
         advanced.prop(props, "simulation_speed")
+        reflection_row = advanced.row(align=True)
+        reflection_row.active = props.num_sub_steps >= 2
+        reflection_row.prop(props, "advection_reflection")
         advanced.prop(props, "small_sparse_blocks")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")

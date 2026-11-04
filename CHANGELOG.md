@@ -25,6 +25,18 @@ All notable customer-facing changes are recorded here.
   instead of the whole fireball sitting at Flame Temperature (very dense
   soot radiates only from its surface). Off by default. Gas that is still
   burning stays at Flame Temperature.
+- **Physical Heat (Realistic combustion).** Burning releases heat for the fuel
+  it uses and needs air, so fire forms hot shells where fuel meets fresh air
+  and cools as it mixes, instead of all burning gas sitting at Flame
+  Temperature (the cause of flat, single-colour fire). New domains use it;
+  saved scenes keep the previous heat. Use a short Burn Time and emitters
+  below Flame Temperature (about 0.35, Maximum) so burning makes the heat.
+- **Full Glow** sets the temperature where the Temperature look reaches full
+  Brightness (default 1600 K); Contrast now defaults to 0.5.
+- **Oxygen Limit (Realistic combustion).** Burning needs fresh air, so fire
+  concentrates in shells where fuel mixes with air and temperatures vary,
+  instead of the whole fireball sitting at Flame Temperature. Fireballs that
+  burned everywhere at once become smaller and leaner. Off by default.
 - **Explosion Quick Setup reworked.** Fuel is released in one short burst
   and ignited instead of pushed up as a jet (which shed stacked smoke rings);
   burning gas expands, Soot Radiation and Vorticity Overshoot are on, and it

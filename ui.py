@@ -525,6 +525,7 @@ def _draw_domain(layout, scene, props):
         fire.prop(props, "shader_flame_look", text="")
         fire.prop(props, "shader_flame_brightness")
         if props.shader_flame_look == "TEMPERATURE":
+            fire.prop(props, "shader_glow_temperature")
             fire.prop(props, "shader_flame_contrast")
             fire.prop(props, "shader_temperature_multiplier")
         else:
@@ -634,8 +635,10 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "burn_time")
             combustion.prop(props, "cooling_time")
             combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
+            combustion.prop(props, "physical_heat")
             combustion.prop(props, "gas_expansion")
             combustion.prop(props, "soot_radiation")
+            combustion.prop(props, "oxygen_limit")
             combustion.prop(props, "ignition_temperature_k")
         else:
             combustion.prop(props, "temperature_input_scale")

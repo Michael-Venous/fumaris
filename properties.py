@@ -31,8 +31,10 @@ def _object_type_updated(self, _context):
         self.use_scene_frame_range = True
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
-        # Saved domains keep the Burn look; new ones glow by temperature.
+        # Saved domains keep the Burn look and the older heat; new ones glow
+        # by temperature and take their heat from the fuel burnt.
         self.shader_flame_look = "TEMPERATURE"
+        self.physical_heat = True
 
 
 def _cache_slot_updated(self, _context):
@@ -1226,6 +1228,20 @@ class FumarisSettings(PropertyGroup):
         soft_max=1.0,
     )
 
+    physical_heat: BoolProperty(
+        name="Physical Heat",
+        description="Burning releases heat for the fuel it uses (one unit of fuel takes cold air to Flame Temperature) and needs air, so fire forms hot shells where fuel meets fresh air and gas cools as it mixes, instead of all burning gas sitting at Flame Temperature. Use a short Burn Time (about 0.3-1 s; mixing sets how long fire lasts) and emitters below Flame Temperature (about 0.35, Maximum) so burning makes the heat",
+        default=False,
+    )
+
+    oxygen_limit: FloatProperty(
+        name="Oxygen Limit",
+        description="Burning needs fresh air: hot, already-burnt gas burns slower, so fire concentrates in shells where it mixes with air and temperatures vary instead of the whole fireball sitting at Flame Temperature. Fireballs that burned everywhere at once become smaller and leaner. Gas emitted at Flame Temperature burns only as it mixes. 0 = off (with Physical Heat: 4); try 1-4 (higher limits less)",
+        default=0.0,
+        min=0.0,
+        soft_max=8.0,
+    )
+
     soot_radiation: FloatProperty(
         name="Soot Radiation",
         description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature and capped where soot is optically thick), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",
@@ -1491,16 +1507,26 @@ class FumarisSettings(PropertyGroup):
         items=(
             ("BURN", "Burn (Classic)", "Glow where fuel is burning, colored by temperature"),
             ("TEMPERATURE", "Temperature (Physical)",
-             "Soot glows by its temperature like real fire: hot gas blazes yellow-orange, cooler gas dims to deep red and dark crevices. Brightness is set at Flame Temperature"),
+             "Soot glows by its temperature like real fire: hot gas blazes yellow-orange, cooler gas dims to deep red and dark crevices. Brightness is set at Full Glow"),
         ),
         default="BURN",
         update=_appearance_updated,
     )
 
+    shader_glow_temperature: FloatProperty(
+        name="Full Glow",
+        description="Temperature (K) at which fire glows at full Brightness; hotter gas is brighter, cooler gas falls off by Contrast",
+        default=1600.0,
+        min=300.0,
+        soft_min=800.0,
+        soft_max=3000.0,
+        update=_appearance_updated,
+    )
+
     shader_flame_contrast: FloatProperty(
         name="Contrast",
-        description="How fast glow falls off as gas cools below Flame Temperature. 1 matches a real camera exposed for the hottest gas; lower values let cooler gas glow too",
-        default=1.0,
+        description="How fast glow falls off as gas cools below Full Glow. 1 matches a camera exposed for the hottest gas (sparkly hot spots); lower values let cooler gas glow too",
+        default=0.5,
         min=0.05,
         max=3.0,
         soft_max=2.0,

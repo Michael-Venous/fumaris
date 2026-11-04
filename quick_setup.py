@@ -43,12 +43,13 @@ PRESETS = {
                    "buoyancy_per_temp": 1.5, "burn_per_temp": 2.0,
                    "divergence_per_burn": 4.0, "cooling_rate": 0.5,
                    # Realistic model (new domains): fuel released in one short
-                   # burst ignites and burns for a few seconds; burning gas
-                   # expands, soot radiation breaks up the evenly hot ball and
-                   # vorticity overshoot boils its surface into cells. The cells
+                   # burst ignites; with Physical Heat it burns where it meets
+                   # air, so temperatures vary, and vorticity overshoot boils
+                   # its surface into cells. The cells
                    # need about 250 voxels across the fireball (resolution).
-                   "burn_time": 3.0, "cooling_time": 3.0, "gas_expansion": 2.0,
-                   "soot_radiation": 0.75, "vorticity_overshoot": 0.5,
+                   "physical_heat": True,
+                   "burn_time": 0.5, "cooling_time": 6.0, "gas_expansion": 2.0,
+                   "vorticity_overshoot": 0.5,
                    "sharp_advection": True, "shred": 2.0,
                    "disturb": 40.0, "disturb_size": 0.1,
                    "shader_flame_brightness": 3.0,
@@ -57,8 +58,10 @@ PRESETS = {
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it.
-        "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
-                    "couple_rate_temperature": 30.0,
+        # Light source smoke: soot forms as the fuel burns, so the young
+        # fireball glows instead of hiding in smoke.
+        "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
+                    "couple_rate_temperature": 30.0, "source_op_temperature": "max",
                     "emitter_fuel": 4.0, "normal_velocity": 2.0, "emitter_divergence": 2.0,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 4,

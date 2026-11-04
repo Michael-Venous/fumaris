@@ -259,8 +259,8 @@ def apply_generated_material_settings(material, settings):
         physical = _appearance_value(settings, "shader_flame_look", "BURN") == "TEMPERATURE"
         for mix in (look_strength, look_color):
             mix.inputs["Factor"].default_value = 1.0 if physical else 0.0
-        reference = max(1.0, float(_appearance_value(settings, "flame_temperature", 2000.0)))
-        contrast = max(0.05, float(_appearance_value(settings, "shader_flame_contrast", 1.0)))
+        reference = max(1.0, float(_appearance_value(settings, "shader_glow_temperature", 1600.0)))
+        contrast = max(0.05, float(_appearance_value(settings, "shader_flame_contrast", 0.5)))
         nodes[NODE_PHYSICAL_REFERENCE].inputs[0].default_value = reference
         nodes[NODE_PHYSICAL_CONTRAST].inputs[1].default_value = -contrast * WIEN_KELVIN / reference
         density = shader.inputs["Density"].default_value

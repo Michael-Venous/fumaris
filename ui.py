@@ -514,7 +514,6 @@ def _draw_domain(layout, scene, props):
         appearance.label(text="Smoke")
         appearance.prop(props, "shader_smoke_density")
         color = appearance.split(factor=0.3, align=True)
-        color.alignment = "RIGHT"
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")
         appearance.separator()
@@ -536,7 +535,6 @@ def _draw_domain(layout, scene, props):
         # One label column for every row, so labels line up and none truncate.
         split = output.split(factor=0.3, align=True)
         labels = split.column(align=True)
-        labels.alignment = "RIGHT"
         fields = split.column(align=True)
         labels.label(text="Cache Slot")
         slot = fields.row(align=True)

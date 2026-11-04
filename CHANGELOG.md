@@ -4,6 +4,12 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Smoke, fire and heat no longer fade or stall at high Sub-Steps.** Small
+  per-step changes were lost to half-precision rounding, so emitters stopped
+  filling, decay was misapplied and sources ran cooler as Sub-Steps rose.
+  Scenes now keep more smoke and heat, especially at 6+ Sub-Steps, and look
+  much the same at any step count. Saved scenes will look denser and last
+  longer than before.
 - **Gas Expansion (Combustion).** Burning gas now pushes the smoke around it
   outward where it actually burns, with the same strength at any resolution,
   frame rate or Sub-Steps. Use it to drive fireballs and mushroom clouds from

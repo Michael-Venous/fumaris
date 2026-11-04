@@ -185,14 +185,13 @@ class BridgeWorker:
             message_type = (
                 CANCELLED if self._cancel_requested.is_set() else FAILED
             )
+            message = "Bake stopped"
+            if message_type == FAILED:
+                message = self._failure_message(error)
             self.responses.put((
                 message_type,
                 {
-                    "message": (
-                        "Bake stopped"
-                        if message_type == CANCELLED
-                        else str(error)
-                    ),
+                    "message": message,
                     "stderr": self.stderr(),
                 },
                 b"",
@@ -205,6 +204,22 @@ class BridgeWorker:
         if response[0] == FAILED:
             raise RuntimeError(response[1].get("message", "Bridge failed"))
         self.responses.put(response)
+
+    def _failure_message(self, error):
+        # A bridge that never started or already exited may have hit a loader
+        # problem: add actionable Linux diagnostics. Fail-open by design.
+        message = str(error)
+        try:
+            process = self._process
+            if process is not None and process.poll() is None:
+                return message
+            if self._stderr_thread:
+                self._stderr_thread.join(timeout=0.5)
+            from .linux_runtime import explain_launch_failure
+            return explain_launch_failure(
+                self._executable, self._environment, message, self.stderr())
+        except Exception:
+            return message
 
     def _drain_stderr(self):
         while True:

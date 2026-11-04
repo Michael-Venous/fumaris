@@ -624,6 +624,7 @@ def _draw_domain(layout, scene, props):
     mask = vorticity_row.row(align=True)
     mask.active = props.vorticity > 0.0
     mask.prop(props, "vorticity_mask", text="")
+    behavior.separator()
 
     turbulence, turbulence_open = _nested_foldout(behavior, props, "show_domain_turbulence", "Turbulence Detail")
     if turbulence_open:

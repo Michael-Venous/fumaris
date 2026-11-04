@@ -10,6 +10,12 @@ All notable customer-facing changes are recorded here.
   Scenes now keep more smoke and heat, especially at 6+ Sub-Steps, and look
   much the same at any step count. Saved scenes will look denser and last
   longer than before.
+- **Mesh emitters with high Normal Velocity emit from their real surface.** With
+  several Sub-Steps, emission was swept back along the emitted velocity, so a
+  fast Normal Velocity (for example the Explosion Quick Setup) emitted from
+  shrunken copies inside the mesh, and its first frames changed with
+  Sub-Steps. Such emitters now emit more smoke, the same at any Sub-Steps;
+  saved scenes that use them will look denser.
 - **Gas Expansion (Combustion).** Burning gas now pushes the smoke around it
   outward where it actually burns, with the same strength at any resolution,
   frame rate or Sub-Steps. Use it to drive fireballs and mushroom clouds from

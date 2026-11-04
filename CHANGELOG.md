@@ -35,8 +35,8 @@ All notable customer-facing changes are recorded here.
   beside Vorticity, VDB precision beside compression, the cache slot is at the
   top of Output, Preview Settings are grouped (Quality, Exposure, Lighting,
   Light Direction), and spacing is consistent. Preserve Turbulence moved to
-  Advanced and is on for new domains; Vorticity sits just above Turbulence
-  Detail.
+  Advanced and is on for new domains, as is Physical Heat (Realistic only);
+  Vorticity sits just above Turbulence Detail.
 - **Physical Heat (Realistic combustion).** Burning releases heat for the fuel
   it uses and needs air, so fire forms hot shells where fuel meets fresh air
   and cools as it mixes, instead of all burning gas sitting at Flame

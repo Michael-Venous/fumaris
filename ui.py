@@ -647,7 +647,6 @@ def _draw_domain(layout, scene, props):
         combustion.prop(props, "combustion_model", text="")
         combustion.separator()
         if props.combustion_model == "realistic":
-            combustion.prop(props, "physical_heat")
             combustion.prop(props, "flame_temperature")
             combustion.prop(props, "ignition_temperature_k")
             combustion.separator()
@@ -677,6 +676,9 @@ def _draw_domain(layout, scene, props):
         reflection_row = advanced.row(align=True)
         reflection_row.active = props.num_sub_steps >= 2
         reflection_row.prop(props, "advection_reflection")
+        heat_row = advanced.row(align=True)
+        heat_row.active = props.combustion_model == "realistic"
+        heat_row.prop(props, "physical_heat")
         advanced.prop(props, "small_sparse_blocks")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")

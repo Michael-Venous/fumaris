@@ -1358,24 +1358,15 @@ class FumarisSettings(PropertyGroup):
         subtype="DISTANCE",
     )
 
-    vorticity_overshoot: FloatProperty(
-        name="Vorticity Overshoot",
-        description="Let vorticity turn swirls past the range around them (never faster than the fastest neighbour), for the boiling, cells-within-cells surface of compact fireballs; needs about 250 voxels across the fireball. 0 keeps it within its neighbours. About 0.5 gives most of the detail. On large, slow plumes with strong Vorticity it turns billows into fine fuzz: keep it at 0 there",
-        default=0.0,
-        min=0.0,
-        max=4.0,
-        soft_max=1.0,
-    )
-
     sharp_advection: BoolProperty(
         name="Sharp Advection",
-        description="Carry motion with full-strength error correction, keeping smaller swirls and crisper billows at a modest cost",
+        description="Carry motion with a stronger error correction that falls back to the plain step wherever it would overshoot, for crisper swirls and billow edges at the same cost per voxel",
         default=False,
     )
 
     advection_reflection: BoolProperty(
         name="Preserve Turbulence",
-        description="Advection-reflection: Sub-Steps run in pairs that keep much more of the flow's swirling energy, for livelier, longer-lasting turbulence and larger plumes. About 10 to 25% slower; needs 2 or more Sub-Steps",
+        description="Advection-reflection: keeps swirling motion that the solver would otherwise lose to numerical damping, for livelier, longer-lasting turbulence and larger plumes. Steps run in pairs, so the Sub-Step count is rounded up to an even number (at least 2). About 3% more GPU time per block; the livelier smoke fills more space, so it reaches Simulation Memory sooner",
         default=False,
     )
 

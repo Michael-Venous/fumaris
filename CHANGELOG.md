@@ -14,12 +14,6 @@ All notable customer-facing changes are recorded here.
   cooler gas falls off to deep red and dark crevices as on a camera exposed
   for the hottest gas, and dense hot gas reads as a glowing surface. Contrast
   sets the fall-off. New domains use it; saved scenes keep the Burn look.
-- **Vorticity Overshoot (Turbulence).** Lets vorticity sharpen swirls past
-  the speeds around them, for the boiling, cells-within-cells surface of
-  fireballs. 0 (default) keeps the previous behaviour; about 0.5 gives most
-  of the detail. It never makes the flow faster than its fastest neighbour.
-  Meant for compact fireballs; on large, slow plumes with strong Vorticity it
-  turns billows into fuzz.
 - **Soot Radiation (Realistic combustion).** Sooty gas radiates its heat
   away, so dense pockets cool and darken while thin hot gas stays bright,
   instead of the whole fireball sitting at Flame Temperature (very dense
@@ -34,8 +28,10 @@ All notable customer-facing changes are recorded here.
   toggle is gone and saved scenes keep their setting), Vorticity Mask sits
   beside Vorticity, VDB precision beside compression, the cache slot is at the
   top of Output, Preview Settings are grouped (Quality, Exposure, Lighting,
-  Light Direction), and spacing is consistent. Preserve Turbulence moved to
-  Advanced and is on for new domains, as is Physical Heat (Realistic only);
+  Light Direction), and spacing is consistent. Preserve Turbulence sits under the
+  Sub-Steps row and is on for new domains (Sub-Steps are rounded up to an even
+  count while it is on, as it works in pairs); Physical Heat moved to Advanced
+  and is on for new domains (Realistic only);
   Vorticity sits just above Turbulence Detail.
 - **Physical Heat (Realistic combustion).** Burning releases heat for the fuel
   it uses and needs air, so fire forms hot shells where fuel meets fresh air
@@ -51,15 +47,17 @@ All notable customer-facing changes are recorded here.
   burned everywhere at once become smaller and leaner. Off by default.
 - **Explosion Quick Setup reworked.** Fuel is released in one short burst
   and ignited instead of pushed up as a jet (which shed stacked smoke rings);
-  burning gas expands, Soot Radiation and Vorticity Overshoot are on, and it
+  burning gas expands with Physical Heat, Sharp Advection is on, and it
   uses the Temperature flame look. The boiling cells need about 250 voxels
-  across the fireball.
+  across the fireball (Vorticity raises it; an experimental Vorticity
+  Overshoot was dropped as noisy and energy-draining).
 - **Fixed:** a VDB bake could stop with "No density readback" when the last
   smoke vanished while warm air was still moving; those frames are now saved
   as empty.
-- **Sharp Advection (Turbulence).** Carries motion with full-strength error
-  correction, keeping smaller swirls and crisper billows for a modest cost.
-  Stable at any Sub-Steps and Cells per Step. Off by default.
+- **Sharp Advection (Turbulence).** Carries motion with a stronger error
+  correction that falls back to the plain step wherever it would overshoot,
+  for crisper swirls and billow edges at the same cost per voxel. Stable at
+  any Sub-Steps. Off by default.
 - **Upres removed.** The experimental Upres option and its settings are gone; scenes saved with Upres enabled now simulate at their base resolution.
 
 - **Velocity attribute for mesh emitters.** A mesh or Geometry Nodes mesh

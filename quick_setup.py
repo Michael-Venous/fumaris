@@ -39,17 +39,15 @@ PRESETS = {
     "EXPLOSION": {
         "name": "Explosion",
         "description": "A short burst of expanding fire and smoke",
-        "domain": {"shader_flame_enabled": True, "vorticity": 3.0,
+        "domain": {"shader_flame_enabled": True, "vorticity": 6.0,
                    "buoyancy_per_temp": 1.5, "burn_per_temp": 2.0,
                    "divergence_per_burn": 4.0, "cooling_rate": 0.5,
                    # Realistic model (new domains): fuel released in one short
                    # burst ignites; with Physical Heat it burns where it meets
-                   # air, so temperatures vary, and vorticity overshoot boils
-                   # its surface into cells. The cells
+                   # air, so temperatures vary. Boiling cells on its surface
                    # need about 250 voxels across the fireball (resolution).
                    "physical_heat": True,
                    "burn_time": 0.5, "cooling_time": 6.0, "gas_expansion": 2.0,
-                   "vorticity_overshoot": 0.5,
                    "sharp_advection": True, "shred": 2.0,
                    "disturb": 40.0, "disturb_size": 0.1,
                    "shader_flame_brightness": 3.0,

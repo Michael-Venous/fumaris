@@ -502,6 +502,7 @@ def _draw_domain(layout, scene, props):
     substeps_row = settings.row(align=True)
     substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
     substeps_row.prop(props, "adaptive_cfl")
+    settings.prop(props, "advection_reflection")
     settings.prop(props, "follow_object")
     if props.follow_object:
         settings.prop(props, "carry_air", slider=True)
@@ -636,9 +637,6 @@ def _draw_domain(layout, scene, props):
         size.active = props.disturb > 0.0
         size.prop(props, "disturb_size", text="Size")
         turbulence.prop(props, "shred")
-        overshoot_row = turbulence.row(align=True)
-        overshoot_row.active = props.vorticity > 0.0
-        overshoot_row.prop(props, "vorticity_overshoot")
         turbulence.separator()
         turbulence.prop(props, "sharp_advection")
 
@@ -673,9 +671,6 @@ def _draw_domain(layout, scene, props):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
         advanced.prop(props, "simulation_speed")
-        reflection_row = advanced.row(align=True)
-        reflection_row.active = props.num_sub_steps >= 2
-        reflection_row.prop(props, "advection_reflection")
         heat_row = advanced.row(align=True)
         heat_row.active = props.combustion_model == "realistic"
         heat_row.prop(props, "physical_heat")

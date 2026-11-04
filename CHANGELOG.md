@@ -10,8 +10,8 @@ All notable customer-facing changes are recorded here.
   the fire itself. It replaces Expansion in the Realistic model (Expansion
   remains for the Classic model). The Explosion Quick Setup uses 2.
 - **Sharp Advection (Turbulence).** Carries motion with full-strength error
-  correction and a midpoint back-trace, keeping smaller swirls and crisper
-  billows for a modest cost. Off by default.
+  correction, keeping smaller swirls and crisper billows for a modest cost.
+  Stable at any Sub-Steps and Cells per Step. Off by default.
 - **Upres removed.** The experimental Upres option and its settings are gone; scenes saved with Upres enabled now simulate at their base resolution.
 
 - **Velocity attribute for mesh emitters.** A mesh or Geometry Nodes mesh

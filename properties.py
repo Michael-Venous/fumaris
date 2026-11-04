@@ -1327,7 +1327,7 @@ class FumarisSettings(PropertyGroup):
 
     sharp_advection: BoolProperty(
         name="Sharp Advection",
-        description="Carry motion with full-strength error correction and a midpoint back-trace, keeping smaller swirls and crisper billows at a modest cost",
+        description="Carry motion with full-strength error correction, keeping smaller swirls and crisper billows at a modest cost",
         default=False,
     )
 

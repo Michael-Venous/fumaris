@@ -9,6 +9,18 @@ All notable customer-facing changes are recorded here.
   frame rate or Sub-Steps. Use it to drive fireballs and mushroom clouds from
   the fire itself. It replaces Expansion in the Realistic model (Expansion
   remains for the Classic model). The Explosion Quick Setup uses 2.
+- **Temperature (Physical) flame look (Appearance).** Fire glows by its
+  temperature like real soot: gas at Flame Temperature blazes yellow-orange,
+  cooler gas falls off to deep red and dark crevices as on a camera exposed
+  for the hottest gas, and dense hot gas reads as a glowing surface. Contrast
+  sets the fall-off. New domains use it; saved scenes keep the Burn look.
+- **Vorticity Overshoot (Turbulence).** Lets vorticity sharpen swirls past
+  the speeds around them, for the boiling, cells-within-cells surface of
+  fireballs. 0 (default) keeps the previous behaviour; about 0.5 gives most
+  of the detail.
+- **Soot Radiation (Realistic combustion).** Sooty gas radiates its heat
+  away, so dense pockets cool and darken while thin hot gas stays bright,
+  instead of the whole fireball sitting at Flame Temperature. Off by default.
 - **Sharp Advection (Turbulence).** Carries motion with full-strength error
   correction, keeping smaller swirls and crisper billows for a modest cost.
   Stable at any Sub-Steps and Cells per Step. Off by default.

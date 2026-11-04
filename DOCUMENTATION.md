@@ -247,6 +247,16 @@ driver moves data to system memory and the simulation runs very slowly, so
 lower Simulation Memory and restart. Scenes saved before Simulation Memory
 existed keep their Sparse Block Capacity until Simulation Memory is changed.
 
+`Auto` next to Memory reserves 80% of the GPU memory that is free when the
+simulation starts (at least 0.5 GB), read from the driver; the GB value then
+only applies if no reading is available. Close other GPU work before starting
+for the most space. Drivers without a free-memory reading (some macOS
+versions) use half the GPU memory. New domains start on Auto; saved scenes
+keep their GB value. The panel shows the amount Auto resolved to at the last
+start, and below Resolution and Memory the voxel size (32 scene units divided
+by Resolution) and about how much space the budget lets smoke fill. The live
+preview's shadow and flame light volumes are part of the same budget.
+
 Resolution has no artificial maximum: values above the slider's suggested
 range can be typed directly, but extreme values produce no extra detail when
 Simulation Memory or Auto Cell Size is limiting.

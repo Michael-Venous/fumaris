@@ -13,6 +13,7 @@ except ImportError:
     np = None
 
 from .diagnostics import console_log
+from .memory_auto import AUTO_FRACTION
 from .collection_export import collection_mesh_arrays, collection_point_arrays
 from .mesh_export import (
     _add_mesh_initial_velocity,
@@ -114,6 +115,7 @@ def session_structure_signature(domain):
     return (
         int(props.sparse_block_capacity),
         simulation_memory_mb(props),
+        bool(getattr(props, "simulation_memory_auto", False)),
         bool(props.small_sparse_blocks),
         bool(props.follow_object),
         sim_start,
@@ -257,6 +259,8 @@ def _domain_state(props, resolution_scale=1.0):
         "adaptive_cfl": props.adaptive_cfl,
         "small_sparse_blocks": props.small_sparse_blocks,
         "simulation_memory_mb": simulation_memory_mb(props),
+        "simulation_memory_auto": bool(getattr(props, "simulation_memory_auto", False)),
+        "simulation_memory_auto_fraction": AUTO_FRACTION,
         "physics_convex_collision": props.physics_convex_collision,
         "sparse_block_min_lifetime": props.sparse_block_min_lifetime,
         "auto_cell_size": props.auto_cell_size,

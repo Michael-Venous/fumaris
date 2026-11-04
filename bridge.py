@@ -38,6 +38,7 @@ from .protocol import (
 )
 from .utils import process_environment, get_addon_preferences
 from .devices import device_environment, discover_devices
+from .memory_auto import update_readings as update_memory_readings
 
 
 class BridgeWorker:
@@ -137,6 +138,7 @@ class BridgeWorker:
         try:
             if self._gpu_uuid:
                 available = discover_devices(self._executable, self._environment)
+                update_memory_readings(available)
                 if not any(device["uuid"] == self._gpu_uuid for device in available):
                     raise RuntimeError(
                         "Selected Fumaris GPU is unavailable; refresh GPUs or choose Automatic in preferences")

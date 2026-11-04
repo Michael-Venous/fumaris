@@ -3,6 +3,7 @@ from bpy.props import StringProperty, EnumProperty
 
 from .utils import runtime_validation_error, executable_path, process_environment
 from .devices import discover_devices
+from .memory_auto import update_readings as update_memory_readings
 
 
 _devices = []
@@ -50,6 +51,7 @@ class FUMARIS_OT_refresh_gpus(bpy.types.Operator):
                 raise RuntimeError(error)
             executable = executable_path()
             _devices = discover_devices(executable, process_environment(executable))
+            update_memory_readings(_devices)
             _discovery_error = "" if _devices else "No selectable Vulkan GPUs found"
         except Exception as error:
             _devices = []

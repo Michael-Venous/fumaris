@@ -13,6 +13,8 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
+from .memory_auto import apply_new_domain_default, auto_toggled
+
 
 LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
 TEMPERATURE_EXPORT_SCALE = 5000.0
@@ -42,6 +44,7 @@ def _object_type_updated(self, _context):
         if not self.adaptive_sub_steps:
             self.adaptive_cfl = 0.0
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
+    apply_new_domain_default(self)
 
 
 def _cache_slot_updated(self, _context):
@@ -571,6 +574,13 @@ class FumarisSettings(PropertyGroup):
         soft_max=24.0,
         step=25,
         precision=2,
+    )
+
+    simulation_memory_auto: BoolProperty(
+        name="Auto Simulation Memory",
+        description="Reserve 80% of the GPU memory that is free when the simulation starts (at least 0.5 GB) instead of a fixed amount. Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used. On for new domains",
+        default=False,
+        update=auto_toggled,
     )
 
     auto_cell_size: BoolProperty(

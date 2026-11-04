@@ -5,6 +5,7 @@ from bpy.types import Panel
 from .runtime import active_job, active_mode
 from . import diagnostics
 from .exporters import simulation_memory_mb
+from .memory_auto import draw_budget_summary
 from .cache import is_protected
 from .utils import peek_output_directory_for_object, get_addon_preferences
 
@@ -494,10 +495,15 @@ def _draw_domain(layout, scene, props):
         row.prop(props, "sim_end_frame", text="End")
     grid_row = settings.row(align=True)
     grid_row.prop(props, "resolution")
-    grid_row.prop(props, "simulation_memory", text="Memory (GB)")
-    if simulation_memory_mb(props) == 0.0:
+    memory_field = grid_row.row(align=True)
+    memory_field.active = not props.simulation_memory_auto
+    memory_field.prop(props, "simulation_memory", text="Memory (GB)")
+    grid_row.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
+    if simulation_memory_mb(props) == 0.0 and not props.simulation_memory_auto:
         legacy = settings.row()
         legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")
+    else:
+        draw_budget_summary(settings, props, diagnostics.snapshot(domain))
     settings.prop(props, "air_margin")
     substeps_row = settings.row(align=True)
     substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")

@@ -1228,7 +1228,7 @@ class FumarisSettings(PropertyGroup):
 
     soot_radiation: FloatProperty(
         name="Soot Radiation",
-        description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",
+        description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature and capped where soot is optically thick), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",
         default=0.0,
         min=0.0,
         soft_max=3.0,
@@ -1337,7 +1337,7 @@ class FumarisSettings(PropertyGroup):
 
     vorticity_overshoot: FloatProperty(
         name="Vorticity Overshoot",
-        description="Let vorticity sharpen swirls past the speeds around them by this fraction of their range, for the boiling, cells-within-cells surface of fireballs. 0 keeps it within its neighbours (smoothest); about 0.5 gives most of the detail. Raise Vorticity carefully with it",
+        description="Let vorticity turn swirls past the range around them (never faster than the fastest neighbour), for the boiling, cells-within-cells surface of compact fireballs; needs about 250 voxels across the fireball. 0 keeps it within its neighbours. About 0.5 gives most of the detail. On large, slow plumes with strong Vorticity it turns billows into fine fuzz: keep it at 0 there",
         default=0.0,
         min=0.0,
         max=4.0,

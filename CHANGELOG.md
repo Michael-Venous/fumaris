@@ -17,10 +17,14 @@ All notable customer-facing changes are recorded here.
 - **Vorticity Overshoot (Turbulence).** Lets vorticity sharpen swirls past
   the speeds around them, for the boiling, cells-within-cells surface of
   fireballs. 0 (default) keeps the previous behaviour; about 0.5 gives most
-  of the detail.
+  of the detail. It never makes the flow faster than its fastest neighbour.
+  Meant for compact fireballs; on large, slow plumes with strong Vorticity it
+  turns billows into fuzz.
 - **Soot Radiation (Realistic combustion).** Sooty gas radiates its heat
   away, so dense pockets cool and darken while thin hot gas stays bright,
-  instead of the whole fireball sitting at Flame Temperature. Off by default.
+  instead of the whole fireball sitting at Flame Temperature (very dense
+  soot radiates only from its surface). Off by default. Gas that is still
+  burning stays at Flame Temperature.
 - **Explosion Quick Setup reworked.** Fuel is released in one short burst
   and ignited instead of pushed up as a jet (which shed stacked smoke rings);
   burning gas expands, Soot Radiation and Vorticity Overshoot are on, and it

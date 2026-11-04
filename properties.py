@@ -579,7 +579,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_memory_auto: BoolProperty(
         name="Auto Simulation Memory",
-        description="Reserve 80% of the GPU memory that is free when the simulation starts (at least 0.5 GB) instead of a fixed amount. Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used. On for new domains",
+        description="Reserve 80% of the GPU memory that is free when the simulation starts (at least 0.5 GB) instead of a fixed amount. Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used",
         default=False,
         update=auto_toggled,
     )

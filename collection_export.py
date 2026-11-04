@@ -8,7 +8,12 @@ try:
 except ImportError:
     np = None
 
-from .mesh_export import _NoMeshGeometry, _cached_or_evaluated_mesh, _world_positions
+from .mesh_export import (
+    _NoMeshGeometry,
+    _cached_or_evaluated_mesh,
+    _world_positions,
+    uses_velocity_attribute,
+)
 from .point_export import _append_point_defaults, _empty_point_arrays, _point_radius
 
 
@@ -128,7 +133,7 @@ def collection_mesh_arrays(participant, depsgraph, frame, fps):
             member_velocities = np.zeros(len(world), dtype=np.float64)
             if normals:
                 member_velocities += np.frombuffer(normals, dtype=np.float32)
-            if old_world is not None:
+            if old_world is not None and not uses_velocity_attribute(props):
                 member_velocities += (
                     np.frombuffer(world, dtype=np.float32).astype(np.float64)
                     - np.frombuffer(old_world, dtype=np.float32)
@@ -147,7 +152,7 @@ def collection_mesh_arrays(participant, depsgraph, frame, fps):
                 weights.extend(emission_weights)
             for index, position in enumerate(world):
                 velocity = normals[index] if normals else 0.0
-                if old_world is not None:
+                if old_world is not None and not uses_velocity_attribute(props):
                     velocity += (position - old_world[index]) * inverse_dt * motion_velocity_scale
                 velocities.append(velocity)
                 any_velocity = any_velocity or abs(velocity) > 1e-12

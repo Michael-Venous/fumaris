@@ -4,6 +4,12 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Velocity attribute for mesh emitters.** A mesh or Geometry Nodes mesh
+  emitter can take its velocity from a vector attribute (Emitter > Velocity),
+  such as one stored with Store Named Attribute. It replaces the velocity
+  measured from the mesh's deformation, so emitters whose vertices change every
+  frame can still carry motion.
+
 - **Simulation Memory replaces Sparse Block Capacity.** Set the GPU memory
   for the simulation in GB; Fumaris turns it into space for smoke for the
   current settings. The full amount is allocated at the start, so GPU memory

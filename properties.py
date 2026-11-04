@@ -931,7 +931,7 @@ class FumarisSettings(PropertyGroup):
         description="How a mesh emits smoke",
         items=[
             ("surface", "Surface", "Emit in a band around the mesh surface"),
-            ("volume", "Volume", "Emit inside the mesh volume up to the distance"),
+            ("volume", "Volume", "Emit inside the mesh, inward from its surface up to Emission Distance"),
         ],
         default="surface",
     )
@@ -948,6 +948,12 @@ class FumarisSettings(PropertyGroup):
     mesh_emission_mask_attribute: StringProperty(
         name="Emission Mask Attribute",
         description="Leave empty to emit from the whole mesh. Otherwise use a vertex group or mesh attribute with 0 to 1 weights. Geometry created by Geometry Nodes needs weights on that generated mesh; an original vertex group may not carry over",
+        default="",
+    )
+
+    mesh_velocity_attribute: StringProperty(
+        name="Velocity Attribute",
+        description="Leave empty to measure velocity from how the mesh moves. Otherwise use a vector attribute on the evaluated mesh, such as one stored by Geometry Nodes: object-space units per second, on points, faces or face corners. It replaces the measured deformation velocity and is scaled by Motion Velocity Scale. Instanced meshes need Realize Instances",
         default="",
     )
 

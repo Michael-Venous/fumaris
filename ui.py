@@ -47,6 +47,7 @@ def _draw_mesh_emitter_options(box, props):
     box.prop(props, "mesh_emission_mask_attribute", text="Mask")
     if props.mesh_emission_mask_attribute.strip():
         box.prop(props, "mesh_emission_mask_threshold")
+    box.prop(props, "mesh_velocity_attribute", text="Velocity")
 
 
 def _draw_attribute_mapping(box, props):

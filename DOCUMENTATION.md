@@ -493,7 +493,9 @@ smoke inside the file's bounding box down toward the file's density; choose
 `Maximum` or `Add` for Smoke when the source should only contribute.
 
 Mesh `Surface` emission follows the evaluated surface and Emission Distance.
-`Volume` fills a closed mesh. A named vertex group or evaluated mesh attribute
+`Volume` fills a closed mesh inward from its surface up to Emission Distance;
+set the distance to at least half the mesh's thickness to fill it completely.
+A named vertex group or evaluated mesh attribute
 can vary emission strength continuously from 0 to 1. Mask Threshold skips
 triangles whose average weight is too low; keep it near zero for soft painted
 transitions.
@@ -504,6 +506,15 @@ automatically inherit weights painted on the original object. Use `Store Named
 Attribute` on the generated mesh and enter that attribute's name in `Mask`, or
 clear `Mask`. If every face is below the threshold, Fumaris reports that the
 mask excludes all faces rather than treating the node output as missing.
+
+`Velocity` names a vector attribute on the evaluated mesh that sets the
+source's own velocity, in object-space units per second, on points, faces or
+face corners (faces and corners are averaged onto the vertices). Store it with
+`Store Named Attribute` in Geometry Nodes, or use one imported with a cache.
+It replaces the velocity Fumaris measures from the mesh's deformation, which is
+needed when the mesh's vertices change from frame to frame, and is scaled by
+Motion Velocity Scale. Moving the object itself still adds its motion.
+Instanced meshes need `Realize Instances` for their attributes to be read.
 
 `Motion Sub-Steps` sample intermediate source poses for moving or deforming
 sources. They do not improve a static emitter or the fluid solve and they

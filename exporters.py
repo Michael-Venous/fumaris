@@ -21,6 +21,7 @@ from .mesh_export import (
     _geometry_nodes_mesh,
     _particle_mesh,
     _static_mesh_cache_key,
+    uses_velocity_attribute,
 )
 from .participants import (
     collection_signature as _collection_signature,
@@ -332,7 +333,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
         topology_version = frame
         reuse_geometry = False
     elif _is_geometry_nodes(props, "mesh"):
-        track_deformation = True
+        track_deformation = not uses_velocity_attribute(props)
         matrix = Matrix.Identity(4)
         positions, indices, velocities, emission_weights = _geometry_nodes_mesh(
             obj,
@@ -343,7 +344,10 @@ def _mesh_state(participant, depsgraph, payload, frame):
         topology_version = frame
         reuse_geometry = False
     else:
-        track_deformation = _static_mesh_cache_key(obj, depsgraph, props) is None
+        track_deformation = (
+            _static_mesh_cache_key(obj, depsgraph, props) is None
+            and not uses_velocity_attribute(props)
+        )
         matrix = obj.evaluated_get(depsgraph).matrix_world.copy()
         (
             positions,

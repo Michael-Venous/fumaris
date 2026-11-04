@@ -85,6 +85,13 @@ def _evaluated_mesh(obj, depsgraph, props, matrix):
                     "geometry needs its own mask weights."
                 )
         velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
+        stored = _mesh_attribute_velocities(obj, mesh, props, matrix)
+        if stored is not None:
+            if velocities:
+                for offset, value in enumerate(stored):
+                    velocities[offset] += value
+            else:
+                velocities = stored
     finally:
         evaluated.to_mesh_clear()
 
@@ -135,6 +142,8 @@ def _static_mesh_cache_key(obj, depsgraph, props):
     if abs(float(props.normal_velocity)) > 1e-6:
         return None
     if str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip():
+        return None
+    if uses_velocity_attribute(props):
         return None
     mesh = obj.data
     evaluated_mesh = obj.evaluated_get(depsgraph).data
@@ -383,10 +392,93 @@ def _attribute_scalar(value, default):
     return default
 
 
+def uses_velocity_attribute(props):
+    return bool(str(getattr(props, "mesh_velocity_attribute", "") or "").strip())
+
+
+def _mesh_attribute_velocities(obj, mesh, props, matrix):
+    """World velocities from the named vector attribute, or None when unset.
+
+    The attribute is in object space, units per second, like a point cloud's
+    velocity attribute. Face and face-corner values are averaged onto the
+    vertices, which is where Flow reads mesh velocity.
+    """
+    if not uses_velocity_attribute(props):
+        return None
+    name = props.mesh_velocity_attribute.strip()
+    attribute = mesh.attributes.get(name)
+    if attribute is None:
+        raise RuntimeError(
+            f'{obj.name} has no mesh attribute named "{name}" for Velocity. '
+            "Geometry Nodes must store it on the evaluated mesh; instances need Realize Instances"
+        )
+    if attribute.data_type != "FLOAT_VECTOR":
+        raise RuntimeError(f'{obj.name}: Velocity attribute "{name}" must be a vector attribute')
+    if attribute.domain not in {"POINT", "FACE", "CORNER"}:
+        raise RuntimeError(
+            f'{obj.name}: Velocity attribute "{name}" must be on points, faces or face corners')
+    vertex_count = len(mesh.vertices)
+    values = array("f", [0.0]) * (len(attribute.data) * 3)
+    attribute.data.foreach_get("vector", values)
+    if attribute.domain != "POINT":
+        values = _average_onto_vertices(mesh, attribute.domain, values, vertex_count)
+    scale = float(props.motion_velocity_scale)
+    rotation = matrix.to_3x3()
+    if np is not None:
+        local = np.frombuffer(values, dtype=np.float32).reshape((-1, 3))
+        world = array("f")
+        world.frombytes((_transformed_vectors(local, rotation, columns=3) * np.float32(scale)).tobytes())
+        return world
+    world = array("f")
+    for offset in range(0, len(values), 3):
+        world.extend((rotation @ Vector(values[offset:offset + 3])) * scale)
+    return world
+
+
+def _average_onto_vertices(mesh, domain, values, vertex_count):
+    loop_count = len(mesh.loops)
+    loop_vertices = array("i", [0]) * loop_count
+    mesh.loops.foreach_get("vertex_index", loop_vertices)
+    starts = array("i", [0]) * len(mesh.polygons)
+    totals = array("i", [0]) * len(mesh.polygons)
+    mesh.polygons.foreach_get("loop_start", starts)
+    mesh.polygons.foreach_get("loop_total", totals)
+    if np is not None:
+        vertices = np.frombuffer(loop_vertices, dtype=np.int32)
+        source = np.frombuffer(values, dtype=np.float32).reshape((-1, 3))
+        if domain == "FACE":
+            # A face's loops are contiguous from its loop_start.
+            order = np.argsort(np.frombuffer(starts, dtype=np.int32), kind="stable")
+            loop_faces = np.repeat(order, np.frombuffer(totals, dtype=np.int32)[order])
+            source = source[loop_faces]
+        summed = np.zeros((vertex_count, 3), dtype=np.float64)
+        np.add.at(summed, vertices, source)
+        counts = np.maximum(np.bincount(vertices, minlength=vertex_count), 1)
+        result = array("f")
+        result.frombytes((summed / counts[:, None]).astype(np.float32).tobytes())
+        return result
+    loop_sources = list(range(loop_count))
+    if domain == "FACE":
+        for face, (start, total) in enumerate(zip(starts, totals)):
+            for loop in range(start, start + total):
+                loop_sources[loop] = face
+    summed = [0.0] * (vertex_count * 3)
+    counts = [0] * vertex_count
+    for loop, vertex in enumerate(loop_vertices):
+        source = loop_sources[loop]
+        for axis in range(3):
+            summed[vertex * 3 + axis] += values[source * 3 + axis]
+        counts[vertex] += 1
+    return array("f", (
+        summed[index] / max(1, counts[index // 3]) for index in range(vertex_count * 3)))
+
+
 def _mesh_normal_velocities(positions, indices, normal_velocity, matrix):
     normal_velocity = float(normal_velocity)
     if abs(normal_velocity) < 1e-6:
         return array("f")
+    if np is not None:
+        return _mesh_normal_velocities_bulk(positions, indices, normal_velocity, matrix)
 
     normals = [Vector((0.0, 0.0, 0.0)) for _ in range(len(positions) // 3)]
     for cursor in range(0, len(indices), 3):
@@ -410,6 +502,29 @@ def _mesh_normal_velocities(positions, indices, normal_velocity, matrix):
             velocities.extend((world_normal.x * normal_velocity, world_normal.y * normal_velocity, world_normal.z * normal_velocity))
         else:
             velocities.extend((0.0, 0.0, 0.0))
+    return velocities
+
+
+def _mesh_normal_velocities_bulk(positions, indices, normal_velocity, matrix):
+    """Area-weighted vertex normals as the per-triangle loop computes them."""
+    points = np.frombuffer(positions, dtype=np.float32).reshape((-1, 3)).astype(np.float64)
+    corners = np.frombuffer(indices, dtype=np.int32).reshape((-1, 3))
+    p0, p1, p2 = points[corners[:, 0]], points[corners[:, 1]], points[corners[:, 2]]
+    face = np.cross(p1 - p0, p2 - p0)
+    normals = np.zeros_like(points)
+    for column in range(3):
+        np.add.at(normals, corners[:, column], face)
+    length = np.linalg.norm(normals, axis=1)
+    valid = length > 1e-6
+    normals[valid] /= length[valid, None]
+    transform = np.asarray(matrix.to_3x3().inverted_safe().transposed(), dtype=np.float64)
+    world = normals @ transform.T
+    world_length = np.linalg.norm(world, axis=1)
+    scaled = valid & (world_length > 1e-6)
+    world[scaled] /= world_length[scaled, None]
+    world[~valid] = 0.0
+    velocities = array("f")
+    velocities.frombytes((world * normal_velocity).astype(np.float32).tobytes())
     return velocities
 
 

@@ -133,7 +133,7 @@ All notable customer-facing changes are recorded here.
   of being managed by Fumaris. Delete them by hand if a scene still has any.
 - **Auto Simulation Memory.** The Auto button next to Memory reserves 80% of
   the GPU memory free when the simulation starts (at least 0.5 GB); the panel
-  shows the amount it used. New domains use Auto; saved scenes keep their GB.
+  shows the amount it used. Off by default; saved scenes keep their GB.
 - **See what Simulation Memory buys.** Below Resolution and Memory the panel
   shows the voxel size and about how much space the smoke can fill.
 - **Live preview counted in Simulation Memory.** The self-shadow and flame

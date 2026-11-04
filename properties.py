@@ -13,7 +13,7 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
-from .memory_auto import apply_new_domain_default, auto_toggled
+from .memory_auto import auto_toggled
 
 
 LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
@@ -44,7 +44,8 @@ def _object_type_updated(self, _context):
         if not self.adaptive_sub_steps:
             self.adaptive_cfl = 0.0
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
-    apply_new_domain_default(self)
+    # Auto for new domains awaits the user's defaults decision:
+    # apply_new_domain_default(self)
 
 
 def _cache_slot_updated(self, _context):

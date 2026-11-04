@@ -28,6 +28,8 @@ def _nested_foldout(layout, props, property_name, label):
     column = row.column(align=True)
     opened = _foldout(column, props, property_name, label)
     if opened:
+        # Space between the header and its first option, like every group.
+        layout.separator(factor=0.5)
         content = layout.row(align=True)
         content.separator(factor=1.3)
         return content.column(align=True), opened

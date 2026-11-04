@@ -639,6 +639,7 @@ def _draw_domain(layout, scene, props):
         reflection_row = turbulence.row()
         reflection_row.active = props.num_sub_steps >= 2
         reflection_row.prop(props, "advection_reflection")
+        turbulence.prop(props, "sharp_advection")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
@@ -649,6 +650,7 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "cooling_time")
             combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
             combustion.prop(props, "divergence_per_burn", text="Expansion")
+            combustion.prop(props, "gas_expansion")
             combustion.prop(props, "ignition_temperature_k")
         else:
             combustion.prop(props, "temperature_input_scale")
@@ -658,6 +660,7 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "temp_per_burn")
             combustion.prop(props, "smoke_per_burn")
             combustion.prop(props, "divergence_per_burn")
+            combustion.prop(props, "gas_expansion")
             combustion.prop(props, "cooling_rate")
 
     advanced = layout.box()

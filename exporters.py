@@ -274,6 +274,8 @@ def _domain_state(props, resolution_scale=1.0):
         "disturb_size": props.disturb_size,
         "shred": props.shred,
         "advection_reflection": props.advection_reflection,
+        "sharp_advection": props.sharp_advection,
+        "gas_expansion": props.gas_expansion,
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,
         "velocity_damping": props.velocity_damping,

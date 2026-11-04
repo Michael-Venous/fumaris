@@ -1238,6 +1238,14 @@ class FumarisSettings(PropertyGroup):
         soft_max=3500.0,
     )
 
+    gas_expansion: FloatProperty(
+        name="Gas Expansion",
+        description="Physical expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 keeps the older Expansion behaviour. Start around 0.05-0.2 for fuel values of 10-50",
+        default=0.0,
+        min=0.0,
+        soft_max=1.0,
+    )
+
     burn_time: FloatProperty(
         name="Burn Time",
         description="Seconds for burning gas to use up 95% of its fuel. Longer keeps flames alive longer",
@@ -1337,6 +1345,12 @@ class FumarisSettings(PropertyGroup):
         min=0.001,
         soft_max=10.0,
         subtype="DISTANCE",
+    )
+
+    sharp_advection: BoolProperty(
+        name="Sharp Advection",
+        description="Carry motion with full-strength error correction and a midpoint back-trace, keeping smaller swirls and crisper billows at a modest cost",
+        default=False,
     )
 
     advection_reflection: BoolProperty(

@@ -4,6 +4,15 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Gas Expansion (Combustion).** Burning gas now pushes the smoke around it
+  outward where it actually burns, with the same strength at any resolution,
+  frame rate or Sub-Steps. Use it to drive fireballs and mushroom clouds from
+  the fire itself. 0 (the default) keeps the older Expansion behaviour, so
+  existing scenes simulate exactly as before.
+- **Sharp Advection (Turbulence).** Carries motion with full-strength error
+  correction and a midpoint back-trace, keeping smaller swirls and crisper
+  billows for a modest cost. Off by default.
+
 - **Velocity attribute for mesh emitters.** A mesh or Geometry Nodes mesh
   emitter can take its velocity from a vector attribute (Emitter > Velocity),
   such as one stored with Store Named Attribute. It replaces the velocity

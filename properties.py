@@ -20,6 +20,8 @@ TEMPERATURE_MAPPING_VERSION = 2
 # 1: domain created with the Realistic combustion model available. Domains from
 # earlier files load as Classic so their look does not change.
 COMBUSTION_VERSION = 1
+# 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
+SUBSTEP_SETTINGS_VERSION = 1
 
 
 def _object_type_updated(self, _context):
@@ -31,10 +33,14 @@ def _object_type_updated(self, _context):
         self.use_scene_frame_range = True
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
-        # Saved domains keep the Burn look and the older heat; new ones glow
-        # by temperature and take their heat from the fuel burnt.
-        self.shader_flame_look = "TEMPERATURE"
+        # Saved domains keep the older heat; new ones take their heat from
+        # the fuel burnt.
         self.physical_heat = True
+    if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
+        # New domains: Cells per Step 0 means fixed Sub-Steps (Adaptive off).
+        if not self.adaptive_sub_steps:
+            self.adaptive_cfl = 0.0
+        self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
 
 
 def _cache_slot_updated(self, _context):
@@ -1501,18 +1507,6 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
-    shader_flame_look: EnumProperty(
-        name="Flame Look",
-        description="How the generated material lights fire",
-        items=(
-            ("BURN", "Burn (Classic)", "Glow where fuel is burning, colored by temperature"),
-            ("TEMPERATURE", "Temperature (Physical)",
-             "Soot glows by its temperature like real fire: hot gas blazes yellow-orange, cooler gas dims to deep red and dark crevices. Brightness is set at Full Glow"),
-        ),
-        default="BURN",
-        update=_appearance_updated,
-    )
-
     shader_glow_temperature: FloatProperty(
         name="Full Glow",
         description="Temperature (K) at which fire glows at full Brightness; hotter gas is brighter, cooler gas falls off by Contrast",
@@ -1581,12 +1575,16 @@ class FumarisSettings(PropertyGroup):
 
     adaptive_cfl: FloatProperty(
         name="Cells per Step",
-        description="With Adaptive on: how many voxels the fastest flow may cross per step before another Sub-Step is added. Lower is more accurate and slower; around 8 is fast but changes the result noticeably",
+        description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; around 8 is fast but changes the result noticeably. 0 = off: always use Max Sub-Steps",
         default=4.0,
-        min=0.5,
+        min=0.0,
         max=40.0,
-        soft_min=1.0,
         soft_max=10.0,
+    )
+
+    substep_settings_version: IntProperty(
+        default=0,
+        options={"HIDDEN"},
     )
 
     num_sub_steps: IntProperty(
@@ -1721,6 +1719,12 @@ class FumarisSettings(PropertyGroup):
 def _migrate_temperature_mapping():
     for obj in bpy.data.objects:
         props = getattr(obj, "fumaris", None)
+        if (props is not None and props.smoke_object_type == "domain"
+                and props.substep_settings_version < SUBSTEP_SETTINGS_VERSION):
+            # The Adaptive toggle became Cells per Step 0.
+            if not props.adaptive_sub_steps:
+                props.adaptive_cfl = 0.0
+            props.substep_settings_version = SUBSTEP_SETTINGS_VERSION
         if (props is not None and props.smoke_object_type == "domain"
                 and props.combustion_version < COMBUSTION_VERSION):
             # Saved before Realistic combustion existed: keep the old look.

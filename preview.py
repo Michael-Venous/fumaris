@@ -6,7 +6,7 @@ import gpu
 from mathutils import Matrix
 from . import diagnostics
 from .protocol import SCENE_DEPTH_KEY
-from .utils import flame_temperature_range
+from .utils import WIEN_KELVIN, flame_temperature_range
 
 try:
     import numpy as np
@@ -54,6 +54,7 @@ def capture_volume_preview(context, domain):
     fps = float(context.scene.render.fps) / fps_base
     simulation_speed = max(1e-6, float(props.simulation_speed))
     flame_rate_scale = fps * float(props.num_sub_steps) / simulation_speed
+    glow_temperature = max(1.0, float(props.shader_glow_temperature))
     flame_start, flame_full = flame_temperature_range(
         float(props.flame_temperature_min), float(props.flame_temperature_max))
     return {
@@ -72,6 +73,9 @@ def capture_volume_preview(context, domain):
         "flame_temperature_max": flame_full,
         "flame_rate_scale": flame_rate_scale,
         "flame_sharpness": float(props.shader_flame_sharpness),
+        # Temperature look, as the generated material (importers.py)
+        "glow_temperature": glow_temperature,
+        "glow_contrast": WIEN_KELVIN * max(0.05, float(props.shader_flame_contrast)) / glow_temperature,
         "temperature_multiplier": float(props.shader_temperature_multiplier),
         "shadows": bool(props.preview_shadows),
         "shadow_min_light": float(props.preview_shadow_min_light),
@@ -123,6 +127,8 @@ def volume_preview_signature(preview):
         round(float(preview["flame_temperature_max"]), 7),
         round(float(preview["flame_rate_scale"]), 7),
         round(float(preview.get("flame_sharpness", 1.0)), 7),
+        round(float(preview.get("glow_temperature", 1600.0)), 7),
+        round(float(preview.get("glow_contrast", 0.0)), 7),
         round(float(preview["temperature_multiplier"]), 7),
         bool(preview["shadows"]),
         round(float(preview.get("shadow_min_light", 0.0)), 7),

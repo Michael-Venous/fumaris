@@ -250,7 +250,10 @@ def _domain_state(props, resolution_scale=1.0):
         "sparse_block_capacity": props.sparse_block_capacity,
         "simulation_speed": props.simulation_speed,
         "num_sub_steps": props.num_sub_steps,
-        "adaptive_sub_steps": props.adaptive_sub_steps,
+        # Cells per Step 0 is off; domains not yet migrated keep their toggle.
+        "adaptive_sub_steps": (props.adaptive_cfl > 0.0
+                               if props.substep_settings_version > 0
+                               else props.adaptive_sub_steps),
         "adaptive_cfl": props.adaptive_cfl,
         "small_sparse_blocks": props.small_sparse_blocks,
         "simulation_memory_mb": simulation_memory_mb(props),

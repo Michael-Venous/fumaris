@@ -10,7 +10,7 @@ except ImportError:
     openvdb = None
 
 from .diagnostics import console_log
-from .utils import flame_temperature_range
+from .utils import WIEN_KELVIN, flame_temperature_range
 
 PREFIX = "fumaris_"
 _FRAME_DIGITS = re.compile(r"-?[0-9]+")
@@ -42,7 +42,6 @@ NODE_PHYSICAL_REFERENCE = "Fumaris Physical Reference"
 NODE_PHYSICAL_CONTRAST = "Fumaris Physical Contrast"
 NODE_PHYSICAL_GAIN = "Fumaris Physical Gain"
 NODE_PHYSICAL_COLOR_SCALE = "Fumaris Physical Color Scale"
-WIEN_KELVIN = 26160.0
 PHYSICAL_COLOR_SHIFT = 1.3
 PHYSICAL_SATURATION = 1.8
 
@@ -256,9 +255,9 @@ def apply_generated_material_settings(material, settings):
     look_strength = nodes.get(NODE_FLAME_LOOK_STRENGTH)
     look_color = nodes.get(NODE_FLAME_LOOK_COLOR)
     if look_strength is not None and look_color is not None:
-        physical = _appearance_value(settings, "shader_flame_look", "BURN") == "TEMPERATURE"
+        # Fire always glows by temperature (the Burn look was removed).
         for mix in (look_strength, look_color):
-            mix.inputs["Factor"].default_value = 1.0 if physical else 0.0
+            mix.inputs["Factor"].default_value = 1.0
         reference = max(1.0, float(_appearance_value(settings, "shader_glow_temperature", 1600.0)))
         contrast = max(0.05, float(_appearance_value(settings, "shader_flame_contrast", 0.5)))
         nodes[NODE_PHYSICAL_REFERENCE].inputs[0].default_value = reference

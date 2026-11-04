@@ -490,20 +490,16 @@ def _draw_domain(layout, scene, props):
     else:
         row.prop(props, "sim_start_frame", text="Start")
         row.prop(props, "sim_end_frame", text="End")
-    settings.prop(props, "resolution")
-    memory_row = settings.row(align=True)
-    memory_row.prop(props, "simulation_memory")
-    memory_row.label(text="GB")
+    grid_row = settings.row(align=True)
+    grid_row.prop(props, "resolution")
+    grid_row.prop(props, "simulation_memory", text="Memory (GB)")
     if simulation_memory_mb(props) == 0.0:
         legacy = settings.row()
         legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")
     settings.prop(props, "air_margin")
     substeps_row = settings.row(align=True)
-    substeps_label = {"text": "Max Sub-Steps"} if props.adaptive_sub_steps else {}
-    substeps_row.prop(props, "num_sub_steps", **substeps_label)
-    substeps_row.prop(props, "adaptive_sub_steps", toggle=True)
-    if props.adaptive_sub_steps:
-        settings.prop(props, "adaptive_cfl")
+    substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
+    substeps_row.prop(props, "adaptive_cfl")
     settings.prop(props, "follow_object")
     if props.follow_object:
         settings.prop(props, "carry_air", slider=True)
@@ -522,19 +518,10 @@ def _draw_domain(layout, scene, props):
         appearance.prop(props, "shader_flame_enabled")
         fire = appearance.column(align=True)
         fire.enabled = props.shader_flame_enabled
-        fire.prop(props, "shader_flame_look", text="")
         fire.prop(props, "shader_flame_brightness")
-        if props.shader_flame_look == "TEMPERATURE":
-            fire.prop(props, "shader_glow_temperature")
-            fire.prop(props, "shader_flame_contrast")
-            fire.prop(props, "shader_temperature_multiplier")
-        else:
-            row = fire.row(align=True)
-            row.prop(props, "flame_temperature_min", text="Start")
-            row.prop(props, "flame_temperature_max", text="Full")
-            fire.prop(props, "shader_temperature_multiplier")
-            fire.prop(props, "shader_flame_sharpness")
-            fire.prop(props, "shader_flame_core")
+        fire.prop(props, "shader_glow_temperature")
+        fire.prop(props, "shader_flame_contrast")
+        fire.prop(props, "shader_temperature_multiplier")
         if props.volume_material is not None:
             appearance.label(
                 text="Custom Volume Material overrides baked appearance",
@@ -543,7 +530,6 @@ def _draw_domain(layout, scene, props):
 
     output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
     if output_open:
-        output.prop(props, "output_dir")
         slot = output.row(align=True)
         slot.prop(props, "cache_slot")
         slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
@@ -553,9 +539,12 @@ def _draw_domain(layout, scene, props):
             text="",
             depress=slot_protected,
         )
+        output.prop(props, "output_dir")
         output.prop(props, "output_prefix")
-        output.prop(props, "vdb_compression")
-        output.prop(props, "vdb_precision")
+        vdb = output.row(align=True)
+        vdb.prop(props, "vdb_compression")
+        vdb.prop(props, "vdb_precision", text="")
+        output.separator()
         output.prop(props, "volume_material")
         output.prop(props, "volume_selectable")
         output.separator()
@@ -571,75 +560,93 @@ def _draw_domain(layout, scene, props):
 
     preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
     if preview_open:
+        preview.label(text="Quality")
         preview.prop(props, "preview_resolution_percent", slider=True)
         preview.prop(props, "preview_image_scale", slider=True)
         preview.prop(props, "preview_max_ray_steps")
-        preview.prop(props, "preview_tone_mapping")
+        preview.separator()
+        preview.label(text="Exposure")
+        preview.prop(props, "preview_tone_mapping", text="")
         preview.prop(props, "preview_exposure", slider=True)
+        preview.separator()
+        preview.label(text="Lighting")
         preview.prop(props, "preview_occlusion")
-        flame_light = preview.row()
+        flame_light = preview.row(align=True)
         flame_light.enabled = props.shader_flame_enabled
         flame_light.prop(props, "preview_flame_light", slider=True)
         preview.prop(props, "preview_shadows")
-        light = preview.column()
+        light = preview.column(align=True)
         light.enabled = props.preview_shadows
         light.prop(props, "preview_shadow_min_light", slider=True)
         light.prop(props, "preview_light_scattering", slider=True)
+        light.separator()
         light.label(text="Light Direction")
         light.prop(props, "preview_light_azimuth")
         light.prop(props, "preview_light_elevation")
+        preview.separator()
         preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
 
     participants = layout.box()
     participants.enabled = not is_baking
     participants.label(text="Participants", icon="OUTLINER_COLLECTION")
+    participants = participants.column(align=True)
     participants.prop(props, "emitter_collection")
     participants.prop(props, "collider_collection")
     participants.prop(props, "effector_collection")
     participants.prop(props, "outflow_collection")
 
-    behavior = layout.box()
-    behavior.enabled = not is_baking
-    behavior.label(text="Smoke Behavior", icon="MOD_FLUID")
+    behavior_box = layout.box()
+    behavior_box.enabled = not is_baking
+    behavior_box.label(text="Smoke Behavior", icon="MOD_FLUID")
+    behavior = behavior_box.column(align=True)
     behavior.prop(props, "gravity")
+    behavior.separator()
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
-    behavior.prop(props, "vorticity")
-    mask_row = behavior.row()
-    mask_row.active = props.vorticity > 0.0
-    mask_row.prop(props, "vorticity_mask")
+    behavior.separator()
+    vorticity_row = behavior.row(align=True)
+    vorticity_row.prop(props, "vorticity")
+    mask = vorticity_row.row(align=True)
+    mask.active = props.vorticity > 0.0
+    mask.prop(props, "vorticity_mask", text="")
+    behavior.separator()
     behavior.prop(props, "dissipation")
     behavior.prop(props, "smoke_decay")
     behavior.prop(props, "velocity_damping")
 
     turbulence, turbulence_open = _nested_foldout(behavior, props, "show_domain_turbulence", "Turbulence Detail")
     if turbulence_open:
-        turbulence.prop(props, "disturb")
-        size_row = turbulence.row()
-        size_row.active = props.disturb > 0.0
-        size_row.prop(props, "disturb_size")
+        disturb_row = turbulence.row(align=True)
+        disturb_row.prop(props, "disturb")
+        size = disturb_row.row(align=True)
+        size.active = props.disturb > 0.0
+        size.prop(props, "disturb_size", text="Size")
         turbulence.prop(props, "shred")
-        reflection_row = turbulence.row()
+        overshoot_row = turbulence.row(align=True)
+        overshoot_row.active = props.vorticity > 0.0
+        overshoot_row.prop(props, "vorticity_overshoot")
+        turbulence.separator()
+        reflection_row = turbulence.row(align=True)
         reflection_row.active = props.num_sub_steps >= 2
         reflection_row.prop(props, "advection_reflection")
         turbulence.prop(props, "sharp_advection")
-        overshoot_row = turbulence.row()
-        overshoot_row.active = props.vorticity > 0.0
-        overshoot_row.prop(props, "vorticity_overshoot")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
-        combustion.prop(props, "combustion_model")
+        combustion.prop(props, "combustion_model", text="")
+        combustion.separator()
         if props.combustion_model == "realistic":
+            combustion.prop(props, "physical_heat")
             combustion.prop(props, "flame_temperature")
+            combustion.prop(props, "ignition_temperature_k")
+            combustion.separator()
             combustion.prop(props, "burn_time")
             combustion.prop(props, "cooling_time")
             combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
-            combustion.prop(props, "physical_heat")
+            combustion.separator()
             combustion.prop(props, "gas_expansion")
-            combustion.prop(props, "soot_radiation")
             combustion.prop(props, "oxygen_limit")
-            combustion.prop(props, "ignition_temperature_k")
+            combustion.prop(props, "soot_radiation")
         else:
             combustion.prop(props, "temperature_input_scale")
             combustion.prop(props, "ignition_temperature")
@@ -650,14 +657,16 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "divergence_per_burn")
             combustion.prop(props, "cooling_rate")
 
-    advanced = layout.box()
-    advanced.enabled = not is_baking
-    if _foldout(advanced, props, "show_panel_advanced", "Advanced"):
+    advanced_box = layout.box()
+    advanced_box.enabled = not is_baking
+    if _foldout(advanced_box, props, "show_panel_advanced", "Advanced"):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
+        advanced = advanced_box.column(align=True)
         advanced.prop(props, "simulation_speed")
         advanced.prop(props, "small_sparse_blocks")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")
+        advanced.separator()
         advanced.prop(props, "sparse_block_min_lifetime")
         advanced.prop(props, "allocation_smoke_threshold")
         advanced.prop(props, "allocation_speed_threshold")

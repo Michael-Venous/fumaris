@@ -9,6 +9,10 @@ import struct
 import bpy
 
 
+# Wien's law at 550 nm (c2 / 550 nm): visible radiance ~ exp(-WIEN_KELVIN / T).
+WIEN_KELVIN = 26160.0
+
+
 def flame_temperature_range(start, full):
     """Keep the range ordered after Blender/native float32 conversion."""
     if not math.isfinite(start) or not math.isfinite(full):

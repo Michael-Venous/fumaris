@@ -25,6 +25,16 @@ All notable customer-facing changes are recorded here.
   instead of the whole fireball sitting at Flame Temperature (very dense
   soot radiates only from its surface). Off by default. Gas that is still
   burning stays at Flame Temperature.
+- **Fire always glows by temperature.** The Burn (Classic) flame look is
+  removed: the generated material and the live preview both use the
+  temperature controls (Brightness, Full Glow, Contrast, Blackbody Scale), so
+  the viewport preview now matches the render's fire.
+- **Simpler domain panel.** Resolution and Memory share a row, Max Sub-Steps
+  and Cells per Step share a row (Cells per Step 0 turns Adaptive off; the
+  toggle is gone and saved scenes keep their setting), Vorticity Mask sits
+  beside Vorticity, VDB precision beside compression, the cache slot is at the
+  top of Output, Preview Settings are grouped (Quality, Exposure, Lighting,
+  Light Direction), and spacing is consistent.
 - **Physical Heat (Realistic combustion).** Burning releases heat for the fuel
   it uses and needs air, so fire forms hot shells where fuel meets fresh air
   and cools as it mixes, instead of all burning gas sitting at Flame

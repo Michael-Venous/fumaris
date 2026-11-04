@@ -120,8 +120,6 @@ def error_summary(state):
         return ""
     errors = [line for line in state["log"] if line.lower().startswith("error:")]
     message = errors[-1] if errors else "Simulation stopped; expand for details."
-    if "detail memory limit reached" in message.lower():
-        return "Smoke detail memory limit reached."
     return textwrap.shorten(message, width=60, placeholder="...")
 
 

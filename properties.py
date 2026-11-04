@@ -506,28 +506,6 @@ class FumarisSettings(PropertyGroup):
         default=0.0, min=-10.0, max=10.0, soft_min=-4.0, soft_max=4.0,
     )
 
-    upres_enabled: BoolProperty(
-        name="Upres (Experimental)",
-        description="Add finer smoke detail without running a full higher-resolution simulation. Works in preview and baked volumes, but needs extra GPU memory. Smoke and fire detail have separate strengths; combustion stays at base resolution. Unavailable while a simulation is running or paused. Press Stop, change this setting, then Play",
-        default=False,
-    )
-    upres_strength: FloatProperty(
-        name="Smoke Detail", default=4.0, min=0.0, soft_max=10.0,
-        description="Extra swirls where nearby smoke moves differently. Fast travel alone does not add turbulence. Motion is limited per step to reduce artifacts; zero uses the original smoke. Higher values can be typed",
-    )
-    upres_fire_strength: FloatProperty(
-        name="Fire Detail", default=4.0, min=0.0, soft_max=10.0,
-        description="Refine temperature and burn using the same motion as smoke. Zero preserves base fire fields. Adds visual detail, not higher-resolution combustion",
-    )
-    upres_scale: FloatProperty(
-        name="Detail Size", default=8.0, min=1.0, soft_max=16.0,
-        description="Size of the added swirls in base simulation cells. Start at 8; larger values make broader changes, not a sharper result. Sizes below 2 use the same minimum sampling size. Higher values can be typed",
-    )
-    upres_memory_mb: IntProperty(
-        name="Detail Memory Limit", default=4096, min=128, soft_max=32768,
-        description="Safety budget for added smoke detail, in MiB (4096 = 4 GiB). Checks estimated peak memory for the next allocation, not current GPU usage. Leave GPU memory for Blender and the base simulation; system RAM is not a substitute. Higher values can be typed",
-    )
-
     preview_light_direction: FloatVectorProperty(
         name="Light Direction",
         description="World-space direction toward the preview light, with Z pointing up; changes preview shading only, not scene lights or baked simulation",
@@ -575,7 +553,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_memory: FloatProperty(
         name="Simulation Memory",
-        description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant. With Upres on, it also holds the detail volume",
+        description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant",
         default=1.0,
         min=0.1,
         max=1024.0,
@@ -639,7 +617,7 @@ class FumarisSettings(PropertyGroup):
 
     follow_object: BoolProperty(
         name="Move With Object",
-        description="Simulate in this domain object's own space, so the simulation travels and turns with it and with whatever it is parented to. Emitters and colliders that ride along stay put in the simulation grid, which keeps fast vehicles smooth and stable with few sub-steps. The object's scale is ignored. Not available with Upres",
+        description="Simulate in this domain object's own space, so the simulation travels and turns with it and with whatever it is parented to. Emitters and colliders that ride along stay put in the simulation grid, which keeps fast vehicles smooth and stable with few sub-steps. The object's scale is ignored",
         default=False,
     )
 
@@ -1307,7 +1285,7 @@ class FumarisSettings(PropertyGroup):
 
     divergence_per_burn: FloatProperty(
         name="Expansion Per Burn",
-        description="How strongly burning fuel pushes the gas outward; increase for expanding fireballs, lower for gentler flames",
+        description="Classic model only (legacy): how strongly burning fuel pushes the gas outward. Its strength depends on resolution; the Realistic model uses Gas Expansion instead",
         default=2.0,
         soft_min=-20.0,
         soft_max=20.0,

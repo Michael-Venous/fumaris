@@ -68,7 +68,6 @@ Doubling resolution needs approximately eight times the cells for equal coverage
 - Optional Bake on Preview recording, imported when paused or stopped.
 - Faster first startup through on-demand GPU pipeline compilation and faster
   export of shared mesh instances.
-- Experimental smoke/fire Upres with a detail-memory budget and visible failure guidance.
 - Compact playback controls, clearer shortcut tooltips, and actionable capacity warnings.
 - Four demo scenes: Explosion, Mushroom, Tornado, and Effector Vacuum, supplied
   in the separate `fumaris-1.2.0-demos.zip` download. Extract before opening;

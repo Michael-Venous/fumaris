@@ -328,9 +328,6 @@ def _draw_diagnostics(layout, props):
             box.label(text=f"CFL (previous field): {number('flow_previous_courant'):.2f} cells/step")
             box.label(text=f"Smoke CFL (drives Adaptive): {number('flow_previous_smoke_courant'):.2f} cells/step")
             box.label(text=f"Voxel size: {number('flow_density_voxel_size_x'):.5g} m")
-            if number("flow_detail_working_bytes"):
-                box.label(text=f"Derived smoke resolution: {number('flow_detail_effective_resolution'):.0f}")
-                box.label(text="Detail working estimate: " + _compact_memory(number("flow_detail_working_bytes") / 1048576))
             box.label(text=f"Frame latency: {number('blender_round_trip_ms'):.1f} ms")
             box.label(text=f"Flow submit / wait: {number('flow_submit_ms'):.1f} / {number('flow_wait_ms'):.1f} ms")
             box.label(text=f"Last texture upload: {number('blender_texture_upload_ms'):.2f} ms")
@@ -453,12 +450,7 @@ def _draw_domain(layout, scene, props):
         error_row = status.row(align=True)
         error_row.alert = True
         error_row.label(text=failure, icon="ERROR")
-        if "detail memory limit reached" in failure.lower():
-            status.label(text="Lower Resolution or disable Upres.")
-            status.label(text="Or raise Detail Memory Limit if VRAM allows.")
-            status.label(text="Then restart the simulation.")
-        else:
-            status.label(text="See Diagnostics below for details.")
+        status.label(text="See Diagnostics below for details.")
     elif is_initializing:
         status.label(text="Initializing Flow GPU…", icon="INFO")
         status.label(text="First-run shaders can take several minutes")
@@ -603,21 +595,6 @@ def _draw_domain(layout, scene, props):
     behavior = layout.box()
     behavior.enabled = not is_baking
     behavior.label(text="Smoke Behavior", icon="MOD_FLUID")
-    detail_row = behavior.row(align=True)
-    detail_toggle = detail_row.row(align=True)
-    detail_toggle.enabled = not is_previewing
-    detail_toggle.prop(props, "upres_enabled")
-    if is_previewing:
-        detail_row.label(text="Stop preview to change", icon="INFO")
-    if props.upres_enabled:
-        detail = behavior.box()
-        detail.prop(props, "upres_strength")
-        detail.prop(props, "upres_fire_strength")
-        detail.prop(props, "upres_scale")
-        if simulation_memory_mb(props) == 0.0:
-            # Simulation Memory already covers the detail level.
-            detail.prop(props, "upres_memory_mb")
-        detail.label(text="Shared detail motion; combustion stays at base resolution", icon="INFO")
     behavior.prop(props, "gravity")
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
@@ -649,7 +626,6 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "burn_time")
             combustion.prop(props, "cooling_time")
             combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
-            combustion.prop(props, "divergence_per_burn", text="Expansion")
             combustion.prop(props, "gas_expansion")
             combustion.prop(props, "ignition_temperature_k")
         else:
@@ -660,7 +636,6 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "temp_per_burn")
             combustion.prop(props, "smoke_per_burn")
             combustion.prop(props, "divergence_per_burn")
-            combustion.prop(props, "gas_expansion")
             combustion.prop(props, "cooling_rate")
 
     advanced = layout.box()

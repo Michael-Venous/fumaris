@@ -229,41 +229,6 @@ slot and its imported volume. It is unavailable while a job is active.
 
 ## Domain Settings
 
-### Upres (Experimental)
-
-Upres adds advected detail to smoke and optionally fire, using one shared detail
-motion field and memory budget. It affects the live volume and baked fields;
-it does not increase the resolution of the velocity/pressure or combustion
-solve. Stop the simulation before enabling or disabling Upres. Pausing retains
-its allocation, so the toggle remains unavailable until you press Stop.
-
-- Smoke Detail controls density refinement. The default is 4; 0 uses original smoke.
-- Fire Detail controls temperature and burn refinement. Its default is 4; set it to 0 to
-  preserve base fire fields. Fuel and
-  combustion remain on the base grid; this is visual refinement, not additional
-  combustion physics. When enabled, requested temperature/burn exports use the
-  refined grid too.
-- Detail Size is shared by smoke and fire and measured in base cells, not an
-  output-resolution multiplier. The default is 8. Larger values make broader swirls; values below
-  2 share a minimum sampling size.
-- Strength and size accept typed values beyond their slider ranges. Large values
-  can distort the volume or expose patterns; more is not always better.
-- Simulation Memory includes the detail level: with Upres on, the same memory
-  holds far fewer blocks, because each carries a detail volume at twice the
-  resolution. Scenes saved with a Sparse Block Capacity instead use Detail
-  Memory Limit (default 4096 MiB), which checks estimated peak allocation, not
-  the current total shown by a GPU monitor.
-
-Compare a short bake with upres disabled and with a higher base resolution. In
-the 2026-11 tests, rising smoke at resolution 900 with Upres took 1.8 times as
-long as simulating resolution 1800 directly in the same 12 GB.
-Depending on the effect, higher base resolution can be the better tradeoff.
-Upres is not a fix for sparse-boundary stepping or insufficient solver substeps.
-The advection correction falls back to ordinary advection when it overshoots,
-and applies coarse-field losses proportionally to reduce plateaus and holes
-under strong shear. Very high detail strength/vorticity can still expose
-unresolved base-grid structure.
-
 ### Resolution And Simulation Memory
 
 Resolution determines density cell size. `Simulation Memory` is the GPU memory,
@@ -279,8 +244,7 @@ higher resolution covers a smaller region.
 Leave room for Blender and anything else on the same GPU, such as Cycles
 renders. If the simulation does not fit, Fumaris shows "GPU memory full": the
 driver moves data to system memory and the simulation runs very slowly, so
-lower Simulation Memory and restart. Upres detail uses its own Detail Memory
-Limit on top of Simulation Memory. Scenes saved before Simulation Memory
+lower Simulation Memory and restart. Scenes saved before Simulation Memory
 existed keep their Sparse Block Capacity until Simulation Memory is changed.
 
 Resolution has no artificial maximum: values above the slider's suggested
@@ -371,7 +335,6 @@ object's location and rotation are used; its scale and its mesh are ignored.
 - Sphere, box and mesh emitters and colliders are followed exactly through
   each frame. Particle and VDB sources that are fixed in the scene are placed
   once per frame, so they smear slightly when the domain moves fast.
-- Move With Object cannot be combined with Upres.
 - Changing Move With Object during preview restarts the simulation. Keep it
   fixed throughout a bake; animating this setting stops the bake with an error.
 
@@ -855,8 +818,7 @@ A capacity warning appears beside the simulation controls even when Diagnostics
 is collapsed. At full capacity smoke may be cut off: increase **Sparse Block
 Capacity** or lower **Resolution**, then restart. A full-capacity warning remains
 for that run because freeing blocks later does not recover missing smoke. A new
-run or Delete clears it. Upres memory-limit failures also appear here with
-recovery guidance. Diagnostics sits below Advanced on the panel's darker background;
+run or Delete clears it. Diagnostics sits below Advanced on the panel's darker background;
 its exact appearance follows your Blender theme.
 
 Current defaults are Dissipation **0.5**, emitter Fuel **1**, Temperature Per Burn

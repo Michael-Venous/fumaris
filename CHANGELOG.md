@@ -7,11 +7,12 @@ All notable customer-facing changes are recorded here.
 - **Gas Expansion (Combustion).** Burning gas now pushes the smoke around it
   outward where it actually burns, with the same strength at any resolution,
   frame rate or Sub-Steps. Use it to drive fireballs and mushroom clouds from
-  the fire itself. 0 (the default) keeps the older Expansion behaviour, so
-  existing scenes simulate exactly as before.
+  the fire itself. It replaces Expansion in the Realistic model (Expansion
+  remains for the Classic model). The Explosion Quick Setup uses 2.
 - **Sharp Advection (Turbulence).** Carries motion with full-strength error
   correction and a midpoint back-trace, keeping smaller swirls and crisper
   billows for a modest cost. Off by default.
+- **Upres removed.** The experimental Upres option and its settings are gone; scenes saved with Upres enabled now simulate at their base resolution.
 
 - **Velocity attribute for mesh emitters.** A mesh or Geometry Nodes mesh
   emitter can take its velocity from a vector attribute (Emitter > Velocity),

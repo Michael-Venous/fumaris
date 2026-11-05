@@ -14,6 +14,7 @@ from . import ui
 from . import preferences
 from . import playback
 from . import quick_setup
+from . import effector_display
 
 
 def register():
@@ -23,9 +24,11 @@ def register():
     quick_setup.register()
     ui.register()
     preferences.register()
+    effector_display.register()
 
 
 def unregister():
+    effector_display.unregister()
     preferences.unregister()
     ui.unregister()
     quick_setup.unregister()

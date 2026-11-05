@@ -625,6 +625,11 @@ effector. Turbulence uses Strength as its amplitude, while Noise Amount mixes
 noise into Force, Wind, and Vortex.
 Effectors change velocity; they do not emit smoke.
 
+The 3D viewport draws every visible effector's reach: a sphere of its
+Influence Radius (or Max Distance), the Min Distance sphere, the wind direction
+or force arrows, and a vortex's cylinder, core, spin and updraft. Selected
+effectors are drawn brighter. Hide the object to hide its display.
+
 `Field Mask` limits any effector to where the simulated smoke meets a
 condition. Choose Smoke, Temperature, Fuel, Burn or Speed, then a `Start` value
 where the force begins and a `Full` value where it reaches full strength.

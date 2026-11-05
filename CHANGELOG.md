@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Effectors are drawn in the viewport.** Influence radius, min distance,
+  wind and force direction, and a vortex's cylinder, core and spin.
 - **Live preview with several 3D viewports or windows.** The preview stayed
   in the largest 3D viewport of all windows, so opening another window (or
   one per monitor) moved it away from the viewport being watched. It now stays

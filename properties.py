@@ -1624,11 +1624,11 @@ class FumarisSettings(PropertyGroup):
 
     adaptive_cfl: FloatProperty(
         name="Cells per Step",
-        description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; around 8 is fast but changes the result noticeably. 0 = off: always use Max Sub-Steps",
+        description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; 8 bakes explosions in about half the time with a similar result, while 16 loses much of the smoke. 0 = off: always use Max Sub-Steps",
         default=4.0,
         min=0.0,
         max=40.0,
-        soft_max=10.0,
+        soft_max=8.0,
     )
 
     substep_settings_version: IntProperty(

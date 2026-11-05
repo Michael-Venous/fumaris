@@ -4,6 +4,16 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Grain (Turbulence Detail).** Small random kicks, one direction per block
+  of Grain Size, renewed every frame: the solver turns the block edges into
+  fine shear and eddies, the gritty breakup of a fast front, at the same world
+  size whatever the resolution. Edges Only limits it to thin, breaking-up gas
+  so dense cores stay smooth. Off by default.
+- **Wisp Cooling (Combustion, Realistic).** Thin gas cools faster than dense
+  pockets, so wisps and edges go dark around glowing cores. Off by default.
+- **Explosion Quick Setup** uses Grain on the thin gas (two velocity cells at
+  the preset resolution) and Wisp Cooling 3: sooty, cauliflower puffs with
+  fire glowing between them instead of smooth glowing lobes.
 - **Disturb Detail (Turbulence Detail).** Adds smaller Disturb swirls in
   octaves, each half the size and slightly stronger, so big lobes carry finer
   billows. 1 keeps the single size of earlier versions.

@@ -1302,6 +1302,14 @@ class FumarisSettings(PropertyGroup):
         soft_max=3.0,
     )
 
+    wisp_cooling: FloatProperty(
+        name="Wisp Cooling",
+        description="Thin gas is mostly mixed-in air, so it loses its heat faster: gas with less than 1 smoke cools up to 1 + this many times faster than Cooling Time, so wisps and edges go dark around glowing, dense cores. 0 = one cooling rate everywhere; try 2-6",
+        default=0.0,
+        min=0.0,
+        soft_max=10.0,
+    )
+
     burn_time: FloatProperty(
         name="Burn Time",
         description="Seconds for burning gas to use up 95% of its fuel. Longer keeps flames alive longer",
@@ -1408,7 +1416,33 @@ class FumarisSettings(PropertyGroup):
         description="Adds smaller Disturb swirls: each step halves the size and pushes a little harder, like real turbulence, so big lobes carry smaller billows. 1 = one size",
         default=1,
         min=1,
-        max=4,
+        max=6,
+    )
+
+    grain: FloatProperty(
+        name="Grain",
+        description="Small random kicks, one direction per block of Grain Size, renewed every frame. The solver turns the edges between blocks into fine shear and eddies, the gritty breakup of a fast front, at the same world size whatever the resolution. Strength in m/s²: about 20-60 for a fireball a few metres across; zero turns it off",
+        default=0.0,
+        min=0.0,
+        soft_max=200.0,
+        max=2000.0,
+    )
+
+    grain_size: FloatProperty(
+        name="Grain Size",
+        description="Edge length of the Grain blocks in scene units. One to three voxels gives the finest grit; smaller than a voxel does nothing",
+        default=0.2,
+        min=0.001,
+        soft_max=2.0,
+        subtype="DISTANCE",
+    )
+
+    grain_edge: FloatProperty(
+        name="Grain Edges Only",
+        description="Apply Grain only to gas thinner than this amount of smoke, so thin, breaking-up edges get grit while dense cores stay smooth and rolling. Zero applies it everywhere there is smoke or heat",
+        default=0.0,
+        min=0.0,
+        soft_max=4.0,
     )
 
     sharp_advection: BoolProperty(

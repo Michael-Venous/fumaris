@@ -7,6 +7,7 @@ import bpy
 from bpy.props import EnumProperty
 from mathutils import Vector
 
+from . import memory_auto
 from .runtime import active_job
 
 
@@ -66,6 +67,11 @@ PRESETS = {
                    "disturb": 175.0, "disturb_detail": 3,
                    "dissipation": 0.1, "soot_radiation": 1.0, "oxygen_limit": 1.5,
                    "smoke_per_burn": 1.0,
+                   # Grain (block-random kicks, world size set below) on the
+                   # thin, breaking-up gas only: sooty cauliflower puffs over
+                   # glowing crevices instead of smooth glowing lobes; thin gas
+                   # cools faster (Wisp Cooling), so edges go dark first.
+                   "grain": 120.0, "grain_edge": 2.0, "wisp_cooling": 3.0,
                    # Plain AgX keeps blackbody fire saturated up to about
                    # this brightness; brighter turns peach.
                    # High Contrast: only the hottest gas glows, so fire shows
@@ -76,6 +82,8 @@ PRESETS = {
                    "shader_smoke_color": (0.4,) * 3},
         # Disturb's largest swirls relative to the sources' largest dimension.
         "disturb_size_per_size": 0.3,
+        # Grain blocks in voxels at the preset resolution (two velocity cells).
+        "grain_size_voxels": 4.0,
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it.
@@ -326,6 +334,9 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
             # Disturb's size is in world units: scale it to the sources so
             # large explosions get large billows (0.1 m did nothing at 20 m).
             props.disturb_size = max(0.05, preset["disturb_size_per_size"] * max(maximum - minimum))
+        if "grain_size_voxels" in preset:
+            # World size, so the grit keeps its scale when the resolution changes.
+            props.grain_size = preset["grain_size_voxels"] * memory_auto.voxel_size(props.resolution)
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:

@@ -762,6 +762,14 @@ def _draw_domain(layout, scene, props):
         detail = turbulence.row(align=True)
         detail.active = props.disturb > 0.0
         detail.prop(props, "disturb_detail", text="Detail")
+        grain_row = turbulence.row(align=True)
+        grain_row.prop(props, "grain")
+        grain_size = grain_row.row(align=True)
+        grain_size.active = props.grain > 0.0
+        grain_size.prop(props, "grain_size", text="Size")
+        grain_edge = turbulence.row(align=True)
+        grain_edge.active = props.grain > 0.0
+        grain_edge.prop(props, "grain_edge", text="Edges Only")
         turbulence.prop(props, "shred")
         turbulence.separator()
         turbulence.prop(props, "sharp_advection")
@@ -781,6 +789,7 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "gas_expansion")
             combustion.prop(props, "oxygen_limit")
             combustion.prop(props, "soot_radiation")
+            combustion.prop(props, "wisp_cooling")
         else:
             combustion.prop(props, "temperature_input_scale")
             combustion.prop(props, "ignition_temperature")

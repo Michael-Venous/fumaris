@@ -17,6 +17,9 @@ _DOMAIN_DEFAULTS = {
     "preview_max_ray_steps": 256,
 }
 
+# Emitters are physical since 1.4: Expansion in 1/s, and Normal Velocity on a
+# closed source is a volume source (v x area), so presets use smaller values
+# than the old, mostly cancelled per-cell push (output/expansion, 2026-11-04).
 PRESETS = {
     "SMOKE": {
         "name": "Rising Smoke",
@@ -25,7 +28,7 @@ PRESETS = {
                    "shader_smoke_density": 2.0,
                    "shader_smoke_color": (0.6038313,) * 3},
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 2.0,
-                    "emitter_fuel": 0.0, "normal_velocity": 1.0, "emitter_divergence": 2.0},
+                    "emitter_fuel": 0.0, "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
     "FIRE": {
         "name": "Steady Fire",
@@ -36,7 +39,7 @@ PRESETS = {
         # Physical Heat: the source only ignites the fuel; burning makes the heat.
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 10.0, "source_op_temperature": "max",
-                    "emitter_fuel": 0.5, "normal_velocity": 1.0, "emitter_divergence": 2.0},
+                    "emitter_fuel": 0.5, "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
     "EXPLOSION": {
         "name": "Explosion",
@@ -62,7 +65,7 @@ PRESETS = {
         # fireball glows instead of hiding in smoke.
         "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
-                    "emitter_fuel": 4.0, "normal_velocity": 2.0, "emitter_divergence": 2.0,
+                    "emitter_fuel": 4.0, "normal_velocity": 2.0, "emitter_divergence": 0.2,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 4,
         "duration": 100,

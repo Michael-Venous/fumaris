@@ -24,6 +24,12 @@ TEMPERATURE_MAPPING_VERSION = 2
 COMBUSTION_VERSION = 1
 # 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
 SUBSTEP_SETTINGS_VERSION = 1
+# Emitters: 1 = Expansion in 1/s, applied exactly at any resolution and
+# Sub-Steps (Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE). 0 = the older per-cell
+# divergence pull, kept for saved files.
+EMITTER_SETTINGS_VERSION = 1
+# Matches the push of the older default Divergence 2 (measured 2026-11-04).
+DEFAULT_EMITTER_EXPANSION = 0.2
 
 
 def _object_type_updated(self, _context):
@@ -52,6 +58,9 @@ def _object_type_updated(self, _context):
         self.num_sub_steps = 4
         self.adaptive_cfl = 4.0
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
+    if self.smoke_object_type == "emitter" and self.emitter_settings_version == 0:
+        self.emitter_settings_version = EMITTER_SETTINGS_VERSION
+        self.emitter_divergence = DEFAULT_EMITTER_EXPANSION
     # Auto for new domains awaits the user's defaults decision:
     # apply_new_domain_default(self)
 
@@ -269,8 +278,8 @@ class FumarisSettings(PropertyGroup):
     )
 
     emitter_divergence: FloatProperty(
-        name="Divergence",
-        description="Expansion added by the emitter; positive values push outward and negative values pull inward",
+        name="Expansion",
+        description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps (emitters made before 1.4 keep the older, weaker per-cell Divergence)",
         default=2.0,
         soft_min=-10.0,
         soft_max=10.0,
@@ -391,8 +400,8 @@ class FumarisSettings(PropertyGroup):
     )
 
     normal_velocity: FloatProperty(
-        name="Normal Velocity (Experimental)",
-        description="Velocity along averaged mesh vertex normals, including mesh instances. Experimental: emission can be uneven across faces and hard edges",
+        name="Normal Velocity",
+        description="Air blown out along the mesh normals (negative sucks in). On a closed mesh it is a real source that spreads evenly; on open meshes and instances it pushes along averaged vertex normals, which can be uneven across hard edges",
         default=0.0,
         soft_min=-100.0,
         soft_max=100.0,
@@ -1623,6 +1632,11 @@ class FumarisSettings(PropertyGroup):
     )
 
     substep_settings_version: IntProperty(
+        default=0,
+        options={"HIDDEN"},
+    )
+
+    emitter_settings_version: IntProperty(
         default=0,
         options={"HIDDEN"},
     )

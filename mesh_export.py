@@ -42,7 +42,40 @@ def _world_positions(local, matrix):
     return world
 
 
-def _evaluated_mesh(obj, depsgraph, props, matrix):
+def closed_surface(mesh):
+    """(local area, local enclosed volume) of a closed mesh, or None if open.
+
+    Closed: every edge used by a face is used by exactly two. Volume is the
+    signed tetrahedron sum, so inverted normals give a negative volume.
+    """
+    if np is None or not mesh.polygons or not mesh.loop_triangles:
+        return None
+    edge_indices = np.zeros(len(mesh.loops), dtype=np.int64)
+    mesh.loops.foreach_get("edge_index", edge_indices)
+    counts = np.bincount(edge_indices, minlength=len(mesh.edges))
+    if np.any((counts != 0) & (counts != 2)):
+        return None
+    positions = np.zeros(len(mesh.vertices) * 3, dtype=np.float64)
+    mesh.vertices.foreach_get("co", positions)
+    triangles = np.zeros(len(mesh.loop_triangles) * 3, dtype=np.int64)
+    mesh.loop_triangles.foreach_get("vertices", triangles)
+    corners = positions.reshape((-1, 3))[triangles.reshape((-1, 3))]
+    a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
+    area = 0.5 * float(np.linalg.norm(np.cross(b - a, c - a), axis=1).sum())
+    volume = float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum()) / 6.0
+    return area, volume
+
+
+def world_surface(surface, matrix):
+    """Local (area, volume) in world units: volume by the determinant, area by
+    its 2/3 power (exact for uniform scale)."""
+    if surface is None:
+        return None
+    scale = abs(matrix.to_3x3().determinant())
+    return surface[0] * scale ** (2.0 / 3.0), surface[1] * scale
+
+
+def _evaluated_mesh(obj, depsgraph, props, matrix, surface_out=None):
     evaluated = obj.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
     try:
@@ -84,7 +117,15 @@ def _evaluated_mesh(obj, depsgraph, props, matrix):
                     "the mask threshold on the evaluated mesh. Geometry Nodes-generated "
                     "geometry needs its own mask weights."
                 )
-        velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
+        surface = closed_surface(mesh) if surface_out is not None else None
+        if surface_out is not None:
+            surface_out["surface"] = surface
+        if surface is not None and getattr(props, "emitter_settings_version", 0) >= 1:
+            # A closed mesh's outward Normal Velocity is curl-free: the pressure
+            # solve removes it. The bridge emits it as a volume source instead.
+            velocities = array("f")
+        else:
+            velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
         stored = _mesh_attribute_velocities(obj, mesh, props, matrix)
         if stored is not None:
             if velocities:
@@ -107,12 +148,17 @@ def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame)
             version = int(participant.get("static_mesh_version", frame))
             return positions, indices, array("f"), array("f"), version, version, True
 
+    surface_out = {}
     positions, indices, velocities, emission_weights = _evaluated_mesh(
         obj,
         depsgraph,
         props,
         matrix,
+        surface_out,
     )
+    # Local closed-surface measures for this geometry (also kept with the
+    # static-mesh cache: the transform may still scale it).
+    participant["closed_surface"] = surface_out.get("surface")
     if key is not None:
         participant["static_mesh_key"] = key
         participant["static_mesh"] = (positions, indices)

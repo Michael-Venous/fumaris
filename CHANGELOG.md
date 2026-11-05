@@ -4,6 +4,14 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Emitters push smoke physically.** Expansion (formerly Divergence) is now a
+  rate per second that gives the same result at any Resolution and Sub-Steps.
+  Normal Velocity on a closed mesh now really blows the air out (before, the
+  pressure solve cancelled most of it), and closed meshes that grow or shrink
+  push or pull the smoke around them. Quick Setups use smaller values to
+  match. Emitters in saved scenes keep the old behaviour.
+- **Fewer grid-shaped rectangles in fire at high Vorticity.** Vorticity now
+  measures swirl over a wider stencil.
 - **Small Sparse Blocks removed (Advanced).** Measured on four scenes at the
   same Simulation Memory, it was 20–30% slower for at most ~10% more room, and
   on explosions both slower (2.5x) and fuller. Scenes that used it now

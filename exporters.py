@@ -19,6 +19,7 @@ from .mesh_export import (
     _add_mesh_initial_velocity,
     _add_mesh_motion_velocities,
     _cached_or_evaluated_mesh,
+    world_surface,
     _geometry_nodes_mesh,
     _particle_mesh,
     _static_mesh_cache_key,
@@ -414,6 +415,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
         if enabled
         else _disabled_channels()
     )
+    if enabled and participant["role"] == "emitter":
+        channels.update(_closed_surface_source(participant, props, matrix))
 
     state = {
         "id": participant["id"],
@@ -816,10 +819,46 @@ def _participant_channels(props, role, matrix=None, *, velocity_active=False):
     return channels
 
 
+def _closed_surface_source(participant, props, matrix):
+    """Normal Velocity and volume change of a closed mesh as a volume source.
+
+    Outward flow through a closed surface is curl-free, so the pressure solve
+    removes it as velocity; Flow keeps it as expansion. The bridge spreads
+    surface_flux (m^3/s: Normal Velocity x area + dV/dt) over the emitting
+    shell: area x inside thickness (at most the enclosed volume) plus area x
+    outside thickness, and at least one velocity cell thick.
+    """
+    surface = participant.get("closed_surface")
+    if getattr(props, "emitter_settings_version", 0) < 1 or surface is None:
+        participant.pop("previous_volume", None)
+        return {}
+    area, volume = world_surface(surface, matrix)
+    if area <= 0.0:
+        return {}
+    fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+    previous = participant.get("previous_volume")
+    participant["previous_volume"] = volume
+    volume_rate = 0.0 if previous is None else (volume - previous) * fps * props.motion_velocity_scale
+    minimum, maximum = _mesh_distances(props, "emitter")
+    return {
+        "surface_flux": float(props.normal_velocity) * area + volume_rate,
+        "surface_area": area,
+        "enclosed_volume": abs(volume),
+        "shell_inside": max(0.0, -minimum),
+        "shell_outside": max(0.0, maximum),
+    }
+
+
+# Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE: Expansion is in 1/s, applied exactly.
+EXPANSION_RATE_OP = 1 << 16
+
+
 def _source_operations(props):
     """Flow value-op bits and the channels that are in Replace mode."""
     value_ops = 0
     replaced = []
+    if getattr(props, "emitter_settings_version", 0) >= 1:
+        value_ops |= EXPANSION_RATE_OP
     for channel, name in enumerate(_SOURCE_OPERATION_CHANNELS):
         operation = getattr(props, f"source_op_{name}", "blend")
         if operation == "add":

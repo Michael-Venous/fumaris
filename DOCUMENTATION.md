@@ -411,12 +411,23 @@ Fumaris supports:
 - File-based OpenVDB volume emission
 - Experimental evaluated Geometry Nodes volume emission
 
-Emitter Smoke, Temperature, Fuel, Burn, and Divergence define the source
-channels. Initial Velocity adds a constant vector. Motion Velocity Scale
-controls velocity inherited from source movement or mapped point velocities.
-Normal Velocity (Experimental) uses averaged mesh vertex normals, including
-particle and Geometry Nodes mesh instances. Emission can be uneven across faces
-and hard edges; primitive and point/volume modes do not support this control.
+Emitter Smoke, Temperature, Fuel, Burn, and Expansion define the source
+channels. Expansion is how fast the emitting region adds volume, per second:
+1 makes the gas there grow by its own volume each second and pushes the smoke
+around it outward, the same at any Resolution and Sub-Steps. Negative values
+pull inward. Emitters made before 1.4 keep the older, weaker and
+resolution-dependent Divergence. Initial Velocity adds a constant vector. Motion
+Velocity Scale controls velocity inherited from source movement or mapped point
+velocities.
+
+Normal Velocity blows out (or, negative, sucks in) along the mesh normals. On a
+closed mesh (every edge shared by two faces) it acts as a real source: the air
+leaves the surface at that speed and spreads out evenly, falling off with
+distance. A closed mesh that grows or shrinks (animated scale, shape keys,
+modifiers) pushes or pulls the smoke around it the same way. On open meshes,
+particle and Geometry Nodes mesh instances it pushes along averaged vertex
+normals, which can be uneven across faces and hard edges. Primitive and
+point/volume modes do not support this control.
 
 ### Source Operations
 
@@ -828,8 +839,8 @@ Current defaults are Dissipation **0.5**, emitter Fuel **1**, Temperature Per Bu
 **1**, and preview Ray Steps **256**. Explicitly stored settings retain their
 values; older unset properties inherit the new defaults. The Rising Smoke setup
 explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
-divergence 2; Steady Fire fuel is 0.5 and Explosion fuel is 2. The general emitter
-divergence default is 2.
+Expansion 0.2; Rising Smoke and Steady Fire use Normal Velocity 0.25, Explosion
+2. New emitters start at Expansion 0.2.
 
 
 ### Choosing the simulation GPU

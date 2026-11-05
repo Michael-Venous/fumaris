@@ -234,8 +234,8 @@ slot and its imported volume. It is unavailable while a job is active.
 Resolution determines density cell size. `Simulation Memory` is the GPU memory,
 in GB, given to the simulation. Fumaris allocates all of it when the
 simulation starts and turns it into space for smoke, accounting for the
-settings that change how much each piece of space costs (Small Sparse Blocks,
-velocity export, mesh emitters and colliders). Memory use therefore stays
+settings that change how much each piece of space costs (Full-Resolution
+Velocity, velocity export, mesh emitters and colliders). Memory use therefore stays
 flat for the whole bake instead of spiking as the smoke grows. When the smoke
 fills that space it is cut off or, with Auto Cell Size, simulated more
 coarsely; the panel then asks for more Simulation Memory. At the same memory,
@@ -271,13 +271,6 @@ many voxels the fastest flow may cross per step: lower is more accurate and
 slower; around 8 is fast but changes the result noticeably. With Sub-Steps at 6 the test
 scenes used 3–5 on average and baked 23–34% faster, with the fast phases close
 to always using 6; the result is not identical to a fixed count.
-
-`Small Sparse Blocks` (Advanced, off by default) divides space into chunks an
-eighth of the size. They follow the smoke more closely, but each chunk carries
-its own border and the pressure solve has one level fewer to work with, so in
-most scenes it is about 20% slower. Because of those borders the same
-Simulation Memory covers less space, but thin, wispy smoke with Air Margin 0
-can fit more of itself. It does not add detail.
 
 ### Air Margin
 

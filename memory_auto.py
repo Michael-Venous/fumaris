@@ -300,7 +300,6 @@ def draw_budget_summary(layout, props, state=None):
     effectors = props.effector_collection is not None and len(props.effector_collection.all_objects) > 0
     _voxel, _capacity, volume = region_for_budget(
         budget, props.resolution,
-        small_blocks=bool(props.small_sparse_blocks),
         full_velocity=bool(getattr(props, "full_resolution_velocity", False)),
         effector_sources=effectors,
         export_velocity=bool(getattr(props, "export_velocity_vdb", False)),

@@ -605,12 +605,6 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    small_sparse_blocks: BoolProperty(
-        name="Small Sparse Blocks",
-        description="Use smaller chunks of space to fit the smoke more closely. Usually slower for about the same GPU memory; can save memory for thin smoke when Air Margin is 0. Does not increase simulation detail",
-        default=False,
-    )
-
 
     physics_convex_collision: BoolProperty(
         name="Convex Collision",

@@ -4,6 +4,10 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Small Sparse Blocks removed (Advanced).** Measured on four scenes at the
+  same Simulation Memory, it was 20–30% slower for at most ~10% more room, and
+  on explosions both slower (2.5x) and fuller. Scenes that used it now
+  simulate with standard blocks.
 - **Scatter Glow (Appearance).** Fire light now spreads into the smoke around
   it, so dark billows glow from inside near the flames, which Cycles does not
   do on its own. Bakes write a small blurred `glow` grid with the temperature;

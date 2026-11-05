@@ -707,7 +707,6 @@ def _draw_domain(layout, scene, props):
         heat_row.active = props.combustion_model == "realistic"
         heat_row.prop(props, "physical_heat")
         advanced.prop(props, "full_resolution_velocity")
-        advanced.prop(props, "small_sparse_blocks")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")
         advanced.separator()

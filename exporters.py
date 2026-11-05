@@ -116,7 +116,6 @@ def session_structure_signature(domain):
         int(props.sparse_block_capacity),
         simulation_memory_mb(props),
         bool(getattr(props, "simulation_memory_auto", False)),
-        bool(props.small_sparse_blocks),
         bool(getattr(props, "full_resolution_velocity", False)),
         bool(props.follow_object),
         sim_start,
@@ -259,7 +258,6 @@ def _domain_state(props, resolution_scale=1.0):
                                if props.substep_settings_version > 0
                                else props.adaptive_sub_steps),
         "adaptive_cfl": props.adaptive_cfl,
-        "small_sparse_blocks": props.small_sparse_blocks,
         "full_resolution_velocity": props.full_resolution_velocity,
         "simulation_memory_mb": simulation_memory_mb(props),
         "simulation_memory_auto": bool(getattr(props, "simulation_memory_auto", False)),

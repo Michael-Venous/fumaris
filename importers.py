@@ -225,6 +225,8 @@ def apply_generated_material_settings(material, settings):
         0.0,
         float(_appearance_value(settings, "shader_smoke_density", 2.0)),
     )
+    shader.inputs["Anisotropy"].default_value = max(
+        -0.95, min(0.95, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
     enabled = bool(_appearance_value(settings, "shader_flame_enabled", True))
     brightness = max(
         0.0,
@@ -491,20 +493,28 @@ def _build_generated_material(material, flame_rate_scale):
 
 
 def update_generated_materials(domain, settings):
+    updated = 0
+    seen = set()
+    # A generated material picked as the domain's Volume Material is still
+    # Fumaris's own graph: keep it following Appearance too.
+    custom = getattr(settings, "volume_material", None)
+    if custom is not None and custom.get(GENERATED_MATERIAL_MARKER):
+        updated += int(apply_generated_material_settings(custom, settings))
+        seen.add(custom.name)
     cache_id = str(getattr(settings, "cache_id", "")).strip()
     if not cache_id:
-        return 0
+        return updated
     from .utils import output_directory_for_object
 
     directory = os.path.normpath(output_directory_for_object(domain))
     prefix = str(getattr(settings, "output_prefix", PREFIX))
-    updated = 0
     for obj in bpy.data.objects:
         if not _is_generated_volume(obj, directory, prefix):
             continue
         for material in obj.data.materials:
-            if material and material.get(GENERATED_MATERIAL_MARKER):
+            if material and material.get(GENERATED_MATERIAL_MARKER) and material.name not in seen:
                 updated += int(apply_generated_material_settings(material, settings))
+                seen.add(material.name)
     return updated
 
 
@@ -567,6 +577,8 @@ def import_sequence(
     volume_object.hide_select = not bool(selectable)
     if material is not None:
         volume_object.data.materials.append(material)
+        if material.get(GENERATED_MATERIAL_MARKER):
+            apply_generated_material_settings(material, appearance)
     else:
         add_density_material(
             volume_object,

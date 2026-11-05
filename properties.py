@@ -38,11 +38,19 @@ def _object_type_updated(self, _context):
         # Saved domains keep the older heat; new ones take their heat from
         # the fuel burnt and keep their turbulence (Preserve Turbulence).
         self.physical_heat = True
+        # Defaults pass 2026-11-04: crisp advection, a short burn (Physical Heat
+        # lets fuel last by mixing), heat that lingers, mild expansion, 4 GB.
+        self.sharp_advection = True
+        self.burn_time = 0.5
+        self.cooling_time = 5.0
+        self.gas_expansion = 0.5
+        self.simulation_memory = 4.0
         self.advection_reflection = True
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
-        # New domains: Cells per Step 0 means fixed Sub-Steps (Adaptive off).
-        if not self.adaptive_sub_steps:
-            self.adaptive_cfl = 0.0
+        # New domains: up to 4 Sub-Steps, added when the smoke moves more than
+        # 4 voxels per step (slow smoke stays at 2).
+        self.num_sub_steps = 4
+        self.adaptive_cfl = 4.0
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
     # Auto for new domains awaits the user's defaults decision:
     # apply_new_domain_default(self)
@@ -1490,6 +1498,15 @@ class FumarisSettings(PropertyGroup):
         max=1.0,
         size=3,
         subtype="COLOR",
+        update=_appearance_updated,
+    )
+
+    shader_anisotropy: FloatProperty(
+        name="Anisotropy",
+        description="How much smoke scatters light forward (positive) or back (negative). Real smoke and soot scatter forward, so a backlit plume glows at its edges; 0 scatters evenly",
+        default=0.3,
+        min=-0.95,
+        max=0.95,
         update=_appearance_updated,
     )
 

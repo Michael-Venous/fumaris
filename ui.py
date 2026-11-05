@@ -139,6 +139,22 @@ def _draw_emitter_shape(box, obj, props):
         box.label(text="Source meshes need no Fumaris role")
 
 
+def _physical_heat_hot_fuel(obj, props):
+    # Physical Heat: burning should make the heat; fuel injected at (or above)
+    # Flame Temperature starts at the ceiling and every flame looks alike.
+    if props.emitter_fuel <= 0.0 or props.emitter_temperature < 1.0:
+        return False
+    for domain in bpy.data.objects:
+        settings = getattr(domain, "fumaris", None)
+        if (settings is None or settings.smoke_object_type != "domain"
+                or settings.combustion_model != "realistic" or not settings.physical_heat):
+            continue
+        collection = settings.emitter_collection
+        if collection is not None and obj.name in collection.all_objects:
+            return True
+    return False
+
+
 def _draw_emitter(layout, obj, props):
     box = layout.box()
     box.label(text="Emitter", icon="OUTLINER_OB_FORCE_FIELD")
@@ -150,6 +166,11 @@ def _draw_emitter(layout, obj, props):
     box.prop(props, "emitter_smoke")
     box.prop(props, "emitter_temperature")
     box.prop(props, "emitter_fuel")
+    if _physical_heat_hot_fuel(obj, props):
+        hint = box.column(align=True)
+        hint.label(text="Fuel enters at Flame Temperature, so its", icon="INFO")
+        hint.label(text="fire cannot vary. Physical Heat works best")
+        hint.label(text="with Temperature about 0.35, Maximum")
     box.prop(props, "emitter_burn")
     box.prop(props, "emitter_divergence")
 
@@ -498,7 +519,9 @@ def _draw_domain(layout, scene, props):
     memory_field = grid_row.row(align=True)
     memory_field.active = not props.simulation_memory_auto
     memory_field.prop(props, "simulation_memory", text="Memory (GB)")
-    grid_row.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
+    auto = grid_row.row(align=True)
+    auto.ui_units_x = 2.2
+    auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
     if simulation_memory_mb(props) == 0.0 and not props.simulation_memory_auto:
         legacy = settings.row()
         legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")
@@ -525,6 +548,7 @@ def _draw_domain(layout, scene, props):
         color = appearance.split(factor=0.2, align=True)
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")
+        appearance.prop(props, "shader_anisotropy")
         appearance.separator()
         appearance.prop(props, "shader_flame_enabled")
         fire = appearance.column(align=True)
@@ -533,7 +557,7 @@ def _draw_domain(layout, scene, props):
         fire.prop(props, "shader_glow_temperature")
         fire.prop(props, "shader_flame_contrast")
         fire.prop(props, "shader_temperature_multiplier")
-        if props.volume_material is not None:
+        if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
             appearance.label(
                 text="Custom Volume Material overrides baked appearance",
                 icon="INFO",

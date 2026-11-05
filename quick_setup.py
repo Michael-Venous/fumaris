@@ -33,7 +33,9 @@ PRESETS = {
         "domain": {"shader_flame_enabled": True, "vorticity": 4.0,
                    "buoyancy_per_temp": 1.5, "shader_smoke_density": 3.0,
                    "shader_smoke_color": (0.3185545,) * 3},
-        "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 2.0,
+        # Physical Heat: the source only ignites the fuel; burning makes the heat.
+        "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
+                    "couple_rate_temperature": 10.0, "source_op_temperature": "max",
                     "emitter_fuel": 0.5, "normal_velocity": 1.0, "emitter_divergence": 2.0},
     },
     "EXPLOSION": {

@@ -69,6 +69,15 @@ All notable customer-facing changes are recorded here.
   Initial Velocity (or a velocity attribute) was stamped up to 8 times per
   step as if it moved; now once (12 Sub-Steps test: emitter GPU time 1.8 s →
   0.2 s, bake 26% less GPU time).
+- **Appearance always drives the generated material,** also when that
+  material is picked as the domain's Volume Material; new **Anisotropy**
+  (default 0.3, forward scattering like real smoke).
+- **New-domain defaults:** Sharp Advection on, Burn Time 0.5 s, Cooling Time
+  5 s, Gas Expansion 0.5, Simulation Memory 4 GB, up to 4 Sub-Steps with
+  Cells per Step 4 (Preserve Turbulence and Physical Heat on, as before).
+  Saved scenes keep their settings. The Steady Fire Quick Setup ignites its
+  fuel (Temperature 0.35, Maximum) so burning makes the heat, and an emitter
+  that injects fuel at Flame Temperature under Physical Heat shows a hint.
 - **Fixed:** a VDB bake could stop with "No density readback" when the last
   smoke vanished while warm air was still moving; those frames are now saved
   as empty.

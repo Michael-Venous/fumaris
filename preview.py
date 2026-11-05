@@ -84,6 +84,7 @@ def capture_volume_preview(context, domain, target=None):
         "flame_light": float(props.preview_flame_light),
         "exposure": float(props.preview_exposure),
         "tone_mapping": _preview_tone_mapping(context, props),
+        "field_view": getattr(props, "preview_field_view", "look"),
         "light_direction": list(props.preview_light_direction),
         **_scene_depth_request(props, int(region.as_pointer()), width, height),
     }
@@ -149,6 +150,7 @@ def volume_preview_signature(preview):
         round(float(preview.get("flame_light", 1.0)), 7),
         round(float(preview.get("exposure", 0.0)), 7),
         preview.get("tone_mapping", "none"),
+        preview.get("field_view", "look"),
         rounded(preview.get("light_direction", (1.0, 1.0, 1.0))),
         preview.get("depth_serial"),
     )

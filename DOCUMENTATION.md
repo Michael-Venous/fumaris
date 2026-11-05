@@ -116,6 +116,10 @@ without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
 simulating while its viewport overlay is suppressed.
 
+`Show` (Preview Settings) switches the live preview from the Look to Speed:
+how fast the air moves, drawn as fire (still air dark, about 5 m/s glowing like
+gas at 1600 K). Use it to see where emitters, effectors and expansion push.
+
 The live preview shows in one 3D viewport: the one picked with View > Show
 Fumaris Preview Here (until Blender closes), otherwise the largest in the
 window the preview was started from. `All Viewports` (Preview Settings) shows

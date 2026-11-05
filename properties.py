@@ -497,6 +497,16 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
+    preview_field_view: EnumProperty(
+        name="Show",
+        description="What the live preview shows",
+        items=[
+            ("look", "Look", "Smoke and fire as the Appearance settings render them"),
+            ("speed", "Speed", "How fast the air moves, drawn as fire: slow air is dark, about 5 m/s glows at Full Glow"),
+        ],
+        default="look",
+    )
+
     preview_all_viewports: BoolProperty(
         name="All Viewports",
         description="Show the live preview in every 3D viewport that shows the domain instead of one (the one picked with View > Show Fumaris Preview Here, else the largest in the preview's window). Adds overhead: each extra viewport renders the volume again every frame",

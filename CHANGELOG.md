@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Speed view in the live preview.** Preview Settings > Show > Speed draws how
+  fast the air moves, to check emitters and effectors.
 - **Ground Fog and Chimney Smoke Quick Setups.** Cold fog that spreads over a
   collider floor, and a warm column of smoke blown upward.
 - **Stop Preview and Bake.** While previewing, the status area offers one

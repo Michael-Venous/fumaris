@@ -657,6 +657,8 @@ def _draw_domain(layout, scene, props):
 
     preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
     if preview_open:
+        preview.prop(props, "preview_field_view")
+        preview.separator()
         preview.label(text="Quality")
         preview.prop(props, "preview_resolution_percent", slider=True)
         preview.prop(props, "preview_image_scale", slider=True)

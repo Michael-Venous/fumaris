@@ -82,10 +82,22 @@ def capture_volume_preview(context, domain):
         "light_scattering": float(props.preview_light_scattering),
         "flame_light": float(props.preview_flame_light),
         "exposure": float(props.preview_exposure),
-        "tone_mapping": props.preview_tone_mapping,
+        "tone_mapping": _preview_tone_mapping(context, props),
         "light_direction": list(props.preview_light_direction),
         **_scene_depth_request(props, int(region.as_pointer()), width, height),
     }
+
+
+def _preview_tone_mapping(context, props):
+    mode = props.preview_tone_mapping
+    if mode != "scene":
+        return mode
+    transform = getattr(getattr(context.scene, "view_settings", None), "view_transform", "AgX")
+    if transform in {"Standard", "Raw"}:
+        return "none"
+    if transform.startswith("Filmic"):
+        return "filmic"
+    return "agx"
 
 
 def _scene_depth_request(props, view_id, width, height):

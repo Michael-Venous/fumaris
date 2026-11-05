@@ -516,11 +516,12 @@ class FumarisSettings(PropertyGroup):
         name="Tone Mapping",
         description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",
         items=(
+            ("scene", "Scene", "Follow the scene's View Transform (AgX, Filmic or Standard), so the preview tone maps like the render"),
             ("filmic", "Filmic", "Smooth bright highlights and add contrast with an ACES-style curve and calibrated display brightness; adjust Exposure to taste"),
             ("none", "Off", "Use the original preview brightness; values above the display range clip to white"),
             ("agx", "AgX (Preview)", "Brightness-calibrated AgX approximation with gentle highlight desaturation; not Blender's full AgX color-management transform"),
         ),
-        default="filmic",
+        default="scene",
     )
 
     preview_exposure: FloatProperty(

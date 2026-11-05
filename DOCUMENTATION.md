@@ -803,14 +803,17 @@ do not replace Blender's normal Spacebar behavior.
 ### Quick Setup
 
 With Flow Object set to **None**, click **Quick Setup…** in Physics → Fumaris, or choose it from the 3D Viewport's
-Add menu. **Rising Smoke**, **Steady Fire**, and **Explosion** create a complete
-starting setup. Choose **Selected Objects** for unassigned mesh sources, or
+Add menu. **Rising Smoke**, **Steady Fire**, **Explosion**, **Ground Fog** and
+**Chimney Smoke** create a complete starting setup. Choose **Selected Objects** for unassigned mesh sources, or
 **New Source** to create an icosphere at the 3D cursor. Existing participants are
 left intact; the new setup has separate emitter, collider, effector and outflow
 collections. The new simulation object is an axes empty, with no physical domain bounds.
 
 Rising Smoke emits continuously without fuel; Steady Fire emits smoke and fuel.
 Explosion emits for 10 frames, then disables its source, with a 100-frame range.
+Ground Fog emits cold smoke that is heavier than air, and adds a collider floor
+just under the source for it to spread over. Chimney Smoke blows warm smoke
+straight up at 4 m/s.
 Ranges start at the scene's Start Frame. These are editable starting points.
 The simulation empty stores settings; smoke can extend freely around it.
 

@@ -70,6 +70,30 @@ PRESETS = {
         "burst_frames": 4,
         "duration": 100,
     },
+    "FOG": {
+        "name": "Ground Fog",
+        "description": "Cold, heavy fog that spills out and creeps along the ground",
+        # Cold smoke heavier than air sinks; low swirl and a slow fade keep
+        # it a smooth layer.
+        "domain": {"shader_flame_enabled": False, "vorticity": 1.5,
+                   "buoyancy_per_temp": 0.0, "buoyancy_per_smoke": -0.4,
+                   "dissipation": 0.15, "shader_smoke_density": 1.0,
+                   "shader_smoke_color": (0.8,) * 3},
+        "emitter": {"emitter_smoke": 2.0, "emitter_temperature": 0.0,
+                    "emitter_fuel": 0.0, "normal_velocity": 0.5, "emitter_divergence": 0.3},
+        "ground": True,
+    },
+    "STACK": {
+        "name": "Chimney Smoke",
+        "description": "A warm column of smoke blown upward from the source, as from a chimney or stack",
+        "domain": {"shader_flame_enabled": False, "vorticity": 3.0,
+                   "buoyancy_per_temp": 2.0, "dissipation": 0.3,
+                   "shader_smoke_density": 2.0, "shader_smoke_color": (0.45,) * 3},
+        # Warm exhaust (a quarter of Flame Temperature) pushed up at 4 m/s.
+        "emitter": {"emitter_smoke": 4.0, "emitter_temperature": 0.25,
+                    "emitter_fuel": 0.0, "normal_velocity": 0.0, "emitter_divergence": 0.0,
+                    "velocity": (0.0, 0.0, 4.0), "couple_rate_velocity": 8.0},
+    },
 }
 
 
@@ -117,6 +141,24 @@ def _new_source(collection, name, position):
     obj = bpy.data.objects.new(name, mesh)
     collection.objects.link(obj)
     obj.location = position
+    return obj
+
+
+def _new_ground(collection, name, minimum, maximum):
+    """A collider floor just under the sources, ten source widths across."""
+    size = 10.0 * max(1.0, max(maximum - minimum))
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    try:
+        bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=0.5 * size)
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    collection.objects.link(obj)
+    obj.location = ((minimum.x + maximum.x) * 0.5, (minimum.y + maximum.y) * 0.5, minimum.z - 0.05)
+    obj.fumaris.smoke_object_type = "collider"
+    obj.fumaris.participant_enabled = True
     return obj
 
 
@@ -265,6 +307,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
             setattr(props, f"{role}_collection", collection)
         for source in sources:
             _configure_source(source, preset, props.sim_start_frame, context.scene.frame_current)
+        if preset.get("ground"):
+            _new_ground(collections["collider"], f"{name} Ground", minimum, maximum)
         for obj in context.selected_objects:
             obj.select_set(False)
         domain.select_set(True)

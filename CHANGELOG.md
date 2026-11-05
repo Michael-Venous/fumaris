@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Ground Fog and Chimney Smoke Quick Setups.** Cold fog that spreads over a
+  collider floor, and a warm column of smoke blown upward.
 - **Stop Preview and Bake.** While previewing, the status area offers one
   button that stops the preview and starts the bake.
 - **Participant list with Solo.** Participants > Objects lists the objects in

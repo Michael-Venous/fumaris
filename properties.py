@@ -626,7 +626,7 @@ class FumarisSettings(PropertyGroup):
 
     full_resolution_velocity: BoolProperty(
         name="Full-Resolution Velocity",
-        description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in Simulation Memory) and more time per step",
+        description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in Simulation Memory) and more time per step. Smoke also moves about a quarter faster: Vorticity then makes smaller swirls that slow the plume less",
         default=False,
     )
 
@@ -1493,8 +1493,8 @@ class FumarisSettings(PropertyGroup):
 
     export_burn_vdb: BoolProperty(
         name="Export Burn VDB",
-        description="Export Flow's raw timestep-dependent combustion amount for custom shading",
-        default=True,
+        description="Export Flow's raw timestep-dependent combustion amount for custom shading. The generated material does not need it",
+        default=False,
     )
 
     flame_temperature_min: FloatProperty(

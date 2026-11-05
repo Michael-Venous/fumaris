@@ -4,6 +4,20 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Faster smoke rendering in Cycles.** The first import into a scene turns on
+  Cycles' biased volume rendering with a coarser viewport step (Output > Fast
+  Cycles Volumes, Viewport Step Rate): the fireball test frame renders in about
+  half the time at the same look, and the viewport about six times faster.
+- **Leaner generated material.** The material reads only density,
+  temperature and the glow grid (fuel only with Blue Core), and is organised
+  in frames; the removed Burn look's nodes are gone and burn is no longer
+  exported by default. Existing generated materials are rebuilt with the same
+  look.
+- **Fire lights reliably from an igniter emitter.** Fuel emitters with
+  Temperature in Maximum mode at or above Ignition Temperature heat the
+  emitted gas at once, so fast or small sources no longer fail to light. The
+  emitter panel warns when Temperature (a share of Flame Temperature) is below
+  Ignition Temperature, where fuel cannot burn.
 - **Speed view in the live preview.** Preview Settings > Show > Speed draws how
   fast the air moves, to check emitters and effectors.
 - **Ground Fog and Chimney Smoke Quick Setups.** Cold fog that spreads over a

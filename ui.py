@@ -196,6 +196,26 @@ def _physical_heat_hot_fuel(obj, props):
     return False
 
 
+def _emitter_below_ignition(obj, props):
+    """(emitted K, ignition K) when this fuel emitter's Temperature stays under
+    the Ignition Temperature of a Realistic domain it emits into, else None.
+    Emitter Temperature 1 is that domain's Flame Temperature."""
+    if props.emitter_fuel <= 0.0 or props.emitter_temperature <= 0.0:
+        return None
+    for domain in bpy.data.objects:
+        settings = getattr(domain, "fumaris", None)
+        if (settings is None or settings.smoke_object_type != "domain"
+                or settings.combustion_model != "realistic"):
+            continue
+        collection = settings.emitter_collection
+        if collection is None or obj.name not in collection.all_objects:
+            continue
+        kelvin = props.emitter_temperature * settings.flame_temperature
+        if kelvin < settings.ignition_temperature_k:
+            return kelvin, settings.ignition_temperature_k
+    return None
+
+
 def _draw_emitter(layout, obj, props):
     box = layout.box()
     box.label(text="Emitter", icon="OUTLINER_OB_FORCE_FIELD")
@@ -212,6 +232,13 @@ def _draw_emitter(layout, obj, props):
         hint.label(text="Fuel enters at Flame Temperature, so its", icon="INFO")
         hint.label(text="fire cannot vary. Physical Heat works best")
         hint.label(text="with Temperature about 0.35, Maximum")
+    cold = _emitter_below_ignition(obj, props)
+    if cold is not None:
+        hint = box.column(align=True)
+        hint.alert = True
+        hint.label(text=f"Fuel won't light: {cold[0]:.0f} K is below", icon="ERROR")
+        hint.label(text=f"Ignition Temperature ({cold[1]:.0f} K). Temperature is")
+        hint.label(text="a share of Flame Temperature; raise it")
     box.prop(props, "emitter_burn")
     box.prop(props, "emitter_divergence")
 
@@ -649,9 +676,18 @@ def _draw_domain(layout, scene, props):
         output.prop(props, "export_burn_vdb")
         output.prop(props, "export_velocity_vdb")
         output.prop(props, "glow_radius")
+        cycles = getattr(bpy.context.scene, "cycles", None)
+        if cycles is not None and hasattr(cycles, "volume_biased"):
+            # Blender's own scene settings, shown here: they decide how fast
+            # Cycles renders the smoke, in the viewport above all.
+            output.separator()
+            output.prop(cycles, "volume_biased", text="Fast Cycles Volumes")
+            step = output.row(align=True)
+            step.enabled = cycles.volume_biased
+            step.prop(cycles, "volume_preview_step_rate", text="Viewport Step Rate")
         if props.volume_material is None:
             output.label(
-                text="Generated material always includes temperature and burn",
+                text="Generated material always includes temperature",
                 icon="INFO",
             )
 

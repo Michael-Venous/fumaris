@@ -253,6 +253,12 @@ class FumarisSettings(PropertyGroup):
         soft_max=5.0,
     )
 
+    emitter_influence: BoolProperty(
+        name="Influence Only",
+        description="Act on the smoke already there instead of emitting: steer it toward this emitter's Velocity, heat it to at least its Temperature, and expand it (negative Expansion pulls it in, for wakes), without adding or removing smoke or fuel",
+        default=False,
+    )
+
     emitter_smoke: FloatProperty(
         name="Smoke Density",
         description="Density of emitted smoke",
@@ -1385,6 +1391,15 @@ class FumarisSettings(PropertyGroup):
         soft_max=10.0,
     )
 
+    wind: FloatVectorProperty(
+        name="Wind",
+        description="Steady wind in world space: all air drifts with it, carrying smoke downwind while sources stay put, so plumes lean and trail. It costs nothing (smoke is traced from upwind, no force is added); use Wind effectors for gusts or local pushes",
+        default=(0.0, 0.0, 0.0),
+        size=3,
+        subtype="VELOCITY",
+        unit="VELOCITY",
+    )
+
     vorticity: FloatProperty(
         name="Vorticity",
         description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off",
@@ -1443,6 +1458,32 @@ class FumarisSettings(PropertyGroup):
         default=0.0,
         min=0.0,
         soft_max=4.0,
+    )
+
+    grain_min_speed: FloatProperty(
+        name="Grain Min Speed",
+        description="Apply Grain only to gas moving faster than this, so fast, expanding fronts break up while slow, settled smoke stays smooth. Zero applies it at any speed",
+        default=0.0,
+        min=0.0,
+        soft_max=50.0,
+        unit="VELOCITY",
+    )
+
+    grain_layers: IntProperty(
+        name="Grain Layers",
+        description="Adds larger Grain: each layer uses blocks three times the size of the last, for breakup at several scales. 1 = one size",
+        default=1,
+        min=1,
+        max=3,
+    )
+
+    disturb_min_speed: FloatProperty(
+        name="Disturb Min Speed",
+        description="Apply Disturb only to gas moving faster than this, so it mixes fast-moving fronts and leaves slow smoke alone. Zero applies it at any speed",
+        default=0.0,
+        min=0.0,
+        soft_max=50.0,
+        unit="VELOCITY",
     )
 
     sharp_advection: BoolProperty(

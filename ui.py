@@ -224,7 +224,10 @@ def _draw_emitter(layout, obj, props):
 
     box = layout.box()
     box.label(text="Emitted Channels", icon="MOD_FLUID")
-    box.prop(props, "emitter_smoke")
+    box.prop(props, "emitter_influence")
+    smoke_row = box.row()
+    smoke_row.active = not props.emitter_influence
+    smoke_row.prop(props, "emitter_smoke")
     box.prop(props, "emitter_temperature")
     box.prop(props, "emitter_fuel")
     if _physical_heat_hot_fuel(obj, props):
@@ -737,6 +740,7 @@ def _draw_domain(layout, scene, props):
     behavior_box.label(text="Smoke Behavior", icon="MOD_FLUID")
     behavior = behavior_box.column(align=True)
     behavior.prop(props, "gravity")
+    behavior.prop(props, "wind")
     behavior.separator()
     behavior.prop(props, "buoyancy_per_temp")
     behavior.prop(props, "buoyancy_per_smoke")
@@ -762,6 +766,7 @@ def _draw_domain(layout, scene, props):
         detail = turbulence.row(align=True)
         detail.active = props.disturb > 0.0
         detail.prop(props, "disturb_detail", text="Detail")
+        detail.prop(props, "disturb_min_speed", text="Min Speed")
         grain_row = turbulence.row(align=True)
         grain_row.prop(props, "grain")
         grain_size = grain_row.row(align=True)
@@ -770,6 +775,10 @@ def _draw_domain(layout, scene, props):
         grain_edge = turbulence.row(align=True)
         grain_edge.active = props.grain > 0.0
         grain_edge.prop(props, "grain_edge", text="Edges Only")
+        grain_extra = turbulence.row(align=True)
+        grain_extra.active = props.grain > 0.0
+        grain_extra.prop(props, "grain_min_speed", text="Min Speed")
+        grain_extra.prop(props, "grain_layers", text="Layers")
         turbulence.prop(props, "shred")
         turbulence.separator()
         turbulence.prop(props, "sharp_advection")

@@ -310,6 +310,7 @@ def _domain_state(props, resolution_scale=1.0):
         "allocation_speed_threshold": props.allocation_speed_threshold,
         "air_margin": max(0.0, float(props.air_margin)),
         "gravity": list(props.gravity),
+        "wind": list(props.wind),
         "buoyancy_per_temp": props.buoyancy_per_temp,
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
         "vorticity": props.vorticity,
@@ -321,6 +322,9 @@ def _domain_state(props, resolution_scale=1.0):
         "grain": props.grain,
         "grain_size": props.grain_size,
         "grain_edge": props.grain_edge,
+        "grain_min_speed": props.grain_min_speed,
+        "grain_layers": int(props.grain_layers),
+        "disturb_min_speed": props.disturb_min_speed,
         "wisp_cooling": props.wisp_cooling,
         "advection_reflection": props.advection_reflection,
         "sharp_advection": props.sharp_advection,
@@ -872,7 +876,29 @@ def _participant_channels(props, role, matrix=None, *, velocity_active=False):
         for name in replaced:
             if channels[f"couple_rate_{name}"] > 0.0:
                 channels[f"couple_rate_{name}"] = _REPLACE_COUPLE_RATE
+        if getattr(props, "emitter_influence", False):
+            _influence_channels(channels)
     return channels
+
+
+def _influence_channels(channels):
+    """Influence Only: leave smoke, fuel and burn alone; heat only upward.
+
+    Flow blends each coupled channel toward its target, so a zero smoke target
+    would drain the smoke inside the emitter. Velocity keeps its blend (a pull
+    toward the target without overshoot) and Expansion its source; temperature
+    is coupled only to a positive target in Maximum mode, so it never cools.
+    """
+    for name in ("smoke", "fuel", "burn"):
+        channels[f"couple_rate_{name}"] = 0.0
+    if channels.get("temperature", 0.0) > 0.0:
+        channel = _SOURCE_OPERATION_CHANNELS.index("temperature")
+        ops = int(channels.get("value_ops", 0)) & ~(1 << channel)
+        channels["value_ops"] = ops | (1 << (4 + channel))
+        if channels["couple_rate_temperature"] == _REPLACE_COUPLE_RATE:
+            channels["couple_rate_temperature"] = 10.0
+    else:
+        channels["couple_rate_temperature"] = 0.0
 
 
 def _closed_surface_source(participant, props, matrix):

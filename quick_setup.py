@@ -91,7 +91,10 @@ PRESETS = {
         # fireball glows instead of hiding in smoke.
         "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
-                    "emitter_fuel": 8.0, "normal_velocity": 1.0, "emitter_divergence": 0.2,
+                    # Expansion burst: the source gas swells about 8x per
+                    # second during its few burst frames, a pressure blast
+                    # that drives the fast, tearing front of a detonation.
+                    "emitter_fuel": 8.0, "normal_velocity": 1.0, "emitter_divergence": 8.0,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 4,
         "duration": 100,
@@ -168,6 +171,61 @@ def _new_source(collection, name, position):
     obj = bpy.data.objects.new(name, mesh)
     collection.objects.link(obj)
     obj.location = position
+    return obj
+
+
+def _new_debris(collection, name, minimum, maximum, start_frame):
+    """Debris thrown out of an explosion: particles that leave smoke trails.
+
+    A hidden icosphere the size of the sources emits a few dozen particles in
+    the first two frames, flung outward and upward and pulled down by scene
+    gravity. Each particle is a small point emitter of hot smoke, so its head
+    glows briefly and its path leaves a thin trail that cools to grey.
+    """
+    size = max(0.1, max(maximum - minimum))
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    try:
+        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=0.5 * size)
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    collection.objects.link(obj)
+    obj.location = (minimum + maximum) * 0.5
+    obj.hide_render = True
+    obj.display_type = "WIRE"
+    modifier = obj.modifiers.new(name, "PARTICLE_SYSTEM")
+    settings = modifier.particle_system.settings
+    settings.name = name
+    settings.count = 32
+    settings.frame_start = start_frame
+    settings.frame_end = start_frame + 1
+    # Ejecta speed grows with the blast size: ~8 m/s at 2 m, ~27 m/s at 20 m.
+    speed = 6.0 * math.sqrt(size)
+    # Short-lived: trails reach about twice the source size before they
+    # stop, so they do not claim memory far from the fireball.
+    settings.lifetime = 30
+    settings.lifetime_random = 0.4
+    settings.emit_from = "FACE"
+    settings.normal_factor = speed
+    settings.object_align_factor = (0.0, 0.0, 0.6 * speed)
+    settings.factor_random = 0.5 * speed
+    settings.physics_type = "NEWTON"
+    settings.render_type = "NONE"
+    settings.display_method = "DOT"
+    props = obj.fumaris
+    props.smoke_object_type = "emitter"
+    props.participant_enabled = True
+    props.participant_type = "particles"
+    props.particle_system_name = modifier.particle_system.name
+    props.particle_subtype = "point_cloud"
+    # About the distance a particle moves per solver step, so its stamps
+    # join into a trail instead of a row of beads.
+    props.point_radius = 0.04 * size
+    _apply_settings(props, {"emitter_smoke": 2.0, "emitter_temperature": 0.6,
+                            "source_op_temperature": "max", "emitter_fuel": 0.0,
+                            "normal_velocity": 0.0, "emitter_divergence": 0.0})
     return obj
 
 
@@ -271,6 +329,11 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         ],
         default="NEW",
     )
+    debris: bpy.props.BoolProperty(
+        name="Debris Trails",
+        description="Explosion only: throw a few dozen particles out of the blast that leave hot, smoky trails",
+        default=False,
+    )
 
     @classmethod
     def poll(cls, context):
@@ -296,6 +359,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
                 layout.label(text=error, icon="ERROR")
             else:
                 layout.label(text=f"{len(context.selected_objects)} selected mesh source(s)", icon="MESH_DATA")
+        if self.preset == "EXPLOSION":
+            layout.prop(self, "debris")
         layout.label(text="Creates a simulation empty and participant collections", icon="MOD_FLUID")
 
     def execute(self, context):
@@ -343,6 +408,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
             _configure_source(source, preset, props.sim_start_frame, context.scene.frame_current)
         if preset.get("ground"):
             _new_ground(collections["collider"], f"{name} Ground", minimum, maximum)
+        if self.debris and self.preset == "EXPLOSION":
+            _new_debris(collections["emitter"], f"{name} Debris", minimum, maximum, props.sim_start_frame)
         for obj in context.selected_objects:
             obj.select_set(False)
         domain.select_set(True)

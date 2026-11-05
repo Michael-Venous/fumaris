@@ -4,6 +4,23 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Stronger pressure solve.** Two multigrid cycles with two smoothing passes
+  per level: 15–25% less leftover compression, livelier motion (more kinetic
+  energy, taller plumes, bigger mushroom caps) for 5–20% more simulation time.
+  Existing scenes look a little different.
+- **Wind (Smoke Behavior).** A steady wind that carries all smoke downwind
+  while sources stay put, so plumes lean and trail. It costs nothing: smoke is
+  traced from upwind instead of being pushed by a force.
+- **Influence Only (emitters).** An emitter can act on the smoke already there:
+  steer it toward its Velocity, heat it to at least its Temperature, or expand
+  or (negative Expansion) pull it in, without adding or removing smoke or fuel.
+  Emitters with no smoke, heat or fuel but a Velocity now steer the air.
+- **Grain Min Speed and Layers, Disturb Min Speed.** Limit Grain or Disturb to
+  fast-moving gas; add larger Grain layers.
+- **Explosion Quick Setup:** the source expands strongly during its burst
+  frames (Expansion 8), for a faster, puffier blast; optional **Debris Trails**
+  throw hot particles out of the blast that leave smoky trails (they roughly
+  double the simulated space).
 - **Grain (Turbulence Detail).** Small random kicks, one direction per block
   of Grain Size, renewed every frame: the solver turns the block edges into
   fine shear and eddies, the gritty breakup of a fast front, at the same world

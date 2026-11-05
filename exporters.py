@@ -219,6 +219,10 @@ def build_frame(
 
 
 
+# Particle Mesh mode sends every instance's triangles every frame and Flow
+# rasterizes each one; above this the emitter pass dominates the step.
+HEAVY_PARTICLE_TRIANGLES = 1_000_000
+
 # A source jumping farther than this many voxels in one frame is usually a
 # teleport or keyframe slip: it smears smoke along the jump and costs many
 # motion stamps. Named once per session in the Diagnostics log.
@@ -226,11 +230,20 @@ EXTREME_MOTION_VOXELS = 32.0
 
 
 def _warn_extreme_motion(domain, participants, resolution_scale=1.0):
+    """Diagnostics warnings for sources that jump or are very heavy (once each)."""
     props = getattr(domain, "fumaris", None)
     if props is None:
         return
     voxel = 32.0 / max(1.0, float(props.resolution) * float(resolution_scale))
     for participant in participants:
+        triangles = participant.get("instanced_triangles", 0)
+        if triangles > HEAVY_PARTICLE_TRIANGLES and not participant.get("cost_warned"):
+            participant["cost_warned"] = True
+            from . import diagnostics
+            diagnostics.add_log(
+                domain,
+                f"Warning: {participant['object'].name} sends {triangles / 1e6:.1f} million particle "
+                "mesh triangles per frame; Point Cloud mode or a simpler instance mesh is much faster")
         travel = participant.pop("frame_travel", 0.0)
         if travel <= EXTREME_MOTION_VOXELS * voxel or participant.get("motion_warned"):
             continue
@@ -364,6 +377,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
         track_deformation = False
         matrix = Matrix.Identity(4)
         positions, indices, velocities = _particle_mesh(obj, depsgraph, props)
+        participant["instanced_triangles"] = len(indices) // 3
         emission_weights = array("f")
         position_version = frame
         topology_version = frame

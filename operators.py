@@ -810,6 +810,27 @@ class FUMARIS_OT_preview_show_here(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_stop_and_bake(Operator):
+    bl_idname = "fumaris.stop_and_bake"
+    bl_label = "Stop Preview and Bake"
+    bl_description = "Stop the live preview of this domain and start a bake with the current settings"
+
+    @classmethod
+    def poll(cls, context):
+        job = active_job() if active_mode() == "previewing" else None
+        domain = _active_domain(context)
+        return (job is not None and domain is not None and job._domain_name == domain.name
+                and not getattr(job, "_recording_enabled", False))
+
+    def invoke(self, context, _event):
+        job = active_job()
+        _cancel_job(context, job)
+        if active_job() is not None:
+            self.report({"WARNING"}, "The preview is still stopping; press Bake again in a moment")
+            return {"CANCELLED"}
+        return bpy.ops.fumaris.bake("INVOKE_DEFAULT")
+
+
 _SOLO_KEY = "fumaris_solo"
 
 
@@ -1246,6 +1267,7 @@ CLASSES = (
     FUMARIS_OT_preview_pause,
     FUMARIS_OT_preview_stop,
     FUMARIS_OT_preview_show_here,
+    FUMARIS_OT_stop_and_bake,
     FUMARIS_OT_participant_select,
     FUMARIS_OT_participant_solo,
     FUMARIS_OT_delete,

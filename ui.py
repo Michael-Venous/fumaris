@@ -533,8 +533,8 @@ def _draw_domain(layout, scene, props):
     elif is_previewing and not getattr(job, "_recording_enabled", False):
         status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                      icon="PAUSE" if is_preview_paused else "PLAY")
-        # Why Bake is greyed out, and what the overlay is.
-        status.label(text="Stop the preview to bake")
+        # Bake is greyed out while previewing: offer the handoff instead.
+        status.operator("fumaris.stop_and_bake", icon="RENDER_ANIMATION")
         status.label(text="Viewport preview approximates the Cycles render")
     if is_previewing and getattr(job, "_recording_enabled", False):
         if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):

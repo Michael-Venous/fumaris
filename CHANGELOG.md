@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Stop Preview and Bake.** While previewing, the status area offers one
+  button that stops the preview and starts the bake.
 - **Participant list with Solo.** Participants > Objects lists the objects in
   the domain's collections with Enabled and Solo, and says why an object is
   skipped.

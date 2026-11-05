@@ -45,7 +45,9 @@ PRESETS = {
         "name": "Explosion",
         "description": "A short burst of expanding fire and smoke",
         "domain": {"shader_flame_enabled": True, "vorticity": 6.0,
-                   "buoyancy_per_temp": 1.5, "burn_per_temp": 2.0,
+                   # Hot gas rises at about g (1 - T_air / T) ~ 8 m/s^2: the
+                   # fireball lifts into a cap over a smoke stem.
+                   "buoyancy_per_temp": 8.0, "burn_per_temp": 2.0,
                    "divergence_per_burn": 4.0, "cooling_rate": 0.5,
                    # Realistic model (new domains): fuel released in one short
                    # burst ignites; with Physical Heat it burns where it meets
@@ -59,19 +61,21 @@ PRESETS = {
                    # per burn so the fireball stays visible, smoke that lasts,
                    # and Disturb at a fifth of the source size (set below) for
                    # lumpy, cauliflower billows.
-                   "burn_time": 1.0, "cooling_time": 10.0, "gas_expansion": 2.0,
+                   "burn_time": 1.0, "cooling_time": 10.0, "gas_expansion": 1.0,
                    "sharp_advection": True, "shred": 2.0,
-                   "disturb": 175.0,
+                   "disturb": 175.0, "disturb_detail": 3,
                    "dissipation": 0.1, "soot_radiation": 1.0, "oxygen_limit": 1.5,
                    "smoke_per_burn": 1.0,
                    # Plain AgX keeps blackbody fire saturated up to about
                    # this brightness; brighter turns peach.
-                   "shader_flame_brightness": 1.5, "shader_flame_contrast": 1.5,
-                   "shader_glow_temperature": 1800.0,
-                   "shader_smoke_density": 1.0,
-                   "shader_smoke_color": (0.12,) * 3},
-        # Disturb size relative to the sources' largest dimension.
-        "disturb_size_per_size": 0.2,
+                   # High Contrast: only the hottest gas glows, so fire shows
+                   # in the creases between lit grey soot billows.
+                   "shader_flame_brightness": 3.0, "shader_flame_contrast": 4.0,
+                   "shader_glow_temperature": 1750.0,
+                   "shader_smoke_density": 3.0, "shader_scatter_glow": 0.25,
+                   "shader_smoke_color": (0.4,) * 3},
+        # Disturb's largest swirls relative to the sources' largest dimension.
+        "disturb_size_per_size": 0.3,
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it.
@@ -79,7 +83,7 @@ PRESETS = {
         # fireball glows instead of hiding in smoke.
         "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
-                    "emitter_fuel": 8.0, "normal_velocity": 2.0, "emitter_divergence": 0.2,
+                    "emitter_fuel": 8.0, "normal_velocity": 1.0, "emitter_divergence": 0.2,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 4,
         "duration": 100,

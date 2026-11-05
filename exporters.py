@@ -195,6 +195,7 @@ def build_frame(
                     volume_stage_dir,
                 )
             )
+    _warn_extreme_motion(domain or context.object, participants, resolution_scale)
 
     return FramePacket(
         {
@@ -216,6 +217,30 @@ def build_frame(
         payload,
     )
 
+
+
+# A source jumping farther than this many voxels in one frame is usually a
+# teleport or keyframe slip: it smears smoke along the jump and costs many
+# motion stamps. Named once per session in the Diagnostics log.
+EXTREME_MOTION_VOXELS = 32.0
+
+
+def _warn_extreme_motion(domain, participants, resolution_scale=1.0):
+    props = getattr(domain, "fumaris", None)
+    if props is None:
+        return
+    voxel = 32.0 / max(1.0, float(props.resolution) * float(resolution_scale))
+    for participant in participants:
+        travel = participant.pop("frame_travel", 0.0)
+        if travel <= EXTREME_MOTION_VOXELS * voxel or participant.get("motion_warned"):
+            continue
+        participant["motion_warned"] = True
+        from . import diagnostics
+        name = participant["object"].name
+        diagnostics.add_log(
+            domain,
+            f"Warning: {name} moved {travel / voxel:.0f} voxels in one frame; "
+            "check for a jump in its animation (it smears smoke and slows the simulation)")
 
 
 def _log_participants(domain, participants):
@@ -875,6 +900,7 @@ def _transform_moved(participant, matrix):
     participant["previous_matrix"] = matrix.copy()
     if previous is None:
         return False
+    participant["frame_travel"] = (matrix.translation - previous.translation).length
     return any(
         abs(matrix[row][column] - previous[row][column]) > 1e-6
         for row in range(4)

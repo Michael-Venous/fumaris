@@ -42,6 +42,7 @@ from .jobs import FrameRangeJob
 from .protocol import CACHE_FLUSHED
 from .preview import (
     capture_volume_preview,
+    preview_targets,
     clear_all_previews,
     clear_preview,
     preview_image_pending,
@@ -424,6 +425,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return False
         if not getattr(self, "_has_volume_preview_frame", False):
             return False
+        if self._submit_other_viewports(context):
+            return True
         if (
             getattr(self, "_preview_rerendered_since_frame", False)
             and not getattr(self, "_pause_requested", False)
@@ -446,6 +449,28 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._preview_rerendered_since_frame = True
         self._last_preview_signature = signature
         return True
+
+    def _submit_other_viewports(self, context):
+        """All Viewports: rerender the retained volume once for each other
+        viewport after every frame, and when one of their views changes."""
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None or not getattr(domain.fumaris, "preview_all_viewports", False):
+            return False
+        targets = preview_targets(context, domain)[1:]
+        signatures = getattr(self, "_view_signatures", None)
+        if signatures is None:
+            signatures = self._view_signatures = {}
+        for target in targets:
+            preview = capture_volume_preview(context, domain, target)
+            signature = volume_preview_signature(preview)
+            view_id = int(preview.get("view_id", 0))
+            if signature is None or signatures.get(view_id) == signature:
+                continue
+            self._worker.send_preview(preview)
+            self._preview_render_submitted = True
+            signatures[view_id] = signature
+            return True
+        return False
 
     def _submit_frame(self, context):
         domain = bpy.data.objects.get(self._domain_name)
@@ -598,6 +623,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
     def _after_frame_complete(self, context, domain, completed, data, payload):
         self._preview_rerendered_since_frame = False
+        # A new simulation frame: every other viewport needs a new image.
+        self._view_signatures = {}
         if domain:
             data["blender_preview_upload_ms"] = show_preview_payload(
                 domain,
@@ -751,6 +778,41 @@ class FUMARIS_OT_preview_stop(Operator):
         else:
             _cancel_job(context, job)
         return {"FINISHED"}
+
+
+class FUMARIS_OT_preview_show_here(Operator):
+    bl_idname = "fumaris.preview_show_here"
+    bl_label = "Show Fumaris Preview Here"
+    bl_description = "Show the Fumaris live preview in this 3D viewport (when All Viewports is off). Lasts until Blender closes"
+
+    @classmethod
+    def poll(cls, context):
+        area = getattr(context, "area", None)
+        return area is not None and area.type == "VIEW_3D"
+
+    def execute(self, context):
+        from .preview import pin_preview_view
+        region = next((item for item in context.area.regions if item.type == "WINDOW"), None)
+        job = active_job() if active_mode() == "previewing" else None
+        domain = bpy.data.objects.get(job._domain_name) if job is not None else _active_domain(context)
+        domains = [domain] if domain is not None else [
+            obj for obj in context.scene.objects
+            if getattr(obj, "fumaris", None) and obj.fumaris.smoke_object_type == "domain"]
+        if region is None or not domains:
+            self.report({"WARNING"}, "No Fumaris domain to show here")
+            return {"CANCELLED"}
+        for item in domains:
+            pin_preview_view(item, region)
+        if job is not None:
+            # Rerender for the new viewport at once, also while paused.
+            job._last_preview_signature = None
+            job._view_signatures = {}
+        return {"FINISHED"}
+
+
+def _draw_view_menu(self, _context):
+    self.layout.separator()
+    self.layout.operator("fumaris.preview_show_here", icon="HIDE_OFF")
 
 
 class FUMARIS_OT_preview_pause(Operator):
@@ -1112,6 +1174,7 @@ CLASSES = (
     FUMARIS_OT_preview_play,
     FUMARIS_OT_preview_pause,
     FUMARIS_OT_preview_stop,
+    FUMARIS_OT_preview_show_here,
     FUMARIS_OT_delete,
     FUMARIS_OT_stop,
 )
@@ -1209,6 +1272,7 @@ def _cancel_preview_before_native_playback(_scene=None, _depsgraph=None):
 def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
+    bpy.types.VIEW3D_MT_view.append(_draw_view_menu)
     _recover_orphaned_bakes()
     _remove_handler_named(bpy.app.handlers.load_post, "_recover_orphaned_bakes_after_load")
     if _recover_orphaned_bakes_after_load not in bpy.app.handlers.load_post:
@@ -1232,5 +1296,6 @@ def unregister():
     _remove_handler_named(bpy.app.handlers.load_post, "_recover_orphaned_bakes_after_load")
     _remove_handler_named(bpy.app.handlers.depsgraph_update_post, "_track_geometry_updates")
     _remove_handler_named(bpy.app.handlers.animation_playback_pre, "_cancel_preview_before_native_playback")
+    bpy.types.VIEW3D_MT_view.remove(_draw_view_menu)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

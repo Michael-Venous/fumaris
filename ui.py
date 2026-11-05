@@ -619,6 +619,7 @@ def _draw_domain(layout, scene, props):
         preview.prop(props, "preview_resolution_percent", slider=True)
         preview.prop(props, "preview_image_scale", slider=True)
         preview.prop(props, "preview_max_ray_steps")
+        preview.prop(props, "preview_all_viewports")
         preview.separator()
         preview.label(text="Exposure")
         preview.prop(props, "preview_tone_mapping", text="")

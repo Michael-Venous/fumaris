@@ -116,6 +116,12 @@ without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
 simulating while its viewport overlay is suppressed.
 
+The live preview shows in one 3D viewport: the one picked with View > Show
+Fumaris Preview Here (until Blender closes), otherwise the largest in the
+window the preview was started from. `All Viewports` (Preview Settings) shows
+it in every 3D viewport that shows the domain, in any window or on any
+monitor; each extra viewport renders the volume again every frame.
+
 `Scene Occlusion` (Preview Settings, on by default) hides preview smoke behind
 solid objects, using the viewport's own depth. It follows whatever the viewport
 draws, so wireframe objects and overlays that write depth also hide smoke, and

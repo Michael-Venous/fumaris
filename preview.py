@@ -28,9 +28,10 @@ _SCENE_DEPTH_QUIET_UNTIL = 0.0
 _SCENE_DEPTH_FAILED = False
 
 
-def capture_volume_preview(context, domain):
+def capture_volume_preview(context, domain, target=None):
     props = domain.fumaris
-    target = _largest_viewport(context, domain)
+    if target is None:
+        target = _largest_viewport(context, domain)
     if target is None:
         # Visibility controls drawing, not simulation. Keep a valid camera when
         # hidden/excluded/in local view rather than falling back to point readback.
@@ -168,7 +169,13 @@ def update_volume_image(domain, data, payload):
             f"bytes={len(payload)}"
         )
 
-    _PREVIEWS[domain.name] = {
+    view_id = int(preview.get("view_id", 0))
+    if not getattr(domain.fumaris, "preview_all_viewports", False):
+        # One viewport at a time: drop the image of a viewport it left.
+        for key in tuple(_PREVIEWS):
+            if key[0] == domain.name and key[1] != view_id:
+                _PREVIEWS.pop(key, None)
+    _PREVIEWS[(domain.name, view_id)] = {
         "type": "volume",
         "domain": domain,
         "domain_name": domain.name,
@@ -196,26 +203,29 @@ def show_preview_payload(domain, data, payload):
 
 def _has_preview(domain):
     name = domain if isinstance(domain, str) else domain.name
-    return name in _PREVIEWS or any(
-        preview.get("domain") == domain for preview in _PREVIEWS.values()
+    return any(
+        key[0] == name or preview.get("domain") == domain
+        for key, preview in _PREVIEWS.items()
     )
 
 
 def preview_image_pending(domain):
-    """True until the latest image has reached the viewport draw callback."""
-    preview = _PREVIEWS.get(domain.name) if domain else None
-    return bool(preview and preview.get("pixels") is not None and
-                not preview.get("upload_failed"))
+    """True until the latest images have reached the viewport draw callback."""
+    if not domain:
+        return False
+    return any(
+        key[0] == domain.name and preview.get("pixels") is not None
+        and not preview.get("upload_failed")
+        for key, preview in _PREVIEWS.items()
+    )
 
 
 def clear_preview(domain):
     # The job's original name remains usable after the object is deleted/renamed.
     name = domain if isinstance(domain, str) else domain.name
-    _PREVIEWS.pop(name, None)
-    if not isinstance(domain, str):
-        for key, preview in tuple(_PREVIEWS.items()):
-            if preview.get("domain") == domain:
-                _PREVIEWS.pop(key, None)
+    for key, preview in tuple(_PREVIEWS.items()):
+        if key[0] == name or (not isinstance(domain, str) and preview.get("domain") == domain):
+            _PREVIEWS.pop(key, None)
     _remove_legacy_preview_objects(name)
     _sync_draw_handlers()
     _tag_viewports()
@@ -467,11 +477,34 @@ def _image_batch():
     return _IMAGE_BATCH
 
 
-def _largest_viewport(context, domain=None):
-    candidates = []
+# Viewport the user chose with "Show Fumaris Preview Here", per domain name:
+# the WINDOW region pointer (valid for this Blender session only).
+_PINNED_VIEWS = {}
+
+
+def pin_preview_view(domain, region):
+    _PINNED_VIEWS[domain.name] = int(region.as_pointer())
+    _tag_viewports()
+
+
+def pinned_view(domain):
+    return _PINNED_VIEWS.get(domain.name) if domain is not None else None
+
+
+def preview_targets(context, domain=None):
+    """3D viewports that can show the preview, preferred first.
+
+    Order: the viewport pinned with Show Fumaris Preview Here; then viewports
+    in the window that runs the preview (a newly opened window no longer takes
+    the preview away from it); then the largest. Viewports hiding the domain
+    are skipped when a domain is given.
+    """
     window_manager = getattr(context, "window_manager", None)
     if window_manager is None:
-        return None
+        return []
+    own_window = getattr(context, "window", None)
+    pinned = pinned_view(domain)
+    candidates = []
     for window in window_manager.windows:
         for area in window.screen.areas:
             if area.type != "VIEW_3D":
@@ -485,12 +518,22 @@ def _largest_viewport(context, domain=None):
                 None,
             )
             region_3d = getattr(area.spaces.active, "region_3d", None)
-            if region is not None and region_3d is not None:
-                candidates.append((region.width * region.height, region, region_3d))
-    if not candidates:
-        return None
-    _, region, region_3d = max(candidates, key=lambda item: item[0])
-    return region, region_3d
+            if region is None or region_3d is None:
+                continue
+            rank = (
+                int(region.as_pointer()) == pinned,
+                own_window is not None and window == own_window,
+                region.width * region.height,
+            )
+            candidates.append((rank, region, region_3d))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return [(region, region_3d) for _, region, region_3d in candidates]
+
+
+def _largest_viewport(context, domain=None):
+    """The preferred preview viewport (see preview_targets)."""
+    targets = preview_targets(context, domain)
+    return targets[0] if targets else None
 
 
 def _zero_to_one_projection(projection):

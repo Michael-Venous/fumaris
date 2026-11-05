@@ -4,6 +4,12 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Live preview with several 3D viewports or windows.** The preview stayed
+  in the largest 3D viewport of all windows, so opening another window (or
+  one per monitor) moved it away from the viewport being watched. It now stays
+  in the window it was started from; View > Show Fumaris Preview Here picks
+  the viewport, and All Viewports (Preview Settings) shows it in every one, at
+  the cost of one extra render per viewport.
 - **Emitters push smoke physically.** Expansion (formerly Divergence) is now a
   rate per second that gives the same result at any Resolution and Sub-Steps.
   Normal Velocity on a closed mesh now really blows the air out (before, the

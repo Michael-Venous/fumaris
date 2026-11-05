@@ -497,6 +497,12 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
+    preview_all_viewports: BoolProperty(
+        name="All Viewports",
+        description="Show the live preview in every 3D viewport that shows the domain instead of one (the one picked with View > Show Fumaris Preview Here, else the largest in the preview's window). Adds overhead: each extra viewport renders the volume again every frame",
+        default=False,
+    )
+
     preview_occlusion: BoolProperty(
         name="Scene Occlusion",
         description="Hide preview smoke behind solid objects using the viewport depth. Preview only; transparent objects still occlude",

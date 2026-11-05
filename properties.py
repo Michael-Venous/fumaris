@@ -1529,7 +1529,7 @@ class FumarisSettings(PropertyGroup):
 
     dissipation: FloatProperty(
         name="Dissipation",
-        description="How quickly smoke fades away over time, in smoke density per second; zero keeps it from fading through this setting. Type a value above 1 for dense smoke that must clear quickly",
+        description="How quickly smoke fades away over time, in smoke density per second; zero keeps it from fading through this setting. It removes the same amount from thin and dense smoke, so smoke spread thin (by Wind or fast spreading) clears sooner; Smoke Decay fades in proportion instead. Type a value above 1 for dense smoke that must clear quickly",
         default=0.5,
         min=0.0,
         soft_max=1.0,

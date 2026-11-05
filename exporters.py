@@ -798,6 +798,9 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
             values[f"couple_rate_{name}s"] = array(
                 "f", (_REPLACE_COUPLE_RATE if rate > 0.0 else 0.0 for rate in rates))
 
+    if getattr(props, "emitter_influence", False):
+        value_ops = _influence_point_values(values, value_ops)
+
     sections = {
         "positions": _versioned(payload, positions, frame),
         "radii": _versioned(payload, radii, frame),
@@ -900,6 +903,22 @@ def _influence_channels(channels):
             channels["couple_rate_temperature"] = 10.0
     else:
         channels["couple_rate_temperature"] = 0.0
+
+
+def _influence_point_values(values, value_ops):
+    """Influence Only for point emitters (per-point arrays), as _influence_channels."""
+    for name in ("smoke", "fuel", "burn"):
+        rates = values.get(f"couple_rate_{name}s")
+        if rates:
+            values[f"couple_rate_{name}s"] = array("f", (0.0 for _ in rates))
+    temperatures = values.get("temperatures")
+    rates = values.get("couple_rate_temperatures")
+    if rates:
+        values["couple_rate_temperatures"] = array("f", (
+            (10.0 if rate == _REPLACE_COUPLE_RATE else rate) if temperatures and temperature > 0.0 else 0.0
+            for rate, temperature in zip(rates, temperatures or [0.0] * len(rates))))
+    channel = _SOURCE_OPERATION_CHANNELS.index("temperature")
+    return (int(value_ops) & ~(1 << channel)) | (1 << (4 + channel))
 
 
 def _closed_surface_source(participant, props, matrix):

@@ -557,6 +557,7 @@ def _draw_domain(layout, scene, props):
         fire.prop(props, "shader_glow_temperature")
         fire.prop(props, "shader_flame_contrast")
         fire.prop(props, "shader_temperature_multiplier")
+        fire.prop(props, "shader_scatter_glow")
         if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
             appearance.label(
                 text="Custom Volume Material overrides baked appearance",
@@ -596,6 +597,7 @@ def _draw_domain(layout, scene, props):
         output.prop(props, "export_fuel_vdb")
         output.prop(props, "export_burn_vdb")
         output.prop(props, "export_velocity_vdb")
+        output.prop(props, "glow_radius")
         if props.volume_material is None:
             output.label(
                 text="Generated material always includes temperature and burn",

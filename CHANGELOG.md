@@ -4,6 +4,14 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Scatter Glow (Appearance).** Fire light now spreads into the smoke around
+  it, so dark billows glow from inside near the flames, which Cycles does not
+  do on its own. Bakes write a small blurred `glow` grid with the temperature;
+  Glow Radius (Output) sets how far the light reaches (0 follows the size of
+  the fire). Re-bake to use it in existing caches.
+- **Live preview closer to the render.** Dense smoke is as opaque as in Cycles,
+  flame colours match the material, and Tone Mapping follows the scene's View
+  Transform by default.
 - **Smoke, fire and heat no longer fade or stall at high Sub-Steps.** Small
   per-step changes were lost to half-precision rounding, so emitters stopped
   filling, decay was misapplied and sources ran cooler as Sub-Steps rose.

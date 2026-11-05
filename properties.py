@@ -1457,6 +1457,15 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
+    glow_radius: FloatProperty(
+        name="Glow Radius",
+        description="How far fire light spreads into the smoke for Scatter Glow, baked into a coarse glow grid with the temperature. 0 follows the size of the fire each frame",
+        default=0.0,
+        min=0.0,
+        soft_max=10.0,
+        subtype="DISTANCE",
+    )
+
     export_fuel_vdb: BoolProperty(
         name="Export Fuel VDB",
         description="Export fuel field alongside density",
@@ -1551,6 +1560,16 @@ class FumarisSettings(PropertyGroup):
         min=0.05,
         max=3.0,
         soft_max=2.0,
+        update=_appearance_updated,
+    )
+
+    shader_scatter_glow: FloatProperty(
+        name="Scatter Glow",
+        description="Fire light scattered into the surrounding smoke, so dark billows glow from inside near flames. Cycles barely carries emission through smoke on its own; this uses the baked glow grid (see Glow Radius under Output)",
+        default=1.0,
+        min=0.0,
+        max=20.0,
+        soft_max=4.0,
         update=_appearance_updated,
     )
 

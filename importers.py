@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import shutil
@@ -43,6 +44,14 @@ NODE_PHYSICAL_CONTRAST = "Fumaris Physical Contrast"
 NODE_PHYSICAL_GAIN = "Fumaris Physical Gain"
 NODE_PHYSICAL_COLOR_SCALE = "Fumaris Physical Color Scale"
 PHYSICAL_COLOR_SHIFT = 1.3
+# Scatter glow: emission glow x density, where the bridge's glow grid is the
+# blurred density x Wien radiance at GLOW_REFERENCE_K (src/vdb_frame_writer.cpp).
+# Coloured by the gas at Full Glow, filtered by the smoke colour.
+NODE_SCATTER_GLOW_GAIN = "Fumaris Scatter Glow Gain"
+NODE_SCATTER_GLOW_COLOR = "Fumaris Scatter Glow Color"
+NODE_SCATTER_GLOW_ALBEDO = "Fumaris Scatter Glow Albedo"
+GLOW_REFERENCE_K = 1500.0
+SCATTER_GLOW_SCALE = 1.0
 PHYSICAL_SATURATION = 1.8
 
 
@@ -202,7 +211,8 @@ def apply_generated_material_settings(material, settings):
     # rebuild the graph in place, keeping its timestep normalization.
     timestep = nodes.get(NODE_TIMESTEP_NORMALIZATION)
     if timestep is not None and (nodes.get(NODE_FLAME_SHARPNESS) is None
-                                 or nodes.get(NODE_FLAME_LOOK_STRENGTH) is None):
+                                 or nodes.get(NODE_FLAME_LOOK_STRENGTH) is None
+                                 or nodes.get(NODE_SCATTER_GLOW_GAIN) is None):
         _build_generated_material(material, timestep.inputs[1].default_value)
         nodes = material.node_tree.nodes
     shader = nodes.get(NODE_VOLUME_SHADER)
@@ -268,6 +278,18 @@ def apply_generated_material_settings(material, settings):
         nodes[NODE_PHYSICAL_GAIN].inputs[1].default_value = (brightness * density) if enabled else 0.0
         nodes[NODE_PHYSICAL_COLOR_SCALE].inputs[1].default_value = PHYSICAL_COLOR_SHIFT * max(
             0.01, float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)))
+    glow_gain = nodes.get(NODE_SCATTER_GLOW_GAIN)
+    if glow_gain is not None and look_strength is not None:
+        scatter = max(0.0, float(_appearance_value(settings, "shader_scatter_glow", 1.0)))
+        # Same radiance scale as the flame at Contrast 1: W_FullGlow = W_1500 x exp(c2 (1/Tg - 1/1500)).
+        to_full_glow = math.exp(WIEN_KELVIN * (1.0 / reference - 1.0 / GLOW_REFERENCE_K))
+        glow_gain.inputs[1].default_value = (
+            SCATTER_GLOW_SCALE * scatter * brightness * density * to_full_glow) if enabled else 0.0
+        nodes[NODE_SCATTER_GLOW_COLOR].inputs["Temperature"].default_value = reference * PHYSICAL_COLOR_SHIFT * max(
+            0.01, float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)))
+        albedo = nodes[NODE_SCATTER_GLOW_ALBEDO]
+        albedo_inputs = [socket for socket in albedo.inputs if socket.type == "RGBA"]
+        albedo_inputs[1].default_value = (*smoke_color[:3], 1.0)
     material.diffuse_color = (*smoke_color[:3], 1.0)
     material.node_tree.update_tag()
     return True
@@ -489,7 +511,65 @@ def _build_generated_material(material, flame_rate_scale):
     shader.inputs["Density Attribute"].default_value = "density"
     shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0
-    links.new(shader.outputs["Volume"], output.inputs["Volume"])
+
+    glow = nodes.new("ShaderNodeAttribute")
+    glow.attribute_name = "glow"
+    glow.label = "Scatter Glow"
+    glow.location = (120, -1100)
+    # Only light from elsewhere: the blurred source minus this voxel's own
+    # (density x Wien radiance at GLOW_REFERENCE_K), so glowing cores are not
+    # brightened twice and dark smoke beside flames gets the glow.
+    local_wien = math_node("DIVIDE", (-680, -1500), "-c2 / T")
+    local_wien.inputs[0].default_value = -WIEN_KELVIN
+    local_offset = math_node("ADD", (-480, -1500), "Relative to Glow Reference")
+    local_offset.inputs[1].default_value = WIEN_KELVIN / GLOW_REFERENCE_K
+    local_radiance = math_node("EXPONENT", (-280, -1500), "Local Radiance")
+    local_source = math_node("MULTIPLY", (-80, -1500), "Local Source")
+    glow_excess = math_node("SUBTRACT", (120, -1500), "Glow from Elsewhere")
+    glow_positive = math_node("MAXIMUM", (220, -1500), "Positive")
+    glow_positive.inputs[1].default_value = 0.0
+    glow_density = math_node("MULTIPLY", (320, -1100), "Glow x Density")
+    glow_gain = math_node("MULTIPLY", (520, -1100), "Scatter Glow Gain", NODE_SCATTER_GLOW_GAIN)
+    glow_gain.inputs[1].default_value = 0.0
+    glow_blackbody = nodes.new("ShaderNodeBlackbody")
+    glow_blackbody.name = NODE_SCATTER_GLOW_COLOR
+    glow_blackbody.label = "Fire Light Color"
+    glow_blackbody.location = (120, -1300)
+    glow_saturation = nodes.new("ShaderNodeHueSaturation")
+    glow_saturation.location = (320, -1300)
+    glow_saturation.inputs["Saturation"].default_value = PHYSICAL_SATURATION
+    glow_albedo = nodes.new("ShaderNodeMix")
+    glow_albedo.data_type = "RGBA"
+    glow_albedo.blend_type = "MULTIPLY"
+    glow_albedo.name = NODE_SCATTER_GLOW_ALBEDO
+    glow_albedo.label = "Smoke Albedo"
+    glow_albedo.location = (520, -1300)
+    glow_albedo.inputs["Factor"].default_value = 1.0
+    glow_emission = nodes.new("ShaderNodeEmission")
+    glow_emission.location = (720, -1150)
+    add = nodes.new("ShaderNodeAddShader")
+    add.location = (760, 40)
+    output.location = (960, 40)
+    links.new(floor.outputs[0], local_wien.inputs[1])
+    links.new(local_wien.outputs[0], local_offset.inputs[0])
+    links.new(local_offset.outputs[0], local_radiance.inputs[0])
+    links.new(local_radiance.outputs[0], local_source.inputs[0])
+    links.new(volume_info.outputs["Density"], local_source.inputs[1])
+    links.new(_socket(glow.outputs, "Factor", "Fac"), glow_excess.inputs[0])
+    links.new(local_source.outputs[0], glow_excess.inputs[1])
+    links.new(glow_excess.outputs[0], glow_positive.inputs[0])
+    links.new(glow_positive.outputs[0], glow_density.inputs[0])
+    links.new(volume_info.outputs["Density"], glow_density.inputs[1])
+    links.new(glow_density.outputs[0], glow_gain.inputs[0])
+    links.new(glow_blackbody.outputs["Color"], glow_saturation.inputs["Color"])
+    albedo_inputs = [socket for socket in glow_albedo.inputs if socket.type == "RGBA"]
+    links.new(glow_saturation.outputs["Color"], albedo_inputs[0])
+    albedo_outputs = [socket for socket in glow_albedo.outputs if socket.type == "RGBA"]
+    links.new(albedo_outputs[0], glow_emission.inputs["Color"])
+    links.new(glow_gain.outputs[0], glow_emission.inputs["Strength"])
+    links.new(shader.outputs["Volume"], add.inputs[0])
+    links.new(glow_emission.outputs["Emission"], add.inputs[1])
+    links.new(add.outputs["Shader"], output.inputs["Volume"])
 
 
 def update_generated_materials(domain, settings):

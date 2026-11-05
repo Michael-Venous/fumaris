@@ -217,6 +217,7 @@ def build_frame(
     )
 
 
+
 def _log_participants(domain, participants):
     console_log(f"Fumaris participants for {domain.name}:")
     for item in participants:
@@ -304,7 +305,9 @@ def _domain_state(props, resolution_scale=1.0):
         or (generated_material and props.shader_flame_enabled and props.shader_flame_core > 0.0),
         "export_burn_vdb": props.export_burn_vdb or generated_material,
         "export_velocity_vdb": props.export_velocity_vdb,
+        "glow_radius": max(0.0, float(props.glow_radius)),
     }
+
 
 
 def _mesh_state(participant, depsgraph, payload, frame):

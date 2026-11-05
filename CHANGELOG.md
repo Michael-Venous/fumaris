@@ -4,6 +4,13 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Disturb Detail (Turbulence Detail).** Adds smaller Disturb swirls in
+  octaves, each half the size and slightly stronger, so big lobes carry finer
+  billows. 1 keeps the single size of earlier versions.
+- **Explosion Quick Setup reworked for large, photoreal fireballs.** Disturb
+  follows the source size, the new source mesh is smooth enough to scale up,
+  fuel burns longer where it meets air with soot that radiates heat away, less
+  soot per burn, smoke that lingers, and a plain-AgX-friendly look.
 - **Faster smoke rendering in Cycles.** The first import into a scene turns on
   Cycles' biased volume rendering with a coarser viewport step (Output > Fast
   Cycles Volumes, Viewport Step Rate): the fireball test frame renders in about

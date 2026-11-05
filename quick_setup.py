@@ -52,12 +52,26 @@ PRESETS = {
                    # air, so temperatures vary. Boiling cells on its surface
                    # need about 250 voxels across the fireball (resolution).
                    "physical_heat": True,
-                   "burn_time": 0.5, "cooling_time": 6.0, "gas_expansion": 2.0,
+                   # Photoreal pass (2026-11-05, output/photoreal): fuel that
+                   # burns for about a second where it meets air (Oxygen
+                   # Limit), soot that radiates heat away so temperatures
+                   # spread instead of pinning at Flame Temperature, less soot
+                   # per burn so the fireball stays visible, smoke that lasts,
+                   # and Disturb at a fifth of the source size (set below) for
+                   # lumpy, cauliflower billows.
+                   "burn_time": 1.0, "cooling_time": 10.0, "gas_expansion": 2.0,
                    "sharp_advection": True, "shred": 2.0,
-                   "disturb": 40.0, "disturb_size": 0.1,
-                   "shader_flame_brightness": 3.0,
-                   "shader_smoke_density": 3.0,
-                   "shader_smoke_color": (0.3185545,) * 3},
+                   "disturb": 175.0,
+                   "dissipation": 0.1, "soot_radiation": 1.0, "oxygen_limit": 1.5,
+                   "smoke_per_burn": 1.0,
+                   # Plain AgX keeps blackbody fire saturated up to about
+                   # this brightness; brighter turns peach.
+                   "shader_flame_brightness": 1.5, "shader_flame_contrast": 1.5,
+                   "shader_glow_temperature": 1800.0,
+                   "shader_smoke_density": 1.0,
+                   "shader_smoke_color": (0.12,) * 3},
+        # Disturb size relative to the sources' largest dimension.
+        "disturb_size_per_size": 0.2,
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it.
@@ -65,7 +79,7 @@ PRESETS = {
         # fireball glows instead of hiding in smoke.
         "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
-                    "emitter_fuel": 4.0, "normal_velocity": 2.0, "emitter_divergence": 0.2,
+                    "emitter_fuel": 8.0, "normal_velocity": 2.0, "emitter_divergence": 0.2,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 4,
         "duration": 100,
@@ -134,7 +148,8 @@ def _new_source(collection, name, position):
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     try:
-        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0)
+        # Smooth enough not to show facets when scaled up for large effects.
+        bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)
         bm.to_mesh(mesh)
     finally:
         bm.free()
@@ -303,6 +318,10 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         props.use_scene_frame_range = "duration" not in preset
         _apply_settings(props, _DOMAIN_DEFAULTS)
         _apply_settings(props, preset["domain"])
+        if "disturb_size_per_size" in preset:
+            # Disturb's size is in world units: scale it to the sources so
+            # large explosions get large billows (0.1 m did nothing at 20 m).
+            props.disturb_size = max(0.05, preset["disturb_size_per_size"] * max(maximum - minimum))
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:

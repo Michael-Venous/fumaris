@@ -1403,6 +1403,14 @@ class FumarisSettings(PropertyGroup):
         subtype="DISTANCE",
     )
 
+    disturb_detail: IntProperty(
+        name="Disturb Detail",
+        description="Adds smaller Disturb swirls: each step halves the size and pushes a little harder, like real turbulence, so big lobes carry smaller billows. 1 = one size",
+        default=1,
+        min=1,
+        max=4,
+    )
+
     sharp_advection: BoolProperty(
         name="Sharp Advection",
         description="Carry motion with a stronger error correction that falls back to the plain step wherever it would overshoot, for crisper swirls and billow edges at the same cost per voxel",

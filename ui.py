@@ -759,6 +759,9 @@ def _draw_domain(layout, scene, props):
         size = disturb_row.row(align=True)
         size.active = props.disturb > 0.0
         size.prop(props, "disturb_size", text="Size")
+        detail = turbulence.row(align=True)
+        detail.active = props.disturb > 0.0
+        detail.prop(props, "disturb_detail", text="Detail")
         turbulence.prop(props, "shred")
         turbulence.separator()
         turbulence.prop(props, "sharp_advection")

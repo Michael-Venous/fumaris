@@ -316,6 +316,7 @@ def _domain_state(props, resolution_scale=1.0):
         "vorticity_mask": props.vorticity_mask,
         "disturb": props.disturb,
         "disturb_size": props.disturb_size,
+        "disturb_octaves": int(getattr(props, "disturb_detail", 1)),
         "shred": props.shred,
         "advection_reflection": props.advection_reflection,
         "sharp_advection": props.sharp_advection,

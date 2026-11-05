@@ -33,8 +33,9 @@ NODE_FLAME_CORE = "Fumaris Flame Core"
 # peach under AgX).
 NODE_WIEN_TERM = "Fumaris Wien Term"
 # 2: Temperature look only (the Burn look and its burn grid removed), one
-# emission closure, frames. Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 2
+# emission closure, frames. 3: Colour Spread (colour shift is multiply-add).
+# Older graphs are rebuilt on the next update.
+GRAPH_VERSION = 3
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 NODE_PHYSICAL_CONTRAST = "Fumaris Physical Contrast"
 NODE_PHYSICAL_GAIN = "Fumaris Physical Gain"
@@ -233,6 +234,7 @@ def apply_generated_material_settings(material, settings):
     reference = max(1.0, float(_appearance_value(settings, "shader_glow_temperature", 1600.0)))
     contrast = max(0.05, float(_appearance_value(settings, "shader_flame_contrast", 0.5)))
     multiplier = max(0.01, float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)))
+    spread = max(0.05, float(_appearance_value(settings, "shader_color_spread", 1.0)))
     scatter = max(0.0, float(_appearance_value(settings, "shader_scatter_glow", 1.0)))
 
     # Flame: density x Brightness x Density x exp(-c * 26160 * (1/T - 1/Tg)),
@@ -241,7 +243,10 @@ def apply_generated_material_settings(material, settings):
     wien.inputs[1].default_value = -contrast
     wien.inputs[2].default_value = contrast * WIEN_KELVIN / reference
     nodes[NODE_PHYSICAL_GAIN].inputs[1].default_value = (brightness * density) if enabled else 0.0
-    nodes[NODE_PHYSICAL_COLOR_SCALE].inputs[1].default_value = PHYSICAL_COLOR_SHIFT * multiplier
+    # Colour temperature = shift x multiplier x (Full Glow + Colour Spread x (T - Full Glow)).
+    color_scale = nodes[NODE_PHYSICAL_COLOR_SCALE]
+    color_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT * multiplier * spread
+    color_scale.inputs[2].default_value = PHYSICAL_COLOR_SHIFT * multiplier * reference * (1.0 - spread)
 
     # Scatter glow, on the flame's radiance scale at Contrast 1.
     to_full_glow = math.exp(WIEN_KELVIN * (1.0 / reference - 1.0 / GLOW_REFERENCE_K))
@@ -335,8 +340,9 @@ def _build_generated_material(material, blue_core=False):
     radiance = math_node("EXPONENT", (-560, 380), "Radiance", flame)
     absorbed = math_node("MULTIPLY", (-380, 380), "Soot Emission", flame)
     gain = math_node("MULTIPLY", (-200, 380), "Brightness x Density", flame, NODE_PHYSICAL_GAIN)
-    color_scale = math_node("MULTIPLY", (-920, 180), "Camera Color Shift", flame, NODE_PHYSICAL_COLOR_SCALE)
+    color_scale = math_node("MULTIPLY_ADD", (-920, 180), "Camera Color Shift", flame, NODE_PHYSICAL_COLOR_SCALE)
     color_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT
+    color_scale.inputs[2].default_value = 0.0
     fire_blackbody = nodes.new("ShaderNodeBlackbody")
     fire_blackbody.location = (-740, 180)
     fire_blackbody.parent = flame

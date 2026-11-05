@@ -78,6 +78,7 @@ def capture_volume_preview(context, domain, target=None):
         "glow_temperature": glow_temperature,
         "glow_contrast": WIEN_KELVIN * max(0.05, float(props.shader_flame_contrast)) / glow_temperature,
         "temperature_multiplier": float(props.shader_temperature_multiplier),
+        "color_spread": float(props.shader_color_spread),
         "shadows": bool(props.preview_shadows),
         "shadow_min_light": float(props.preview_shadow_min_light),
         "light_scattering": float(props.preview_light_scattering),

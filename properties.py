@@ -1316,6 +1316,14 @@ class FumarisSettings(PropertyGroup):
         soft_max=10.0,
     )
 
+    fuel_threshold: FloatProperty(
+        name="Flame Sheets",
+        description="Fuel burns only where it has thinned below this amount (fading out by twice it), so dense fuel stays unburnt inside and burns in thin sheets where it mixes with air: dark, sooty puffs with glowing seams instead of one evenly burning ball. Compare with the emitters' Fuel. 0 = burn everywhere; try 1-2 for an emitter Fuel of 8",
+        default=0.0,
+        min=0.0,
+        soft_max=10.0,
+    )
+
     burn_time: FloatProperty(
         name="Burn Time",
         description="Seconds for burning gas to use up 95% of its fuel. Longer keeps flames alive longer",
@@ -1692,6 +1700,16 @@ class FumarisSettings(PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
+        update=_appearance_updated,
+    )
+
+    shader_color_spread: FloatProperty(
+        name="Colour Spread",
+        description="How far fire colour moves with temperature around Full Glow. 1 is physical blackbody colour; lower values keep hot and cool gas closer to the Full Glow colour (a camera's compressed fire palette: orange body, no white-hot or deep-red extremes); higher values exaggerate the range",
+        default=1.0,
+        min=0.05,
+        max=4.0,
+        soft_max=2.0,
         update=_appearance_updated,
     )
 

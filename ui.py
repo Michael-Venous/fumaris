@@ -637,6 +637,7 @@ def _draw_domain(layout, scene, props):
         fire.prop(props, "shader_flame_brightness")
         fire.prop(props, "shader_glow_temperature")
         fire.prop(props, "shader_flame_contrast")
+        fire.prop(props, "shader_color_spread")
         fire.prop(props, "shader_temperature_multiplier")
         fire.prop(props, "shader_scatter_glow")
         if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
@@ -799,6 +800,7 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "oxygen_limit")
             combustion.prop(props, "soot_radiation")
             combustion.prop(props, "wisp_cooling")
+            combustion.prop(props, "fuel_threshold")
         else:
             combustion.prop(props, "temperature_input_scale")
             combustion.prop(props, "ignition_temperature")

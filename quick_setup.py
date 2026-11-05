@@ -72,18 +72,23 @@ PRESETS = {
                    # glowing crevices instead of smooth glowing lobes; thin gas
                    # cools faster (Wisp Cooling), so edges go dark first.
                    "grain": 120.0, "grain_edge": 2.0, "wisp_cooling": 3.0,
-                   # Plain AgX keeps blackbody fire saturated up to about
-                   # this brightness; brighter turns peach.
-                   # High Contrast: only the hottest gas glows, so fire shows
-                   # in the creases between lit grey soot billows.
-                   "shader_flame_brightness": 3.0, "shader_flame_contrast": 4.0,
-                   "shader_glow_temperature": 1750.0,
-                   "shader_smoke_density": 3.0, "shader_scatter_glow": 0.25,
-                   "shader_smoke_color": (0.4,) * 3},
+                   # Flame Sheets (2026-11-05 Axiom pass): the source's dense
+                   # fuel (8) burns only once mixed below 1, in thin sheets,
+                   # so dark soot puffs sit inside a glowing body.
+                   "fuel_threshold": 1.0,
+                   # Bright fire body with dark puffs (output/axiom2): a
+                   # compressed camera palette (Colour Spread 0.8) keeps the
+                   # body orange; brighter still turns peach under plain AgX.
+                   "shader_flame_brightness": 8.0, "shader_flame_contrast": 2.0,
+                   "shader_glow_temperature": 1620.0,
+                   "shader_color_spread": 0.8, "shader_temperature_multiplier": 0.8,
+                   "shader_smoke_density": 2.0, "shader_scatter_glow": 0.15,
+                   "shader_smoke_color": (0.45,) * 3},
         # Disturb's largest swirls relative to the sources' largest dimension.
         "disturb_size_per_size": 0.3,
-        # Grain blocks in voxels at the preset resolution (two velocity cells).
-        "grain_size_voxels": 4.0,
+        # Grain blocks in voxels at the preset resolution (about 1.5 velocity
+        # cells: finer cauliflower than 4; 2026-11-05 Axiom pass).
+        "grain_size_voxels": 3.0,
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it.

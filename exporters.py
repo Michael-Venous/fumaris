@@ -326,6 +326,7 @@ def _domain_state(props, resolution_scale=1.0):
         "grain_layers": int(props.grain_layers),
         "disturb_min_speed": props.disturb_min_speed,
         "wisp_cooling": props.wisp_cooling,
+        "fuel_threshold": props.fuel_threshold,
         "advection_reflection": props.advection_reflection,
         "sharp_advection": props.sharp_advection,
         "gas_expansion": props.gas_expansion,

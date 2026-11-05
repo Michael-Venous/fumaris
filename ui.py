@@ -486,6 +486,15 @@ def _draw_domain(layout, scene, props):
             text=_bake_summary(props, "Baked" if completed else "Stopped"),
             icon="CHECKMARK" if completed else "PAUSE",
         )
+        if completed:
+            # Why Play is greyed out.
+            status.label(text="Delete the bake or pick a new cache slot to preview again")
+    elif is_previewing and not getattr(job, "_recording_enabled", False):
+        status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
+                     icon="PAUSE" if is_preview_paused else "PLAY")
+        # Why Bake is greyed out, and what the overlay is.
+        status.label(text="Stop the preview to bake")
+        status.label(text="Viewport preview approximates the Cycles render")
     if is_previewing and getattr(job, "_recording_enabled", False):
         if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):
             status.label(text="Finishing recorded frames…", icon="TIME")

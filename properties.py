@@ -598,6 +598,12 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
+    full_resolution_velocity: BoolProperty(
+        name="Full-Resolution Velocity",
+        description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in Simulation Memory) and more time per step",
+        default=False,
+    )
+
     small_sparse_blocks: BoolProperty(
         name="Small Sparse Blocks",
         description="Use smaller chunks of space to fit the smoke more closely. Usually slower for about the same GPU memory; can save memory for thin smoke when Air Margin is 0. Does not increase simulation detail",

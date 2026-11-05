@@ -69,6 +69,10 @@ All notable customer-facing changes are recorded here.
   Initial Velocity (or a velocity attribute) was stamped up to 8 times per
   step as if it moved; now once (12 Sub-Steps test: emitter GPU time 1.8 s →
   0.2 s, bake 26% less GPU time).
+- **Full-Resolution Velocity (Advanced).** Simulates motion at the full
+  Resolution instead of half: rounder, finer billows and far fewer
+  grid-aligned artifacts from Vorticity, at about twice the memory per block.
+  Off by default; changing it restarts the simulation.
 - **Appearance always drives the generated material,** also when that
   material is picked as the domain's Volume Material; new **Anisotropy**
   (default 0.3, forward scattering like real smoke).

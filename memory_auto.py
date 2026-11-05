@@ -62,9 +62,9 @@ def pool_dimensions(capacity, bits, max_texture_dimension=0):
     return x, y, z
 
 
-def _atlas_inventory(small_blocks, effector_sources, preview):
+def _atlas_inventory(small_blocks, effector_sources, preview, full_velocity=False):
     density = _density_bits(small_blocks)
-    velocity = _coarser(density)
+    velocity = density if full_velocity else _coarser(density)
     textures = [
         (density, _RGBA16F, 3),
         (density, _R8, 1),
@@ -102,7 +102,7 @@ def _leaves_per_block(bits):
 
 
 def estimate_bytes(capacity, *, small_blocks=False, effector_sources=True,
-                   preview=False, export_velocity=False):
+                   preview=False, export_velocity=False, full_velocity=False):
     """estimateSimulationBytes with the raw-texel fallback (no device query)."""
     capacity = max(1, int(capacity))
     density = _density_bits(small_blocks)
@@ -110,14 +110,14 @@ def estimate_bytes(capacity, *, small_blocks=False, effector_sources=True,
     total = _FIXED_OVERHEAD_BYTES + _PER_LOCATION_BUFFER_BYTES * capacity
     if preview:
         total += _PREVIEW_FIXED_BYTES
-    for bits, texel_bytes, count in _atlas_inventory(small_blocks, effector_sources, preview):
+    for bits, texel_bytes, count in _atlas_inventory(small_blocks, effector_sources, preview, full_velocity):
         raw = texel_bytes
         for axis in range(3):
             raw *= dims[axis] * ((1 << bits[axis]) + 2)
         total += (raw + raw // 10) * count
     if export_velocity:
         slots = dims[0] * dims[1] * dims[2]
-        leaves = slots * _leaves_per_block(_coarser(density)) * _VEC3_LEAF_BYTES
+        leaves = slots * _leaves_per_block(density if full_velocity else _coarser(density)) * _VEC3_LEAF_BYTES
         total += _buffer_growth_size(int(float(leaves) * (1.0 + _NANOVDB_NODE_SHARE)))
     return total
 
@@ -161,21 +161,22 @@ def block_cells(small_blocks):
 
 
 @functools.lru_cache(maxsize=64)
-def _cached_capacity(budget_bytes, small_blocks, effector_sources, preview, export_velocity):
+def _cached_capacity(budget_bytes, small_blocks, effector_sources, preview, export_velocity,
+                     full_velocity=False):
     return capacity_for_budget(
         budget_bytes, small_blocks=small_blocks, effector_sources=effector_sources,
-        preview=preview, export_velocity=export_velocity)
+        preview=preview, export_velocity=export_velocity, full_velocity=full_velocity)
 
 
 def region_for_budget(budget_bytes, resolution, *, small_blocks=False, effector_sources=True,
-                      preview=False, export_velocity=False):
+                      preview=False, export_velocity=False, full_velocity=False):
     """(voxel size, Flow locations, region volume) for a budget at a resolution.
 
     Cached because the panel redraws often while the inputs rarely change.
     """
     config = {"small_blocks": bool(small_blocks)}
     capacity = _cached_capacity(int(budget_bytes), bool(small_blocks), bool(effector_sources),
-                                bool(preview), bool(export_velocity))
+                                bool(preview), bool(export_velocity), bool(full_velocity))
     voxel = voxel_size(resolution)
     cells = capacity * block_cells(config["small_blocks"])
     return voxel, capacity, cells * voxel ** 3
@@ -300,6 +301,7 @@ def draw_budget_summary(layout, props, state=None):
     _voxel, _capacity, volume = region_for_budget(
         budget, props.resolution,
         small_blocks=bool(props.small_sparse_blocks),
+        full_velocity=bool(getattr(props, "full_resolution_velocity", False)),
         effector_sources=effectors,
         export_velocity=bool(getattr(props, "export_velocity_vdb", False)),
     )

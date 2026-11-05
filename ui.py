@@ -37,6 +37,47 @@ def _nested_foldout(layout, props, property_name, label):
     return column, opened
 
 
+_ROLE_ICONS = {"emitter": "OUTLINER_OB_FORCE_FIELD", "collider": "MOD_PHYSICS",
+               "effector": "FORCE_WIND", "outflow": "TRIA_DOWN_BAR"}
+
+
+def _draw_participant_list(layout, props):
+    """Objects in the domain's collections: select, enable, solo, and why an
+    object is not simulated."""
+    from .operators import solo_object_name
+    from .participants import participant_overview
+    layout.separator(factor=0.5)
+    content, opened = _nested_foldout(layout, props, "show_participant_list", "Objects")
+    if not opened:
+        return
+    rows = participant_overview(props)
+    if not rows:
+        content.label(text="No objects in these collections", icon="INFO")
+        return
+    solo = solo_object_name(props.id_data)
+    for obj, role, reason in rows:
+        usable = reason is None or reason == "disabled"
+        split = content.split(factor=0.8 if usable else 0.45, align=True)
+        name = split.row(align=True)
+        name.alignment = "LEFT"
+        icon = _ROLE_ICONS.get(role, "OBJECT_DATA")
+        select = name.operator("fumaris.participant_select", text=obj.name, icon=icon, emboss=False)
+        select.name = obj.name
+        row = split.row(align=True)
+        row.alignment = "RIGHT" if usable else "LEFT"
+        if not usable:
+            row.alert = True
+        if usable:
+            row.prop(obj.fumaris, "participant_enabled", text="")
+            solo_op = row.operator("fumaris.participant_solo", text="",
+                                   icon="SOLO_ON" if solo == obj.name else "SOLO_OFF", emboss=False)
+            solo_op.name = obj.name
+        else:
+            row.label(text=reason, icon="ERROR")
+    if len(rows) >= 60:
+        content.label(text="Showing the first 60 objects")
+
+
 def _is_particle_point_cloud(props):
     return (
         props.participant_type == "particles"
@@ -650,6 +691,7 @@ def _draw_domain(layout, scene, props):
     participants.prop(props, "collider_collection")
     participants.prop(props, "effector_collection")
     participants.prop(props, "outflow_collection")
+    _draw_participant_list(participants, props)
 
     behavior_box = layout.box()
     behavior_box.enabled = not is_baking

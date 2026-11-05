@@ -4,6 +4,9 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Participant list with Solo.** Participants > Objects lists the objects in
+  the domain's collections with Enabled and Solo, and says why an object is
+  skipped.
 - **Effectors are drawn in the viewport.** Influence radius, min distance,
   wind and force direction, and a vortex's cylinder, core and spin.
 - **Live preview with several 3D viewports or windows.** The preview stayed

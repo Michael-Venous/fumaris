@@ -1716,6 +1716,11 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
+    show_participant_list: BoolProperty(
+        name="Objects",
+        default=False,
+    )
+
     show_appearance: BoolProperty(
         name="Appearance",
         default=True,

@@ -52,6 +52,53 @@ def participants(domain_props):
     return result
 
 
+_ROLES = (
+    ("emitter_collection", "emitter"),
+    ("collider_collection", "collider"),
+    ("effector_collection", "effector"),
+    ("outflow_collection", "outflow"),
+)
+_ROLE_NAMES = {"emitter": "Emitter", "collider": "Collider", "effector": "Effector",
+               "outflow": "Outflow", "domain": "Domain", "none": "nothing"}
+
+
+def participant_overview(domain_props, limit=60):
+    """(object, role, reason) for the objects in the domain's collections.
+
+    reason is None for objects the simulation uses, otherwise why it skips
+    them (wrong Fumaris type, unsupported source, disabled). At most limit
+    rows; the panel draws this, so it never evaluates geometry.
+    """
+    rows = []
+    seen = set()
+    for attribute, role in _ROLES:
+        collection = getattr(domain_props, attribute, None)
+        if collection is None:
+            continue
+        for _path, objects in collection_tree(collection):
+            for obj in objects:
+                key = obj.as_pointer()
+                if key in seen or not hasattr(obj, "fumaris"):
+                    continue
+                seen.add(key)
+                kind = obj.fumaris.smoke_object_type
+                if kind != role:
+                    found = _ROLE_NAMES.get(kind, kind)
+                    reason = (f"not set as a Fumaris {_ROLE_NAMES[role]}" if kind == "none"
+                              else f"a {found}, not an {_ROLE_NAMES[role]}"
+                              if _ROLE_NAMES[role][0] in "EO" else f"a {found}, not a {_ROLE_NAMES[role]}")
+                elif participant_for_object(obj, role, 0, "") is None:
+                    reason = "unsupported source type for this object"
+                elif not obj.fumaris.participant_enabled:
+                    reason = "disabled"
+                else:
+                    reason = None
+                rows.append((obj, role, reason))
+                if len(rows) >= limit:
+                    return rows
+    return rows
+
+
 def collection_tree(collection, parent_path=""):
     path = f"{parent_path}/{collection.name}" if parent_path else collection.name
     objects = tuple(sorted(collection.objects, key=lambda item: item.name))

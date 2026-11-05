@@ -810,6 +810,77 @@ class FUMARIS_OT_preview_show_here(Operator):
         return {"FINISHED"}
 
 
+_SOLO_KEY = "fumaris_solo"
+
+
+class FUMARIS_OT_participant_select(Operator):
+    bl_idname = "fumaris.participant_select"
+    bl_label = "Select Participant"
+    bl_description = "Select this object (Shift: add to the selection)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty()
+
+    def invoke(self, context, event):
+        obj = bpy.data.objects.get(self.name)
+        if obj is None or obj.name not in context.view_layer.objects:
+            self.report({"WARNING"}, f"{self.name} is not in this view layer")
+            return {"CANCELLED"}
+        if not event.shift:
+            for other in context.selected_objects:
+                other.select_set(False)
+        obj.select_set(True)
+        # Keep the domain's panel: select without making the object active.
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_participant_solo(Operator):
+    bl_idname = "fumaris.participant_solo"
+    bl_label = "Solo Participant"
+    bl_description = "Simulate only this participant of its kind (other emitters, colliders, effectors or outflows are disabled); click again to restore them. Works while previewing"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _active_domain(context) is not None
+
+    def execute(self, context):
+        from .participants import participant_overview
+        domain = _active_domain(context)
+        rows = participant_overview(domain.fumaris, limit=100000)
+        solo = domain.get(_SOLO_KEY)
+        if solo is not None:
+            # Restore the saved states, whichever object is clicked.
+            saved = dict(solo.get("saved", {}))
+            for obj, _role, _reason in rows:
+                if obj.name in saved:
+                    obj.fumaris.participant_enabled = bool(saved[obj.name])
+            previous = solo.get("object")
+            del domain[_SOLO_KEY]
+            if previous == self.name:
+                return {"FINISHED"}
+        target = bpy.data.objects.get(self.name)
+        if target is None:
+            return {"CANCELLED"}
+        role = next((role for obj, role, _ in rows if obj == target), None)
+        saved = {}
+        for obj, item_role, reason in rows:
+            # Only participants the simulation can use (enabled or not).
+            if item_role != role or reason not in (None, "disabled"):
+                continue
+            saved[obj.name] = bool(obj.fumaris.participant_enabled)
+            obj.fumaris.participant_enabled = obj == target
+        domain[_SOLO_KEY] = {"object": target.name, "saved": saved}
+        return {"FINISHED"}
+
+
+def solo_object_name(domain):
+    solo = domain.get(_SOLO_KEY) if domain is not None else None
+    return solo.get("object") if solo is not None else None
+
+
 def _draw_view_menu(self, _context):
     self.layout.separator()
     self.layout.operator("fumaris.preview_show_here", icon="HIDE_OFF")
@@ -1175,6 +1246,8 @@ CLASSES = (
     FUMARIS_OT_preview_pause,
     FUMARIS_OT_preview_stop,
     FUMARIS_OT_preview_show_here,
+    FUMARIS_OT_participant_select,
+    FUMARIS_OT_participant_solo,
     FUMARIS_OT_delete,
     FUMARIS_OT_stop,
 )

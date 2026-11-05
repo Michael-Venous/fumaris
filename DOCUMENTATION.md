@@ -582,6 +582,15 @@ Geometry Nodes Volume emission is experimental because Blender currently
 exposes evaluated volume grids through a temporary OpenVDB staging path rather
 than a direct voxel buffer. File-based OpenVDB emission does not use that path.
 
+### Participant list
+
+`Objects` under Participants lists everything in the domain's collections.
+Click a name to select it (Shift adds to the selection), toggle Enabled, or
+Solo one emitter, collider, effector or outflow: the others of its kind are
+disabled until you click Solo again, also while previewing. Objects the
+simulation skips are shown in red with the reason, for example an object in
+the emitter collection that is not set as a Fumaris Emitter.
+
 ## Colliders, Effectors, And Outflows
 
 Assign optional collections to the domain's participant fields.

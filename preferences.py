@@ -100,6 +100,17 @@ class FumarisPreferences(bpy.types.AddonPreferences):
             text=error or "Bundled bridge and Flow runtime found",
             icon="ERROR" if error else "CHECKMARK",
         )
+        if not error:
+            # Cached loader check (Linux only): missing libraries, old glibc,
+            # Vulkan drivers. Reading ELF headers, nothing is run.
+            from .linux_runtime import runtime_diagnostics
+            executable = executable_path()
+            linux = runtime_diagnostics(executable, process_environment(executable))
+            if linux is not None:
+                row = layout.row()
+                row.alert = not linux["ok"]
+                row.label(text=f"Linux runtime: {linux['summary']}",
+                          icon="CHECKMARK" if linux["ok"] and not linux["warnings"] else "ERROR" if not linux["ok"] else "INFO")
 
 
 def register():

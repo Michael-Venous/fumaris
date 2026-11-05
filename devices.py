@@ -26,7 +26,9 @@ def discover_devices(executable, environment):
         **({"creationflags": subprocess.CREATE_NO_WINDOW} if hasattr(subprocess, "CREATE_NO_WINDOW") else {}),
     )
     if result.returncode:
-        raise RuntimeError(result.stderr.strip()[-1000:] or "GPU discovery failed; update the Fumaris bridge")
+        from .linux_runtime import explain_launch_failure
+        message = result.stderr.strip()[-1000:] or "GPU discovery failed; update the Fumaris bridge"
+        raise RuntimeError(explain_launch_failure(executable, environment, message, result.stderr))
     try:
         devices = json.loads(result.stdout)["devices"] or []
         if not isinstance(devices, list):

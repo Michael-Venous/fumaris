@@ -204,6 +204,15 @@ def report(domain):
         "memory_note": "Flow allocation counters are not total GPU usage/free VRAM. RAM is process RSS; shared pages may be counted twice.",
         "timing_note": "Texture upload is the latest completed Blender draw upload, not necessarily the reported simulation frame. GPU timings may describe an earlier completed frame.",
     }
+    try:
+        from .linux_runtime import runtime_diagnostics
+        from .utils import executable_path, process_environment
+        executable = executable_path()
+        linux = runtime_diagnostics(executable, process_environment(executable))
+        if linux is not None:
+            data["linux_runtime"] = linux
+    except Exception:
+        pass
     if state:
         data.update({
             "domain": domain.name,

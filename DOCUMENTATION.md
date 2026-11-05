@@ -432,8 +432,9 @@ leaves the surface at that speed and spreads out evenly, falling off with
 distance. A closed mesh that grows or shrinks (animated scale, shape keys,
 modifiers) pushes or pulls the smoke around it the same way. On open meshes,
 particle and Geometry Nodes mesh instances it pushes along averaged vertex
-normals, which can be uneven across faces and hard edges. Primitive and
-point/volume modes do not support this control.
+normals, which can be uneven across faces and hard edges. Sphere and Box
+emitters made in 1.4 or later blow out evenly from their whole volume.
+Point and volume modes do not support this control.
 
 ### Source Operations
 

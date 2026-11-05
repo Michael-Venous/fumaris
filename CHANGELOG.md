@@ -22,7 +22,8 @@ All notable customer-facing changes are recorded here.
 - **Emitters push smoke physically.** Expansion (formerly Divergence) is now a
   rate per second that gives the same result at any Resolution and Sub-Steps.
   Normal Velocity on a closed mesh now really blows the air out (before, the
-  pressure solve cancelled most of it), and closed meshes that grow or shrink
+  pressure solve cancelled most of it), Sphere and Box emitters support it too,
+  and closed meshes that grow or shrink
   push or pull the smoke around them. Quick Setups use smaller values to
   match. Emitters in saved scenes keep the old behaviour.
 - **Fewer grid-shaped rectangles in fire at high Vorticity.** Vorticity now

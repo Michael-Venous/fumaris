@@ -220,7 +220,8 @@ def _draw_emitter(layout, obj, props):
     box.prop(props, "velocity")
     if (props.participant_type in {"mesh", "collection_mesh"}
             or (props.participant_type == "particles" and props.particle_subtype == "mesh")
-            or (props.participant_type == "geometry_nodes" and props.gn_subtype == "mesh")):
+            or (props.participant_type == "geometry_nodes" and props.gn_subtype == "mesh")
+            or (props.participant_type in {"sphere", "box"} and props.emitter_settings_version >= 1)):
         box.prop(props, "normal_velocity")
     box.prop(props, "motion_velocity_scale")
 

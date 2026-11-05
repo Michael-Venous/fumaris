@@ -4,6 +4,8 @@ import sys
 from array import array
 from dataclasses import dataclass
 
+import math
+
 import bpy
 from mathutils import Matrix, Vector
 
@@ -505,6 +507,10 @@ def _sphere_state(participant, depsgraph):
     )
     if not enabled:
         participant.pop("previous_matrix", None)
+    elif participant["role"] == "emitter":
+        r = max(radius, 0.001)
+        channels.update(_primitive_surface_source(
+            props, 4.0 * math.pi * r * r, 4.0 / 3.0 * math.pi * r ** 3))
 
     return {
         "id": participant["id"],
@@ -544,6 +550,11 @@ def _box_state(participant, depsgraph):
     )
     if not enabled:
         participant.pop("previous_matrix", None)
+    elif participant["role"] == "emitter":
+        scale = matrix.to_scale()
+        x, y, z = (2.0 * abs(h * s) for h, s in zip(half_size, scale))
+        channels.update(_primitive_surface_source(
+            props, 2.0 * (x * y + y * z + z * x), x * y * z))
     return {
         "id": participant["id"],
         "role": participant["role"],
@@ -885,6 +896,22 @@ def _closed_surface_source(participant, props, matrix):
         "enclosed_volume": abs(volume),
         "shell_inside": max(0.0, -minimum),
         "shell_outside": max(0.0, maximum),
+    }
+
+
+def _primitive_surface_source(props, area, volume):
+    """Normal Velocity of a box or sphere emitter as a volume source: they fill
+    their whole volume, so the flux v x area spreads over it."""
+    if getattr(props, "emitter_settings_version", 0) < 1 or area <= 0.0 or volume <= 0.0:
+        return {}
+    if abs(float(props.normal_velocity)) < 1e-6:
+        return {}
+    return {
+        "surface_flux": float(props.normal_velocity) * area,
+        "surface_area": area,
+        "enclosed_volume": volume,
+        "shell_inside": 1.0e9,
+        "shell_outside": 0.0,
     }
 
 

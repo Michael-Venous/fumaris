@@ -1229,6 +1229,68 @@ class FUMARIS_OT_add_sparks(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_preset_save(Operator):
+    bl_idname = "fumaris.preset_save"
+    bl_label = "Save Preset"
+    bl_description = "Save this object's Fumaris settings that differ from the defaults as a preset (domain or source), available in every file"
+
+    name: bpy.props.StringProperty(name="Name", default="My Preset")
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return bool(obj and hasattr(obj, "fumaris") and obj.fumaris.smoke_object_type != "none")
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from .presets import save_preset
+        path, count = save_preset(context.object.fumaris, self.name)
+        self.report({"INFO"}, f"Saved preset '{self.name}' ({count} settings)")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_preset_apply(Operator):
+    bl_idname = "fumaris.preset_apply"
+    bl_label = "Apply Preset"
+    bl_description = "Apply a saved preset to this object"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(name="Name")
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return bool(obj and hasattr(obj, "fumaris") and obj.fumaris.smoke_object_type != "none")
+
+    def execute(self, context):
+        from .presets import apply_preset
+        try:
+            count = apply_preset(context.object.fumaris, self.name)
+        except OSError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Applied preset '{self.name}' ({count} settings)")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_preset_delete(Operator):
+    bl_idname = "fumaris.preset_delete"
+    bl_label = "Delete Preset"
+    bl_description = "Delete a saved preset"
+
+    name: bpy.props.StringProperty(name="Name")
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_confirm(self, _event)
+
+    def execute(self, context):
+        from .presets import delete_preset
+        delete_preset(context.object.fumaris, self.name)
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_cache_protect(Operator):
     bl_idname = "fumaris.cache_protect"
     bl_label = "Protect"
@@ -1420,6 +1482,9 @@ CLASSES = (
     FUMARIS_OT_cache_slot_restore_settings,
     FUMARIS_OT_cache_make_lighter,
     FUMARIS_OT_add_sparks,
+    FUMARIS_OT_preset_save,
+    FUMARIS_OT_preset_apply,
+    FUMARIS_OT_preset_delete,
     FUMARIS_OT_cache_protect,
     FUMARIS_OT_preview_play,
     FUMARIS_OT_preview_pause,

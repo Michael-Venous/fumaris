@@ -864,6 +864,10 @@ class FUMARIS_PT_main(Panel):
             header.enabled = active_mode() != "baking"
         header.label(text=obj.name, icon="OBJECT_DATA")
         header.prop(props, "smoke_object_type", text="Flow Object")
+        if props.smoke_object_type != "none":
+            presets = header.row(align=True)
+            presets.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")
+            presets.operator("fumaris.preset_save", text="", icon="ADD")
         if props.smoke_object_type == "none":
             setup = header.row()
             setup.enabled = active_job() is None
@@ -889,7 +893,25 @@ class FUMARIS_PT_main(Panel):
                 content.label(text="Excluded from Fumaris simulations")
 
 
-CLASSES = (FUMARIS_PT_main,)
+class FUMARIS_MT_presets(bpy.types.Menu):
+    bl_label = "Fumaris Presets"
+    bl_idname = "FUMARIS_MT_presets"
+
+    def draw(self, context):
+        from .presets import list_presets, preset_role
+        layout = self.layout
+        obj = context.object
+        names = list_presets(preset_role(obj.fumaris)) if obj else []
+        if not names:
+            layout.label(text="No saved presets: use + to save one")
+            return
+        for name in names:
+            row = layout.row(align=True)
+            row.operator("fumaris.preset_apply", text=name).name = name
+            row.operator("fumaris.preset_delete", text="", icon="X").name = name
+
+
+CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main)
 
 
 def register():

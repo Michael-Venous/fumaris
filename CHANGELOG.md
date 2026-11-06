@@ -4,6 +4,10 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **User presets.** Save a domain's or a source's settings as a preset
+  (Presets menu and + next to Flow Object) and apply it to any object in any
+  file. Only settings that differ from the defaults are stored.
+
 - **Resume Bake.** After Stop (or a crash), the play button next to Bake
   continues the bake: frames already on disk are simulated again without
   writing them, then baking continues, giving exactly the frames a full bake

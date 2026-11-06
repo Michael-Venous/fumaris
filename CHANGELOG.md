@@ -4,6 +4,34 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Cleaner pressure solve (checkerboard filter).** The velocity is filtered
+  along each axis before the pressure correction, which removes the
+  cell-sized odd-even pattern the solve cannot see: about 30% less leftover
+  compression, finer smoke detail, and no more straight-edged rectangles in
+  flames at high Vorticity. About 2% slower. Existing scenes look slightly
+  different.
+- **Flame Sheets (Combustion, Realistic).** Fuel burns only once it has
+  thinned below this amount, so dense fuel burns in thin sheets where it
+  mixes with air: dark, sooty puffs with glowing seams inside the fireball
+  instead of one evenly burning ball. Off by default; the Explosion Quick
+  Setup uses 1.
+- **Colour Spread (fire material and live preview).** How far fire colour
+  moves with temperature around Full Glow: below 1 gives a camera's
+  compressed fire palette (orange body, no white-hot or deep-red extremes).
+- **Takes.** Every bake stores the settings it was baked with in its cache
+  slot; **Restore Settings from Slot** (Output, next to the slot name) puts
+  the domain and its sources back to them.
+- **Make Lighter Copy (Output).** Copies a bake into a new cache slot at half
+  the resolution without its faintest smoke: files about 7x smaller for
+  layout and render tests.
+- **Joined particle trails.** Fast point and particle emitters stamp the part
+  of their path covered in each sub-step, so trails (such as Debris Trails)
+  are continuous instead of a row of beads.
+- **Influence Only** now works for particle and point emitters too.
+- **Explosion Quick Setup:** Flame Sheets 1, finer Grain (1.5 velocity cells)
+  and a new look: dense dark soot over glowing crevices (Contrast 4, Colour
+  Spread 0.8, little Scatter Glow).
+
 - **Stronger pressure solve.** Two multigrid cycles with two smoothing passes
   per level: 15–25% less leftover compression, livelier motion (more kinetic
   energy, taller plumes, bigger mushroom caps) for 5–20% more simulation time.

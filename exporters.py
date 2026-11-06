@@ -35,7 +35,7 @@ from .participants import (
     participants as _participants,
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
-from .protocol import split_scene_depth
+from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
 from .utils import executable_path, output_directory_for_object, simulation_frame_range
 
 _FRAME_ZERO_VERSION = 1 << 40
@@ -187,14 +187,13 @@ def build_frame(
     _BURN_DOMAIN = getattr(owner, "fumaris", None)
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
-    preview_request, scene_depth = split_scene_depth(volume_preview or {"valid": False})
+    preview_request = volume_preview or {"valid": False}
     preview_mode = "volume" if preview_enabled and preview_request.get("valid", False) else "none"
-    if scene_depth is not None and preview_mode == "volume":
-        preview_request = {
-            **preview_request,
-            "scene_depth": {"offset": len(payload), "count": int(scene_depth.size)},
-        }
-        payload.extend(scene_depth.tobytes())
+    if preview_mode == "volume":
+        preview_request = pack_preview_payload(preview_request, payload)
+    else:
+        preview_request, _depth = split_scene_depth(preview_request)
+        preview_request = {key: value for key, value in preview_request.items() if key != DISPLAY_LUT_KEY}
     meshes = []
     boxes = []
     spheres = []

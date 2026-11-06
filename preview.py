@@ -4,8 +4,8 @@ from array import array
 import bpy
 import gpu
 from mathutils import Matrix
-from . import diagnostics, scene_lighting
-from .protocol import SCENE_DEPTH_KEY
+from . import diagnostics, display_lut, scene_lighting
+from .protocol import DISPLAY_LUT_KEY, SCENE_DEPTH_KEY
 from .utils import WIEN_KELVIN, flame_temperature_range
 
 try:
@@ -91,8 +91,19 @@ def capture_volume_preview(context, domain, target=None):
         "field_view": getattr(props, "preview_field_view", "look"),
         # sun, world, anisotropy, volume bounces and light_direction
         **scene_lighting.preview_lighting(context, props, domain),
+        **_display_lut_request(context, props),
         **_scene_depth_request(props, int(region.as_pointer()), width, height),
     }
+
+
+def _display_lut_request(context, props):
+    """Scene tone mapping: Blender's own view transform as a table (display_lut.py)."""
+    if props.preview_tone_mapping != "scene":
+        return {}
+    key, table = display_lut.scene_display_lut(context.scene)
+    if key is None:
+        return {}
+    return {"display_lut_key": key, "display_lut_size": display_lut.SIZE, DISPLAY_LUT_KEY: table}
 
 
 def _scene_exposure(context):
@@ -167,6 +178,7 @@ def volume_preview_signature(preview):
         preview.get("field_view", "look"),
         rounded(preview.get("light_direction", (1.0, 1.0, 1.0))),
         bool(preview.get("physical_lighting", False)),
+        preview.get("display_lut_key"),
         rounded(preview.get("sun_radiance", (0.0, 0.0, 0.0))),
         rounded(preview.get("ambient_radiance", (0.0, 0.0, 0.0))),
         round(float(preview.get("phase_g", 0.0)), 7),

@@ -28,6 +28,36 @@ CACHE_FLUSHED = 108
 SCENE_DEPTH_KEY = "_scene_depth"
 
 
+# Private key holding the scene view transform table (display_lut.py).
+DISPLAY_LUT_KEY = "_display_lut"
+# Table last packed for the running bridge; the bridge keeps it by key, so it
+# is sent once. BridgeWorker.start() resets it for a new bridge process.
+_PACKED_DISPLAY_LUT = [None]
+
+
+def reset_packed_display_lut():
+    _PACKED_DISPLAY_LUT[0] = None
+
+
+def pack_preview_payload(preview, payload):
+    """JSON-safe preview request; its scene depth and display table go into payload."""
+    preview, depth = split_scene_depth(preview)
+    if not preview:
+        return preview
+    table = preview.get(DISPLAY_LUT_KEY)
+    if table is not None:
+        preview = {key: value for key, value in preview.items() if key != DISPLAY_LUT_KEY}
+    if depth is not None:
+        preview["scene_depth"] = {"offset": len(payload), "count": int(depth.size)}
+        payload.extend(depth.tobytes())
+    key = preview.get("display_lut_key")
+    if table is not None and key and key != _PACKED_DISPLAY_LUT[0]:
+        preview["display_lut"] = {"offset": len(payload), "count": int(table.size)}
+        payload.extend(table.astype("<f4").tobytes())
+        _PACKED_DISPLAY_LUT[0] = key
+    return preview
+
+
 class ProtocolError(RuntimeError):
     pass
 

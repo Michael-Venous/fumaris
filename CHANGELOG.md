@@ -22,6 +22,12 @@ All notable customer-facing changes are recorded here.
   does in Cycles, and its colour now uses Blender's own blackbody. Lighting:
   Custom keeps a preview-only light. Exposure follows the scene's exposure.
 
+- **Preview tone mapping follows Blender's colour management exactly.** With
+  Tone Mapping: Scene the preview uses the scene's own view transform, look and
+  display (AgX, Filmic, ACES, Khronos PBR Neutral, False Color, looks such as
+  Punchy) through Blender's OCIO configuration, so highlights and colours match
+  the render.
+
 - **Preview Standard tone mapping.** The old Off mode is now Standard (sRGB,
   like Blender's Standard view transform), so it is no longer much darker
   than AgX and Filmic.

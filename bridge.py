@@ -33,6 +33,8 @@ from .protocol import (
     SESSION_END,
     SESSION_RESET,
     read_message,
+    pack_preview_payload,
+    reset_packed_display_lut,
     split_scene_depth,
     write_message,
 )
@@ -63,18 +65,16 @@ class BridgeWorker:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
+        reset_packed_display_lut()
         self._thread.start()
 
     def send_frame(self, frame):
         self._requests.put_nowait((FRAME, frame.header, frame.payload))
 
     def send_preview(self, preview):
-        preview, depth = split_scene_depth(preview)
-        payload = b""
-        if depth is not None:
-            payload = depth.tobytes()
-            preview = {**preview, "scene_depth": {"offset": 0, "count": int(depth.size)}}
-        self._requests.put_nowait((PREVIEW_RENDER, preview, payload))
+        payload = bytearray()
+        preview = pack_preview_payload(preview, payload)
+        self._requests.put_nowait((PREVIEW_RENDER, preview, bytes(payload)))
 
     def send_cache_flush(self):
         self._requests.put_nowait((CACHE_FLUSH, {}, b""))

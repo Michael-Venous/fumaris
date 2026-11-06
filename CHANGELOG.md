@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Faster bakes.** VDB frames are converted and written by more threads (half
+  the CPU cores, up to 12): on a 24-core machine a 512 bake went from 19.9 to
+  12.3 ms a frame and a 768 bake from 61.6 to 33.2 ms, with identical files.
+  Memory for frames being written stays capped at an eighth of system RAM.
+
 - **Coarse grids rise like fine ones.** Vorticity is now weakened in
   proportion below Resolution 256 (and at a low Preview Resolution), where
   it used to swirl so hard that plumes stalled: a smoke plume at 128 rose

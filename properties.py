@@ -523,6 +523,7 @@ class FumarisSettings(PropertyGroup):
         items=[
             ("look", "Look", "Smoke and fire as the Appearance settings render them"),
             ("speed", "Speed", "How fast the air moves, drawn as fire: slow air is dark, about 5 m/s glows at Full Glow"),
+            ("expansion", "Expansion", "Where burning gas expands (Gas Expansion), drawn as fire: about 4 per second glows at Full Glow"),
         ],
         default="look",
     )

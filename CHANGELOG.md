@@ -4,6 +4,9 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Expansion view (preview Show).** Shows where burning gas expands, drawn as
+  fire, to tune Gas Expansion and fuel placement.
+
 - **User presets.** Save a domain's or a source's settings as a preset
   (Presets menu and + next to Flow Object) and apply it to any object in any
   file. Only settings that differ from the defaults are stored.

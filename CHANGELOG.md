@@ -28,6 +28,10 @@ All notable customer-facing changes are recorded here.
   Punchy) through Blender's OCIO configuration, so highlights and colours match
   the render.
 
+- **Scatter Glow in the preview.** The live preview now draws the material's
+  Scatter Glow (glow from nearby fire in cooler smoke), so smoke around flames
+  glows in the viewport as it does in renders.
+
 - **Preview Standard tone mapping.** The old Off mode is now Standard (sRGB,
   like Blender's Standard view transform), so it is no longer much darker
   than AgX and Filmic.

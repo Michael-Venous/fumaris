@@ -11,6 +11,7 @@ the same values). Drawing never starts a subprocess.
 """
 import functools
 import os
+import sys
 import threading
 
 AUTO_FRACTION = 0.8
@@ -31,7 +32,8 @@ _FLOW_UNITS_PER_RESOLUTION = 32.0
 
 # Border-free bricks (NvFlowSparsePool.h): 16^3 blocks packed edge to edge;
 # FUMARIS_EXP_BORDERED=1 restores Flow's 32x16x16 blocks with a one-cell border.
-_BORDER = 1 if os.environ.get("FUMARIS_EXP_BORDERED", "0") not in ("", "0") else 0
+# macOS keeps the bordered atlas (the bridge sets the same default there).
+_BORDER = 1 if os.environ.get("FUMARIS_EXP_BORDERED", "1" if sys.platform == "darwin" else "0") not in ("", "0") else 0
 
 
 def _density_bits(small_blocks):

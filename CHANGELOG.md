@@ -4,6 +4,33 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Live preview lit like Cycles.** The preview now uses the scene's
+  lighting in Cycles units: the strongest light (or the sun in an HDRI world)
+  with shadows and the material's anisotropy, the world's light where the
+  smoke sees the sky, fire lighting the smoke around it, and multiple
+  scattering when Cycles has volume bounces. Fire glows through smoke as it
+  does in Cycles, and its colour now uses Blender's own blackbody. Lighting:
+  Custom keeps a preview-only light. Exposure follows the scene's exposure.
+
+- **Preview Standard tone mapping.** The old Off mode is now Standard (sRGB,
+  like Blender's Standard view transform), so it is no longer much darker
+  than AgX and Filmic.
+
+- **Tidier Preview Settings.** Quality, Lighting and Color groups with related
+  settings side by side; Shadow Min Light and Light Scattering are gone
+  (physical lighting replaces them).
+
+- **Voxel count in Diagnostics**; the voxel size line under Resolution is gone
+  (Diagnostics still lists it).
+
+- **Fast Cycles Volumes removed.** Fumaris no longer changes Cycles' volume
+  settings on import or shows them in the Output panel; use Render Properties.
+
+- **Faster border-free bricks, now on macOS too.** Advection reads its
+  neighbourhood through the block table instead of a hash lookup per sample:
+  about 13% less simulation time than the old bordered layout on an RTX 4060 Ti,
+  6% on an Apple M4 and 2% on Intel Arc, with about 35% more smoke per GB.
+
 - **Physical Expansion and Normal Velocity for particle and point emitters.**
   New point emitters expand per second like mesh emitters, and Normal
   Velocity pushes outward from each point (measured within 5% of an ideal

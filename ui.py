@@ -399,6 +399,13 @@ def _bake_summary(props, state):
     )
 
 
+def _compact_count(value):
+    for scale, suffix in ((1e9, " B"), (1e6, " M"), (1e3, " k")):
+        if value >= scale:
+            return f"{value / scale:.3g}{suffix}"
+    return f"{int(value)}"
+
+
 def _draw_diagnostics(layout, props):
     state = diagnostics.snapshot(props.id_data)
     # Use the panel background, darker than the surrounding raised boxes in
@@ -424,6 +431,9 @@ def _draw_diagnostics(layout, props):
         capacity = number("flow_active_block_capacity")
         if capacity:
             box.label(text=f"Sparse blocks: {int(number('flow_active_blocks')):,} / {int(capacity):,}")
+        cells = number("flow_active_cells")
+        if cells:
+            box.label(text=f"Voxels: {_compact_count(cells)}")
         if opened:
             box.label(text=f"Effective resolution: {number('flow_effective_resolution'):.0f} / {number('flow_requested_resolution'):.0f}")
             box.label(text=f"CFL (previous field): {number('flow_previous_courant'):.2f} cells/step")
@@ -695,15 +705,6 @@ def _draw_domain(layout, scene, props):
         output.prop(props, "export_burn_vdb")
         output.prop(props, "export_velocity_vdb")
         output.prop(props, "glow_radius")
-        cycles = getattr(bpy.context.scene, "cycles", None)
-        if cycles is not None and hasattr(cycles, "volume_biased"):
-            # Blender's own scene settings, shown here: they decide how fast
-            # Cycles renders the smoke, in the viewport above all.
-            output.separator()
-            output.prop(cycles, "volume_biased", text="Fast Cycles Volumes")
-            step = output.row(align=True)
-            step.enabled = cycles.volume_biased
-            step.prop(cycles, "volume_preview_step_rate", text="Viewport Step Rate")
         if props.volume_material is None:
             output.label(
                 text="Generated material always includes temperature",
@@ -713,32 +714,35 @@ def _draw_domain(layout, scene, props):
     preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
     if preview_open:
         preview.prop(props, "preview_field_view")
-        preview.separator()
+
         preview.label(text="Quality")
-        preview.prop(props, "preview_resolution_percent", slider=True)
-        preview.prop(props, "preview_image_scale", slider=True)
-        preview.prop(props, "preview_max_ray_steps")
-        preview.prop(props, "preview_all_viewports")
-        preview.separator()
-        preview.label(text="Exposure")
-        preview.prop(props, "preview_tone_mapping", text="")
-        preview.prop(props, "preview_exposure", slider=True)
-        preview.separator()
+        quality = preview.column(align=True)
+        sharpness = quality.row(align=True)
+        sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
+        sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
+        steps = quality.row(align=True)
+        steps.prop(props, "preview_max_ray_steps")
+        steps.prop(props, "preview_all_viewports", toggle=True)
+
         preview.label(text="Lighting")
-        preview.prop(props, "preview_occlusion")
-        flame_light = preview.row(align=True)
-        flame_light.enabled = props.shader_flame_enabled
-        flame_light.prop(props, "preview_flame_light", slider=True)
-        preview.prop(props, "preview_shadows")
-        light = preview.column(align=True)
-        light.enabled = props.preview_shadows
-        light.prop(props, "preview_shadow_min_light", slider=True)
-        light.prop(props, "preview_light_scattering", slider=True)
-        light.separator()
-        light.label(text="Light Direction")
-        light.prop(props, "preview_light_azimuth")
-        light.prop(props, "preview_light_elevation")
-        preview.separator()
+        lighting = preview.column(align=True)
+        lighting.row(align=True).prop(props, "preview_lighting", expand=True)
+        if props.preview_lighting == "CUSTOM":
+            direction = lighting.row(align=True)
+            direction.prop(props, "preview_light_azimuth")
+            direction.prop(props, "preview_light_elevation")
+            lighting.prop(props, "preview_light_strength")
+        toggles = lighting.row(align=True)
+        toggles.prop(props, "preview_shadows", toggle=True)
+        toggles.prop(props, "preview_occlusion", toggle=True)
+        fire = lighting.row(align=True)
+        fire.enabled = props.shader_flame_enabled
+        fire.prop(props, "preview_fire_lighting", slider=True)
+
+        preview.label(text="Color")
+        color = preview.row(align=True)
+        color.prop(props, "preview_tone_mapping", text="")
+        color.prop(props, "preview_exposure_offset", slider=True)
         preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
 
     participants = layout.box()

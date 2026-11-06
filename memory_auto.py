@@ -11,7 +11,6 @@ the same values). Drawing never starts a subprocess.
 """
 import functools
 import os
-import sys
 import threading
 
 AUTO_FRACTION = 0.8
@@ -32,8 +31,7 @@ _FLOW_UNITS_PER_RESOLUTION = 32.0
 
 # Border-free bricks (NvFlowSparsePool.h): 16^3 blocks packed edge to edge;
 # FUMARIS_EXP_BORDERED=1 restores Flow's 32x16x16 blocks with a one-cell border.
-# macOS keeps the bordered atlas (the bridge sets the same default there).
-_BORDER = 1 if os.environ.get("FUMARIS_EXP_BORDERED", "1" if sys.platform == "darwin" else "0") not in ("", "0") else 0
+_BORDER = 1 if os.environ.get("FUMARIS_EXP_BORDERED", "0") not in ("", "0") else 0
 
 
 def _density_bits(small_blocks):
@@ -308,9 +306,7 @@ def draw_budget_summary(layout, props, state=None):
             column.label(text=f"Auto: {AUTO_FRACTION:.0%} of free GPU memory at start", icon="MEMORY")
         else:
             column.label(text=f"Auto: {budget / (1 << 30):.1f} GB ({when})", icon="MEMORY")
-    voxel = voxel_size(props.resolution)
     if budget is None:
-        column.label(text=f"Voxel {_format_length(voxel)}")
         return
     effectors = props.effector_collection is not None and len(props.effector_collection.all_objects) > 0
     _voxel, _capacity, volume = region_for_budget(
@@ -319,7 +315,7 @@ def draw_budget_summary(layout, props, state=None):
         effector_sources=effectors,
         export_velocity=bool(getattr(props, "export_velocity_vdb", False)),
     )
-    column.label(text=f"Voxel {_format_length(voxel)} · space ≈ {_format_volume(volume)} "
+    column.label(text=f"Space ≈ {_format_volume(volume)} "
                       f"({_format_length(volume ** (1.0 / 3.0))} cube)")
 
 

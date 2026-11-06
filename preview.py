@@ -4,7 +4,7 @@ from array import array
 import bpy
 import gpu
 from mathutils import Matrix
-from . import diagnostics
+from . import diagnostics, scene_lighting
 from .protocol import SCENE_DEPTH_KEY
 from .utils import WIEN_KELVIN, flame_temperature_range
 
@@ -85,22 +85,32 @@ def capture_volume_preview(context, domain, target=None):
         "shadows": bool(props.preview_shadows),
         "shadow_min_light": float(props.preview_shadow_min_light),
         "light_scattering": float(props.preview_light_scattering),
-        "flame_light": float(props.preview_flame_light),
-        "exposure": float(props.preview_exposure),
+        "flame_light": float(props.preview_fire_lighting),
+        "exposure": max(-10.0, min(10.0, _scene_exposure(context) + float(props.preview_exposure_offset))),
         "tone_mapping": _preview_tone_mapping(context, props),
         "field_view": getattr(props, "preview_field_view", "look"),
-        "light_direction": list(props.preview_light_direction),
+        # sun, world, anisotropy, volume bounces and light_direction
+        **scene_lighting.preview_lighting(context, props, domain),
         **_scene_depth_request(props, int(region.as_pointer()), width, height),
     }
 
 
+def _scene_exposure(context):
+    view = getattr(context.scene, "view_settings", None)
+    return float(getattr(view, "exposure", 0.0)) if view is not None else 0.0
+
+
 def _preview_tone_mapping(context, props):
     mode = props.preview_tone_mapping
+    if mode == "none":
+        return "standard"
     if mode != "scene":
         return mode
     transform = getattr(getattr(context.scene, "view_settings", None), "view_transform", "AgX")
-    if transform in {"Standard", "Raw"}:
+    if transform == "Raw":
         return "none"
+    if transform == "Standard":
+        return "standard"
     if transform.startswith("Filmic"):
         return "filmic"
     return "agx"
@@ -156,6 +166,14 @@ def volume_preview_signature(preview):
         preview.get("tone_mapping", "none"),
         preview.get("field_view", "look"),
         rounded(preview.get("light_direction", (1.0, 1.0, 1.0))),
+        bool(preview.get("physical_lighting", False)),
+        rounded(preview.get("sun_radiance", (0.0, 0.0, 0.0))),
+        rounded(preview.get("ambient_radiance", (0.0, 0.0, 0.0))),
+        round(float(preview.get("phase_g", 0.0)), 7),
+        int(preview.get("volume_bounces", 0)),
+        round(float(preview.get("color_spread", 1.0)), 7),
+        round(float(preview.get("density_low", 0.0)), 7),
+        round(float(preview.get("density_high", 1.0)), 7),
         preview.get("depth_serial"),
     )
 

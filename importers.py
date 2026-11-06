@@ -740,27 +740,6 @@ def _restore_selection(selected, active):
         bpy.context.view_layer.objects.active = active
 
 
-FAST_VOLUMES_KEY = "fumaris_fast_volumes_applied"
-# Cycles viewport step rate for biased volumes: 4 rendered the fireball in a
-# sixth of the time with a mean pixel change of 0.8/255 (2026-11-05).
-FAST_VOLUME_PREVIEW_STEP_RATE = 4.0
-
-
-def apply_fast_volume_rendering(scene):
-    """Once per scene: Cycles' biased (ray-marched) volume integrator, with a
-    coarser step in the viewport only. Unbiased null scattering was ~2x slower
-    for the same image at render step rate 1 (46.5 vs 24.5 s) and the viewport
-    crawled. Returns True when it changed the scene; users can undo it in
-    Output > Fast Cycles Volumes or Render Properties."""
-    cycles = getattr(scene, "cycles", None)
-    if cycles is None or scene.get(FAST_VOLUMES_KEY) or not hasattr(cycles, "volume_biased"):
-        return False
-    scene[FAST_VOLUMES_KEY] = True
-    cycles.volume_biased = True
-    cycles.volume_preview_step_rate = max(float(cycles.volume_preview_step_rate), FAST_VOLUME_PREVIEW_STEP_RATE)
-    return True
-
-
 def _configure_volume(volume_object, filepath, frame_count, frame_start):
     volume = volume_object.data
     volume.filepath = filepath
@@ -781,9 +760,6 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start):
     volume.render.space = "OBJECT"
     volume.render.step_size = 0.0
     scene = bpy.context.scene
-    if apply_fast_volume_rendering(scene):
-        console_log("Fumaris: Cycles set to fast (biased) volume rendering, viewport step rate "
-                    f"{scene.cycles.volume_preview_step_rate:g}; change it under Output")
     current_frame = scene.frame_current
     load_frame = frame_start + max(0, frame_count - 1)
     grid_names = ()

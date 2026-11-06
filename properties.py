@@ -559,13 +559,41 @@ class FumarisSettings(PropertyGroup):
         default=1.0, min=0.0, soft_max=2.0, max=4.0,
     )
 
+    preview_lighting: EnumProperty(
+        name="Lighting",
+        description="What lights the preview smoke",
+        items=(
+            ("SCENE", "Scene", "The scene's lights and world, as Cycles renders them: the strongest light (or the sun in an HDRI) casts shadows, the world lights the smoke where it sees the sky"),
+            ("CUSTOM", "Custom", "One preview light with its own direction and strength, plus the scene's world. Preview only"),
+        ),
+        default="SCENE",
+    )
+
+    preview_light_strength: FloatProperty(
+        name="Strength",
+        description="Strength of the custom preview light, like a Sun light's Strength (W/m²). Preview only",
+        default=3.0, min=0.0, soft_max=20.0,
+    )
+
+    preview_fire_lighting: FloatProperty(
+        name="Fire Lighting",
+        description="How strongly flames light the smoke around them; 1 is physically matched to the flame brightness, as Cycles renders it with volume bounces. 0 turns it off. Preview only",
+        default=1.0, min=0.0, soft_max=2.0, max=4.0,
+    )
+
+    preview_exposure_offset: FloatProperty(
+        name="Exposure",
+        description="Preview brightness in stops, added to the scene's Exposure (Color Management). 0 matches the render. Preview only",
+        default=0.0, min=-10.0, max=10.0, soft_min=-4.0, soft_max=4.0,
+    )
+
     preview_tone_mapping: EnumProperty(
         name="Tone Mapping",
         description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",
         items=(
             ("scene", "Scene", "Follow the scene's View Transform (AgX, Filmic or Standard), so the preview tone maps like the render"),
             ("filmic", "Filmic", "Smooth bright highlights and add contrast with an ACES-style curve, about as bright as Blender's Filmic view transform; adjust Exposure to taste"),
-            ("none", "Off", "Use the original preview brightness; values above the display range clip to white"),
+            ("none", "Standard", "Blender's Standard view transform: plain sRGB, values above the display range clip to white"),
             ("agx", "AgX (Preview)", "Brightness-calibrated AgX approximation with gentle highlight desaturation; not Blender's full AgX color-management transform"),
         ),
         default="scene",

@@ -4,9 +4,10 @@ Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.3.1 adds a persistent Simulation GPU selector, timeline-linked ranges,
-safer cache versions and protection, and Flame Light / Light Scattering in the
-live preview. Preview shading controls do not change baked VDB materials.
+Fumaris 1.4 lights the live preview like Cycles (the scene's lights and world,
+fire light, Scatter Glow, Blender's own colour management), adds Realistic
+combustion for every domain, and smaller VDB options (temperature floor, Half
+Res grids). Preview shading controls do not change baked VDB materials.
 See [CHANGELOG.md](CHANGELOG.md) for release details and the Updating section
 below before replacing an installation.
 
@@ -142,27 +143,27 @@ Useful preview controls:
 - `Preview Resolution` scales simulation resolution for preview only.
 - `Viewport Scale` controls output pixels. Doubling the value renders, reads
   back, transfers, and uploads four times as many pixels.
-- `Ray Steps` accepts up to 4096 and controls sampling through active sparse blocks. It stops adding
-  work once spacing reaches 0.75 simulation voxel because finer samples cannot
-  recover detail absent from the grid.
-- `Tone Mapping` defaults to `Filmic`, which softens bright highlights instead
-  of clipping them to white. `AgX (Preview)` adds an AgX approximation with
-  highlight desaturation. `Off` restores the original preview look.
-- Mapped modes are calibrated against Off at neutral display gray 0.18, reducing
-  brightness jumps when switching modes while preserving highlight compression.
-- `Exposure` adjusts brightness before tone mapping: +1 doubles the incoming
-  light, -1 halves it. Try -1 or -2 if bright fire looks washed out. Both controls
-  update while paused and affect only the preview, not baked grids or materials.
+- `Step Size` is the distance between preview ray samples in simulation cells
+  (default 1, like Cycles' Step Rate 1). Preview cost is about proportional to
+  the number of samples: smaller is smoother and slower, larger is faster and
+  starts to show bands.
+- `Tone Mapping` uses Blender's own colour management: `Scene` follows the
+  scene's view transform, look and display; `AgX`, `Filmic` and `Standard` use
+  those view transforms. The 8-bit preview image is dithered so dark smoke does
+  not band.
+- `Exposure` follows the scene's exposure; the offset here adds to it (+1 doubles
+  the light). It affects only the preview, not baked grids or materials.
 - The domain's `Appearance` group controls smoke density and color plus fire
   visibility, brightness, temperature range, and Blackbody scale. The same
   values drive the live raymarch and Fumaris's generated Blender material.
-- `Self Shadows` traces directional light through the visible smoke density at
-  additional GPU cost. Changing Appearance Density also rebuilds this field so
-  light and camera attenuation stay consistent.
-- `Light Scattering` spreads light into shadowed smoke with a fast approximation
-  using the existing shadow field. The default is 0.5; zero uses direct lighting
-  only. It updates while paused and changes preview shading only. It does not
-  calculate illumination from Blender scene lights.
+- `Lighting: Scene` lights the preview with the scene's lights and world in
+  Cycles units: the strongest light (or the sun in an HDRI world) with the
+  material's anisotropy, the world's light where the smoke sees the sky, and
+  multiple scattering when Cycles has volume bounces. `Custom` keeps one
+  preview-only light (Strength, Azimuth, Elevation) plus the world.
+- `Self Shadows` shadows the smoke from that light and from the sky, at some GPU
+  cost; off lights every voxel fully. Changing Appearance Density rebuilds the
+  shadow field so light and camera attenuation stay consistent.
 - `Flame Light` makes flames light the smoke around them. The glow takes the
   flame's color, is strongest beside the fire, falls off with distance and is
   dimmed by smoke in between; darker Smoke Color reflects less of it. 1 is the
@@ -171,12 +172,8 @@ Useful preview controls:
   from each flame and does not cast sharp shadows, and it does not light
   objects in the scene. Baked volumes and the generated material are not
   changed; Cycles and EEVEE compute their own fire lighting.
-- `Shadow` sets the minimum light reaching smoke: zero permits deep shadows;
-  raising it fills them in. `Azimuth` rotates light around world Z without
-  changing its height; `Elevation` sets that height (0 degrees horizontal,
-  +90 overhead). These controls do not move Blender scene lights.
-- `Preview Bake` shows the selected preview during a final bake, with some
-  performance cost.
+- `Scatter Glow` (Appearance) also shows in the preview: smoke around flames
+  glows with their light as in renders.
 
 The live volume preview uses a simplified Flow shader. `Scene Occlusion` uses
 viewport depth to hide smoke behind solid objects; transparent objects also
@@ -241,7 +238,7 @@ slot and its imported volume. It is unavailable while a job is active.
 
 ### Resolution And Simulation Memory
 
-Resolution determines density cell size. `Simulation Memory` is the GPU memory,
+Resolution determines density cell size. `VRAM` (Simulation Memory) is the GPU memory,
 in GB, given to the simulation. Fumaris allocates all of it when the
 simulation starts and turns it into space for smoke, accounting for the
 settings that change how much each piece of space costs (Full-Resolution
@@ -263,8 +260,8 @@ only applies if no reading is available. Close other GPU work before starting
 for the most space. Drivers without a free-memory reading (some macOS
 versions) use half the GPU memory. New domains start on Auto; saved scenes
 keep their GB value. The panel shows the amount Auto resolved to at the last
-start, and below Resolution and Memory the voxel size (32 scene units divided
-by Resolution) and about how much space the budget lets smoke fill. The live
+start; Diagnostics shows the voxel size (32 scene units divided by Resolution),
+the voxel count and about how much space the budget lets smoke fill. The live
 preview's shadow and flame light volumes are part of the same budget.
 
 Resolution has no artificial maximum: values above the slider's suggested
@@ -386,11 +383,10 @@ Combustion is active when its coefficients require it. Fuel burns above the
 ignition threshold, producing configurable smoke, heat, and expansion. Large
 changes can require retuning Sub-Steps because combustion adds velocity.
 
-`Combustion Model` (Behavior > Combustion) is **Realistic** for new domains;
-domains from files saved before it existed load as **Classic**, NVIDIA Flow's
-original model, so their look does not change.
+Every domain uses **Realistic** combustion (the Classic model was removed in
+1.4; scenes saved with it open as Realistic).
 
-- **Realistic.** Once gas with fuel is hotter than `Ignition Temperature`, a
+- Once gas with fuel is hotter than `Ignition Temperature`, a
   fixed share of its fuel burns each second (95% within `Burn Time`), heating
   the gas toward `Flame Temperature`, the hottest any gas gets (emitters
   included; Emitter Temperature 1 means Flame Temperature). When the fuel
@@ -404,11 +400,6 @@ original model, so their look does not change.
   Fuel amounts of about 1–3 suit a source that burns where it emits; a
   source that expands a lot before burning (a growing fireball) needs more,
   about 10–30, because its fuel thins out as it mixes with air.
-- **Classic.** Burning heats gas in proportion to its temperature above
-  ignition, so unless cooling outpaces it, gas runs to the 5000 K limit
-  (white-hot) and burns at a constant rate until its fuel runs out at once.
-  `Temperature Input Scale`, `Burn Per Temperature`, `Fuel/Temperature/Smoke/
-  Expansion Per Burn` and `Cooling Rate` are Flow's coefficients.
 
 ## Emitters
 
@@ -716,8 +707,8 @@ convert NanoVDB to OpenVDB, and write them to disk.
 For a faster or more memory-efficient simulation:
 
 1. Disable VDB channels not used by the final material.
-2. Keep Preview Bake off unless you need to watch the final bake.
-3. Lower Preview Resolution, Viewport Scale, or Ray Steps for viewport work.
+2. Use Half Res for Temperature or Velocity grids when file size matters.
+3. Lower Preview Resolution or Viewport Scale, or raise Step Size, for viewport work.
 4. Increase resolution and sparse capacity in measured steps.
 5. Use the lowest Sub-Step count that gives a converged result.
    For stepping at the smoke's edge, raise Air Margin before Sub-Steps.
@@ -850,9 +841,8 @@ not overwrite the final bake. **Delete** clears this domain's generated bake and
 owned preview recordings. Interrupted writes may leave completed files for
 recovery; no partial file is presented as a committed frame.
 
-`Preview Bake` is a different option: it displays the live overlay during a
-normal final bake. `Bake on Preview` records the interactive preview. These
-options sit side by side below the playback buttons.
+`Bake on Preview` records the interactive preview; the preview buttons sit
+under the Preview Controls heading, below the bake buttons.
 
 ### Capacity warning and defaults
 
@@ -864,7 +854,7 @@ run or Delete clears it. Diagnostics sits below Advanced on the panel's darker b
 its exact appearance follows your Blender theme.
 
 Current defaults are Dissipation **0.5**, emitter Fuel **1**, Temperature Per Burn
-**1**, and preview Ray Steps **256**. Explicitly stored settings retain their
+**1**, and preview Step Size **1** cell. Explicitly stored settings retain their
 values; older unset properties inherit the new defaults. The Rising Smoke setup
 explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
 Expansion 0.2; Rising Smoke and Steady Fire use Normal Velocity 0.25, Explosion

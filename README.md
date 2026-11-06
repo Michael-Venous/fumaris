@@ -59,8 +59,9 @@ Doubling resolution needs approximately eight times the cells for equal coverage
 - Choose and save the GPU used by the next simulation job.
 - Use Timeline follows the scene range, with optional warmup frames.
 - Preserve bakes with New Slot, overwrite/delete confirmations and Protect.
-- Preview Flame Light and Light Scattering improve live smoke/fire shading.
-  These controls affect the live preview, not baked VDB materials.
+- The live preview is lit like Cycles (scene lights and world, fire light,
+  Scatter Glow) and tone mapped with Blender's own view transforms. These
+  controls affect the live preview, not baked VDB materials.
 
 ## Earlier 1.2.0 Features
 

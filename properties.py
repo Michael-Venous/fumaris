@@ -275,6 +275,20 @@ class FumarisSettings(PropertyGroup):
         soft_max=5.0,
     )
 
+    emitter_burning: BoolProperty(
+        name="Burning",
+        description="The emitter burns where it sits, like a gas jet or a burning surface, without emitting fuel: it heats gas toward Flame Temperature, adds smoke at the domain's Smoke Amount and expands it by Gas Expansion, all at Burn Rate. Realistic combustion only",
+        default=False,
+    )
+
+    emitter_burn_rate: FloatProperty(
+        name="Burn Rate",
+        description="How strongly the Burning emitter burns, as fuel burnt per second: it scales the heat, smoke and expansion it makes",
+        default=2.0,
+        min=0.0,
+        soft_max=20.0,
+    )
+
     emitter_burn: FloatProperty(
         name="Burn",
         description="Initial burn/flame amount emitted into the simulation",

@@ -158,6 +158,9 @@ def build_frame(
     preview_enabled=True,
     volume_preview=None,
 ):
+    global _BURN_DOMAIN
+    owner = domain or getattr(context, "object", None)
+    _BURN_DOMAIN = getattr(owner, "fumaris", None)
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
     preview_request, scene_depth = split_scene_depth(volume_preview or {"valid": False})
@@ -884,7 +887,43 @@ def _participant_channels(props, role, matrix=None, *, velocity_active=False):
                 channels[f"couple_rate_{name}"] = _REPLACE_COUPLE_RATE
         if getattr(props, "emitter_influence", False):
             _influence_channels(channels)
+        elif getattr(props, "emitter_burning", False):
+            channels["value_ops"] = _burning_channels(channels, props, _BURN_DOMAIN)
     return channels
+
+
+# Domain settings of the frame being built (Burning emitters follow its combustion).
+_BURN_DOMAIN = None
+
+
+def _burning_channels(channels, props, domain):
+    """Burning emitter: heat, smoke and expansion of fuel burning at Burn Rate.
+
+    No fuel is emitted and no reaction runs: temperature is pulled up to Flame
+    Temperature (Maximum, never cools), smoke is added at Smoke Amount per unit
+    burnt and the gas expands by Gas Expansion per unit burnt (1/s).
+    """
+    rate = max(0.0, float(props.emitter_burn_rate))
+    smoke_amount = float(getattr(domain, "smoke_per_burn", 1.0)) if domain else 1.0
+    expansion = float(getattr(domain, "gas_expansion", 0.5)) if domain else 0.5
+    channels["fuel"] = 0.0
+    channels["couple_rate_fuel"] = 0.0
+    channels["burn"] = 0.0
+    channels["couple_rate_burn"] = 0.0
+    channels["temperature"] = 1.0
+    channels["couple_rate_temperature"] = 2.0 * rate
+    channels["smoke"] = smoke_amount
+    channels["couple_rate_smoke"] = rate
+    channels["divergence"] = expansion * rate
+    channels["couple_rate_divergence"] = max(float(channels.get("couple_rate_divergence", 0.0)), 1.0)
+    ops = int(channels.get("value_ops", 0)) | EXPANSION_RATE_OP
+    temperature = _SOURCE_OPERATION_CHANNELS.index("temperature")
+    smoke = _SOURCE_OPERATION_CHANNELS.index("smoke")
+    ops &= ~(1 << temperature)
+    ops |= 1 << (4 + temperature)  # Maximum
+    ops &= ~(1 << (4 + smoke))
+    ops |= 1 << smoke  # Add
+    return ops
 
 
 def _influence_channels(channels):

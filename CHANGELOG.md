@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Burning emitters (Realistic combustion).** An emitter can burn where it
+  sits, like a gas jet or a burning surface, without emitting fuel: it heats
+  gas toward Flame Temperature and adds smoke and expansion at its Burn Rate,
+  following the domain's Smoke Amount and Gas Expansion.
+
 - **Smoke reaches colliders.** Smoke used to stop a few cells short of
   collider surfaces (Collider Margin pushed the solid wall out); the wall now
   sits on the real surface, so smoke hugs ceilings, walls and obstacles.

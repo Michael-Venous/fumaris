@@ -225,6 +225,9 @@ def _draw_emitter(layout, obj, props):
     box = layout.box()
     box.label(text="Emitted Channels", icon="MOD_FLUID")
     box.prop(props, "emitter_influence")
+    box.prop(props, "emitter_burning")
+    if props.emitter_burning:
+        box.prop(props, "emitter_burn_rate")
     smoke_row = box.row()
     smoke_row.active = not props.emitter_influence
     smoke_row.prop(props, "emitter_smoke")

@@ -115,10 +115,14 @@ def build_session(
 def density_channels(domain_props, participants):
     """Density channels the bake stores: 1 smoke, 2 smoke + temperature, 4 all.
 
-    Fuel, burning emitters or Classic combustion need all four; heat alone needs
-    temperature; otherwise only smoke is kept (more capacity per GB).
+    Fuel, burning emitters or Full-Resolution Velocity need all four; heat
+    alone needs temperature; otherwise only smoke is kept (more capacity per GB).
     """
     if getattr(domain_props, "density_storage", "auto") != "auto":
+        return 4
+    # Full-Resolution Velocity shares Flow's density level, where narrow
+    # storage would also narrow velocity (the bridge keeps four channels).
+    if getattr(domain_props, "full_resolution_velocity", False):
         return 4
     heat = False
     for participant in participants:

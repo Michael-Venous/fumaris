@@ -4,6 +4,20 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Coarse grids rise like fine ones.** Vorticity is now weakened in
+  proportion below Resolution 256 (and at a low Preview Resolution), where
+  it used to swirl so hard that plumes stalled: a smoke plume at 128 rose
+  about half as high as at 256 or more and now rises about as high. Scenes at
+  256 and above are unchanged; coarser ones swirl less.
+
+- **Vorticity no longer keeps speeding up the gas.** Its limit let each
+  direction of the flow grow to the fastest neighbour's, so turbulence kept
+  pumping energy in long after a fire died (an Explosion at 512 ended with
+  over twice the motion). The gas now settles; strong Vorticity looks calmer.
+
+- **Faster Disturb and Grain.** Clear air skips their noise: the turbulence
+  pass is about a third faster on an explosion, identical results.
+
 - **Smaller VDB files (Output > Grids).** Temperature below 500 K (which cannot
   glow) is no longer stored: 20 to 25% smaller files with no visible
   difference. Temperature and Velocity each have a **Half Res** toggle, which
@@ -33,7 +47,8 @@ All notable customer-facing changes are recorded here.
 
 - **Smaller smoke-only bakes (Density Storage: Auto).** When nothing burns,
   only smoke (and temperature, if emitted) is stored: up to about twice as
-  much smoke per GB, identical results.
+  much smoke per GB, identical results. Full-Resolution Velocity always
+  stores every channel.
 
 - **Live preview lit like Cycles.** The preview now uses the scene's
   lighting in Cycles units: the strongest light (or the sun in an HDRI world)

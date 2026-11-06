@@ -1488,7 +1488,7 @@ class FumarisSettings(PropertyGroup):
 
     vorticity: FloatProperty(
         name="Vorticity",
-        description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off",
+        description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off. Below Resolution 256 (or a lower Preview Resolution) it is weakened in proportion so coarse grids rise like finer ones",
         default=2.0,
         min=0.0,
         max=10.0,

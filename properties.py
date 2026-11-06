@@ -512,9 +512,15 @@ class FumarisSettings(PropertyGroup):
         soft_max=1024,
     )
 
+    preview_step_size: FloatProperty(
+        name="Step Size",
+        description="Distance between preview ray samples, in simulation cells (1 is Cycles' Step Rate 1). Preview cost is about proportional to the number of samples: smaller is smoother and slower, larger is faster and starts to show bands",
+        default=1.0, min=0.25, max=4.0, soft_max=2.0,
+    )
+
     preview_shadows: BoolProperty(
         name="Self Shadows",
-        description="Calculate directional self-shadowing through the visible smoke density",
+        description="Smoke shadows itself: from the scene's strongest light, and from the sky (dense smoke is darker inside, as in Cycles). Off lights every voxel fully, which is faster",
         default=True,
     )
 
@@ -592,9 +598,9 @@ class FumarisSettings(PropertyGroup):
         description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",
         items=(
             ("scene", "Scene", "Follow the scene's View Transform (AgX, Filmic or Standard), so the preview tone maps like the render"),
-            ("filmic", "Filmic", "Smooth bright highlights and add contrast with an ACES-style curve, about as bright as Blender's Filmic view transform; adjust Exposure to taste"),
+            ("filmic", "Filmic", "Blender's Filmic view transform"),
             ("none", "Standard", "Blender's Standard view transform: plain sRGB, values above the display range clip to white"),
-            ("agx", "AgX (Preview)", "Brightness-calibrated AgX approximation with gentle highlight desaturation; not Blender's full AgX color-management transform"),
+            ("agx", "AgX", "Blender's AgX view transform"),
         ),
         default="scene",
     )
@@ -651,7 +657,7 @@ class FumarisSettings(PropertyGroup):
     )
 
     simulation_memory: FloatProperty(
-        name="Simulation Memory",
+        name="VRAM",
         description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant",
         default=1.0,
         min=0.1,
@@ -662,7 +668,7 @@ class FumarisSettings(PropertyGroup):
     )
 
     simulation_memory_auto: BoolProperty(
-        name="Auto Simulation Memory",
+        name="Auto VRAM",
         description="Reserve 80% of the GPU memory that is free when the simulation starts (at least 0.5 GB) instead of a fixed amount. Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used",
         default=False,
         update=auto_toggled,
@@ -1274,7 +1280,7 @@ class FumarisSettings(PropertyGroup):
     # Advanced Settings
     gravity: FloatVectorProperty(
         name="Gravity",
-        description="Gravity vector for simulation",
+        description="Direction and strength of buoyancy: hot gas rises against it, heavy smoke sinks along it (Buoyancy settings scale how much). It is a force, so it only moves smoke where gas is hotter or denser than the air. Wind is different: it carries all air along at a steady speed without any force",
         default=(0.0, 0.0, -9.81),
         size=3,
         subtype="ACCELERATION",
@@ -1316,8 +1322,8 @@ class FumarisSettings(PropertyGroup):
         name="Combustion Model",
         description="How fuel burns",
         items=(
+            # Classic (Flow's original model) was removed in 1.4; such files load as Realistic.
             ("realistic", "Realistic", "Fuel burns away gradually at a set flame temperature, so fires glow at real flame colours and fade out instead of stopping at once"),
-            ("classic", "Classic", "NVIDIA Flow's original model, kept for scenes made before Realistic existed: burning heats gas toward 5000 K and fuel runs out all at once"),
         ),
         default="realistic",
     )
@@ -1390,7 +1396,7 @@ class FumarisSettings(PropertyGroup):
 
     fuel_threshold: FloatProperty(
         name="Flame Sheets",
-        description="Fuel burns only where it has thinned below this amount (fading out by twice it), so dense fuel stays unburnt inside and burns in thin sheets where it mixes with air: dark, sooty puffs with glowing seams instead of one evenly burning ball. Compare with the emitters' Fuel. 0 = burn everywhere; try 1-2 for an emitter Fuel of 8",
+        description="Dense fuel burns at most as fast as this much fuel would, so rich cores smoulder while fuel that has thinned out where it mixes with air burns fully, in sheets: sooty puffs with glowing seams instead of one evenly burning ball. Compare with the emitters' Fuel. 0 = everything burns at its full rate; try 1-2 for an emitter Fuel of 8",
         default=0.0,
         min=0.0,
         soft_max=10.0,
@@ -1569,13 +1575,13 @@ class FumarisSettings(PropertyGroup):
     sharp_advection: BoolProperty(
         name="Sharp Advection",
         description="Carry motion with a stronger error correction that falls back to the plain step wherever it would overshoot, for crisper swirls and billow edges at the same cost per voxel",
-        default=False,
+        default=True,
     )
 
     advection_reflection: BoolProperty(
         name="Preserve Turbulence",
         description="Advection-reflection: keeps swirling motion that the solver would otherwise lose to numerical damping, for livelier, longer-lasting turbulence and larger plumes. Steps run in pairs, so the Sub-Step count is rounded up to an even number (at least 2). About 3% more GPU time per block; the livelier smoke fills more space, so it reaches Simulation Memory sooner",
-        default=False,
+        default=True,
     )
 
     shred: FloatProperty(
@@ -1627,6 +1633,24 @@ class FumarisSettings(PropertyGroup):
     )
 
     # VDB export controls
+    export_temperature_half_res: BoolProperty(
+        name="Temperature at Half Resolution",
+        description="Write temperature at half resolution: about a third smaller files, fire very slightly softer",
+        default=False,
+    )
+
+    export_velocity_half_res: BoolProperty(
+        name="Velocity at Half Resolution",
+        description="Write velocity at half resolution: much smaller velocity grids, motion blur from coarser motion",
+        default=False,
+    )
+
+    export_glow_vdb: BoolProperty(
+        name="Export Glow VDB",
+        description="Write the glow grid used by the material's Scatter Glow (light from nearby fire in cooler smoke). Needs temperature",
+        default=True,
+    )
+
     export_velocity_vdb: BoolProperty(
         name="Export Velocity VDB",
         description="Export velocity for motion blur and downstream volume effects",
@@ -1993,8 +2017,7 @@ def _migrate_temperature_mapping():
             props.substep_settings_version = SUBSTEP_SETTINGS_VERSION
         if (props is not None and props.smoke_object_type == "domain"
                 and props.combustion_version < COMBUSTION_VERSION):
-            # Saved before Realistic combustion existed: keep the old look.
-            props.combustion_model = "classic"
+            # Saved before Realistic combustion existed. Classic is gone (1.4): Realistic.
             props.combustion_version = COMBUSTION_VERSION
         props = getattr(obj, "fumaris", None)
         if props is None or props.temperature_mapping_version >= TEMPERATURE_MAPPING_VERSION:

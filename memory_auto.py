@@ -315,8 +315,7 @@ def draw_budget_summary(layout, props, state=None):
         effector_sources=effectors,
         export_velocity=bool(getattr(props, "export_velocity_vdb", False)),
     )
-    column.label(text=f"Space ≈ {_format_volume(volume)} "
-                      f"({_format_length(volume ** (1.0 / 3.0))} cube)")
+    column.separator()
 
 
 def apply_new_domain_default(props):

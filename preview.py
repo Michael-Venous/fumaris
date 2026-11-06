@@ -66,6 +66,7 @@ def capture_volume_preview(context, domain, target=None):
         "view": _flatten_matrix(region_3d.view_matrix),
         "projection": _flatten_matrix(projection),
         "max_ray_steps": int(props.preview_max_ray_steps),
+        "step_cells": float(props.preview_step_size),
         "smoke_density": float(props.shader_smoke_density),
         "smoke_color": [float(value) for value in props.shader_smoke_color],
         "flame_enabled": bool(props.shader_flame_enabled),
@@ -98,11 +99,14 @@ def capture_volume_preview(context, domain, target=None):
     }
 
 
+_TONE_MAPPING_VIEWS = {"agx": "AgX", "filmic": "Filmic", "none": "Standard"}
+
+
 def _display_lut_request(context, props):
-    """Scene tone mapping: Blender's own view transform as a table (display_lut.py)."""
-    if props.preview_tone_mapping != "scene":
-        return {}
-    key, table = display_lut.scene_display_lut(context.scene)
+    """Blender's own view transform as a table (display_lut.py): the scene's for
+    Scene, else the chosen view, so every mode matches Blender exactly."""
+    override = _TONE_MAPPING_VIEWS.get(props.preview_tone_mapping)
+    key, table = display_lut.scene_display_lut(context.scene, override)
     if key is None:
         return {}
     return {"display_lut_key": key, "display_lut_size": display_lut.SIZE, DISPLAY_LUT_KEY: table}
@@ -160,6 +164,7 @@ def volume_preview_signature(preview):
         rounded(preview["view"]),
         rounded(preview["projection"]),
         int(preview["max_ray_steps"]),
+        round(float(preview.get("step_cells", 1.0)), 4),
         round(float(preview["smoke_density"]), 7),
         rounded(preview["smoke_color"]),
         bool(preview["flame_enabled"]),

@@ -128,9 +128,9 @@ def warnings(state):
     capacity = value(state, "flow_active_block_capacity")
     active = value(state, "flow_active_blocks")
     if capacity_status(state) == "full":
-        result.append("Simulation capacity reached: smoke may be cut off. Increase Simulation Memory or lower Resolution, then restart.")
+        result.append("Simulation capacity reached: smoke may be cut off. Increase VRAM or lower Resolution, then restart.")
     elif capacity and active / capacity >= 0.85:
-        result.append("Sparse blocks nearly full: increase Simulation Memory or lower Resolution.")
+        result.append("Sparse blocks nearly full: increase VRAM or lower Resolution.")
     requested = value(state, "flow_requested_resolution")
     actual = value(state, "flow_effective_resolution")
     if requested and actual and actual < requested * 0.95:
@@ -172,7 +172,7 @@ def memory_spill_warning(state):
         return ""
     return (
         f"GPU memory is full: {spilled / 1073741824:.1f} GB of simulation data went to "
-        "system memory, so it runs very slowly. Lower Simulation Memory, or close "
+        "system memory, so it runs very slowly. Lower VRAM, or close "
         "other GPU work such as Cycles renders, then restart."
     )
 

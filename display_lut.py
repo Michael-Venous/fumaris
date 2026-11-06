@@ -55,16 +55,18 @@ def _build(display, view, look, gamma):
     return np.clip(np.nan_to_num(rgb), 0.0, 1.0).astype(np.float32).ravel()
 
 
-def scene_display_lut(scene):
-    """(key, flat float32 array of SIZE^3 RGB) for the scene's view transform, or (None, None)."""
+def scene_display_lut(scene, view_override=None):
+    """(key, flat float32 array of SIZE^3 RGB) for the scene's view transform (or
+    view_override, without the scene's look), or (None, None)."""
     view = getattr(scene, "view_settings", None)
     display_settings = getattr(scene, "display_settings", None)
     if view is None or display_settings is None:
         return None, None
     display = display_settings.display_device
-    look = getattr(view, "look", "None")
+    transform = view_override or view.view_transform
+    look = "None" if view_override else getattr(view, "look", "None")
     gamma = float(getattr(view, "gamma", 1.0))
-    key = f"{display}|{view.view_transform}|{look}|{gamma:.4f}|{SIZE}"
+    key = f"{display}|{transform}|{look}|{gamma:.4f}|{SIZE}"
     table = _CACHE.get(key)
     if table is not None:
         return key, table
@@ -72,11 +74,11 @@ def scene_display_lut(scene):
         return None, None
     try:
         try:
-            table = _build(display, view.view_transform, look, gamma)
+            table = _build(display, transform, look, gamma)
         except Exception:
             # A look the config does not know: the view alone is still closer
             # than the built-in curves.
-            table = _build(display, view.view_transform, "None", gamma)
+            table = _build(display, transform, "None", gamma)
     except Exception as error:
         _FAILED.add(key)
         print(f"Fumaris: preview keeps its built-in tone mapping ({error})")

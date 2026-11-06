@@ -188,7 +188,7 @@ def _physical_heat_hot_fuel(obj, props):
     for domain in bpy.data.objects:
         settings = getattr(domain, "fumaris", None)
         if (settings is None or settings.smoke_object_type != "domain"
-                or settings.combustion_model != "realistic" or not settings.physical_heat):
+                or not settings.physical_heat):
             continue
         collection = settings.emitter_collection
         if collection is not None and obj.name in collection.all_objects:
@@ -204,8 +204,7 @@ def _emitter_below_ignition(obj, props):
         return None
     for domain in bpy.data.objects:
         settings = getattr(domain, "fumaris", None)
-        if (settings is None or settings.smoke_object_type != "domain"
-                or settings.combustion_model != "realistic"):
+        if settings is None or settings.smoke_object_type != "domain":
             continue
         collection = settings.emitter_collection
         if collection is None or obj.name not in collection.all_objects:
@@ -480,7 +479,7 @@ def _draw_capacity_warning(layout, domain):
         title = box.row(align=True)
         title.alert = True
         title.label(text="GPU memory full — simulation slowed", icon="ERROR")
-        box.label(text="Lower Simulation Memory or free")
+        box.label(text="Lower VRAM or free")
         box.label(text="GPU memory, then restart.")
     status = diagnostics.capacity_status(state)
     if not status:
@@ -492,7 +491,7 @@ def _draw_capacity_warning(layout, domain):
         title.label(text="Capacity reached — smoke may clip", icon="ERROR")
     else:
         title.label(text="Capacity almost full — smoke may clip", icon="ERROR")
-    box.label(text="Increase Simulation Memory")
+    box.label(text="Increase VRAM")
     box.label(text="or lower Resolution, then restart.")
     if status == "full" and state and not state.get("active"):
         box.label(text="Last run", icon="INFO")
@@ -522,10 +521,6 @@ def _draw_domain(layout, scene, props):
     sub = row.row(align=True)
     sub.enabled = mode is None and not slot_protected
     sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
-    if props.simulation_state == "stopped":
-        resume = row.row(align=True)
-        resume.enabled = mode is None and not slot_protected
-        resume.operator("fumaris.bake", icon="PLAY", text="").resume = True
     stop = row.row(align=True)
     stop.enabled = is_baking
     stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
@@ -535,6 +530,11 @@ def _draw_domain(layout, scene, props):
     if slot_protected:
         controls.label(text=f"Cache slot '{props.cache_slot}' is protected", icon="LOCKED")
 
+    controls.separator(factor=0.6)
+    header = controls.row(align=True)
+    header.label(text="Preview Controls")
+    if is_previewing:
+        header.label(text="Viewport preview approximates the Cycles render")
     preview = controls.row(align=True)
     play = preview.row(align=True)
     play.enabled = mode is None and props.simulation_state != "baked"
@@ -547,16 +547,14 @@ def _draw_domain(layout, scene, props):
         text="Resume" if is_preview_paused else "Pause",
     )
     preview_stop = preview.row(align=True)
-    preview_stop.enabled = is_previewing
+    # A preview that is still starting (or paused, or finishing a recording) can always be stopped.
+    preview_stop.enabled = job is not None and not is_baking
     preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
     controls.separator(factor=0.5)
     options = controls.row(align=True)
     record = options.row(align=True)
     record.enabled = mode is None
     record.prop(props, "bake_on_preview")
-    bake_preview = options.row(align=True)
-    bake_preview.enabled = not is_baking
-    bake_preview.prop(props, "preview_bake")
     controls.separator(factor=0.5)
     # Keep transport rows together; all status text lives below their options.
     status = controls.column(align=True)
@@ -583,9 +581,6 @@ def _draw_domain(layout, scene, props):
     elif is_previewing and not getattr(job, "_recording_enabled", False):
         status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                      icon="PAUSE" if is_preview_paused else "PLAY")
-        # Bake is greyed out while previewing: offer the handoff instead.
-        status.operator("fumaris.stop_and_bake", icon="RENDER_ANIMATION")
-        status.label(text="Viewport preview approximates the Cycles render")
     if is_previewing and getattr(job, "_recording_enabled", False):
         if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):
             status.label(text="Finishing recorded frames…", icon="TIME")
@@ -618,7 +613,7 @@ def _draw_domain(layout, scene, props):
     grid_row.prop(props, "resolution")
     memory_field = grid_row.row(align=True)
     memory_field.active = not props.simulation_memory_auto
-    memory_field.prop(props, "simulation_memory", text="Memory (GB)")
+    memory_field.prop(props, "simulation_memory", text="VRAM (GB)")
     auto = grid_row.row(align=True)
     auto.ui_units_x = 2.2
     auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
@@ -631,10 +626,6 @@ def _draw_domain(layout, scene, props):
     substeps_row = settings.row(align=True)
     substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
     substeps_row.prop(props, "adaptive_cfl")
-    settings.prop(props, "advection_reflection")
-    settings.prop(props, "follow_object")
-    if props.follow_object:
-        settings.prop(props, "carry_air", slider=True)
 
     appearance, appearance_open = _nested_foldout(
         settings,
@@ -700,11 +691,21 @@ def _draw_domain(layout, scene, props):
         output.separator()
         output.prop(props, "volume_selectable")
         output.separator()
-        output.prop(props, "export_temperature_vdb")
+        temperature = output.row(align=True)
+        temperature.prop(props, "export_temperature_vdb")
+        half = temperature.row(align=True)
+        half.active = props.export_temperature_vdb
+        half.prop(props, "export_temperature_half_res", text="Half Res", toggle=True)
         output.prop(props, "export_fuel_vdb")
         output.prop(props, "export_burn_vdb")
-        output.prop(props, "export_velocity_vdb")
-        output.prop(props, "glow_radius")
+        velocity = output.row(align=True)
+        velocity.prop(props, "export_velocity_vdb")
+        half = velocity.row(align=True)
+        half.active = props.export_velocity_vdb
+        half.prop(props, "export_velocity_half_res", text="Half Res", toggle=True)
+        output.prop(props, "export_glow_vdb")
+        if props.export_glow_vdb:
+            output.prop(props, "glow_radius")
         if props.volume_material is None:
             output.label(
                 text="Generated material always includes temperature",
@@ -721,7 +722,7 @@ def _draw_domain(layout, scene, props):
         sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
         sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
         steps = quality.row(align=True)
-        steps.prop(props, "preview_max_ray_steps")
+        steps.prop(props, "preview_step_size")
         steps.prop(props, "preview_all_viewports", toggle=True)
 
         preview.label(text="Lighting")
@@ -778,6 +779,7 @@ def _draw_domain(layout, scene, props):
 
     turbulence, turbulence_open = _nested_foldout(behavior, props, "show_domain_turbulence", "Turbulence Detail")
     if turbulence_open:
+        turbulence.label(text="Disturb")
         disturb_row = turbulence.row(align=True)
         disturb_row.prop(props, "disturb")
         size = disturb_row.row(align=True)
@@ -787,6 +789,8 @@ def _draw_domain(layout, scene, props):
         detail.active = props.disturb > 0.0
         detail.prop(props, "disturb_detail", text="Detail")
         detail.prop(props, "disturb_min_speed", text="Min Speed")
+        turbulence.separator()
+        turbulence.label(text="Grain")
         grain_row = turbulence.row(align=True)
         grain_row.prop(props, "grain")
         grain_size = grain_row.row(align=True)
@@ -799,42 +803,29 @@ def _draw_domain(layout, scene, props):
         grain_extra.active = props.grain > 0.0
         grain_extra.prop(props, "grain_min_speed", text="Min Speed")
         grain_extra.prop(props, "grain_layers", text="Layers")
-        turbulence.prop(props, "shred")
         turbulence.separator()
-        turbulence.prop(props, "sharp_advection")
+        turbulence.prop(props, "shred")
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
-        combustion.prop(props, "combustion_model", text="")
+        combustion.prop(props, "flame_temperature")
+        combustion.prop(props, "ignition_temperature_k")
         combustion.separator()
-        if props.combustion_model == "realistic":
-            combustion.prop(props, "flame_temperature")
-            combustion.prop(props, "ignition_temperature_k")
-            combustion.separator()
-            combustion.prop(props, "burn_time")
-            combustion.prop(props, "cooling_time")
-            combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
-            combustion.separator()
-            combustion.prop(props, "gas_expansion")
-            combustion.prop(props, "oxygen_limit")
-            oxygen = combustion.row(align=True)
-            oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
-            field = oxygen.row(align=True)
-            field.active = props.oxygen_field
-            field.prop(props, "oxygen_use", text="Use")
-            field.prop(props, "oxygen_mixing", text="Mixing")
-            combustion.prop(props, "soot_radiation")
-            combustion.prop(props, "wisp_cooling")
-            combustion.prop(props, "fuel_threshold")
-        else:
-            combustion.prop(props, "temperature_input_scale")
-            combustion.prop(props, "ignition_temperature")
-            combustion.prop(props, "burn_per_temp")
-            combustion.prop(props, "fuel_per_burn")
-            combustion.prop(props, "temp_per_burn")
-            combustion.prop(props, "smoke_per_burn")
-            combustion.prop(props, "divergence_per_burn")
-            combustion.prop(props, "cooling_rate")
+        combustion.prop(props, "burn_time")
+        combustion.prop(props, "cooling_time")
+        combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
+        combustion.separator()
+        combustion.prop(props, "gas_expansion")
+        combustion.prop(props, "oxygen_limit")
+        oxygen = combustion.row(align=True)
+        oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
+        field = oxygen.row(align=True)
+        field.active = props.oxygen_field
+        field.prop(props, "oxygen_use", text="Use")
+        field.prop(props, "oxygen_mixing", text="Mixing")
+        combustion.prop(props, "soot_radiation")
+        combustion.prop(props, "wisp_cooling")
+        combustion.prop(props, "fuel_threshold")
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking
@@ -842,9 +833,13 @@ def _draw_domain(layout, scene, props):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
         advanced.prop(props, "simulation_speed")
-        heat_row = advanced.row(align=True)
-        heat_row.active = props.combustion_model == "realistic"
-        heat_row.prop(props, "physical_heat")
+        advanced.prop(props, "advection_reflection")
+        advanced.prop(props, "sharp_advection")
+        advanced.prop(props, "follow_object")
+        if props.follow_object:
+            advanced.prop(props, "carry_air", slider=True)
+        advanced.separator()
+        advanced.prop(props, "physical_heat")
         advanced.prop(props, "full_resolution_velocity")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")

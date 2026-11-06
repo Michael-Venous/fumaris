@@ -165,7 +165,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 clear_cache=resume_frame is None,
                 resume_frame=resume_frame,
                 write_vdb=True,
-                preview_enabled=bool(domain.fumaris.preview_bake),
+                preview_enabled=False,
                 show_progress=True,
             )
         except Exception as error:

@@ -120,8 +120,6 @@ def density_channels(domain_props, participants):
     """
     if getattr(domain_props, "density_storage", "auto") != "auto":
         return 4
-    if getattr(domain_props, "combustion_model", "realistic") != "realistic":
-        return 4
     heat = False
     for participant in participants:
         if participant.get("role") != "emitter":
@@ -365,7 +363,7 @@ def _domain_state(props, resolution_scale=1.0):
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,
         "velocity_damping": props.velocity_damping,
-        "combustion_model": props.combustion_model,
+        "combustion_model": "realistic",
         "flame_temperature": props.flame_temperature,
         "burn_time": props.burn_time,
         "cooling_time": props.cooling_time,
@@ -384,6 +382,9 @@ def _domain_state(props, resolution_scale=1.0):
         # The generated material no longer reads burn (Burn look removed).
         "export_burn_vdb": props.export_burn_vdb,
         "export_velocity_vdb": props.export_velocity_vdb,
+        "export_glow_vdb": bool(getattr(props, "export_glow_vdb", True)),
+        "export_temperature_half_res": bool(getattr(props, "export_temperature_half_res", False)),
+        "export_velocity_half_res": bool(getattr(props, "export_velocity_half_res", False)),
         "glow_radius": max(0.0, float(props.glow_radius)),
     }
 

@@ -4,6 +4,27 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Smaller VDB files (Output > Grids).** Temperature below 500 K (which cannot
+  glow) is no longer stored: 20 to 25% smaller files with no visible
+  difference. Temperature and Velocity each have a **Half Res** toggle, which
+  stores that grid at half resolution (together about 55% smaller files; motion
+  blur and fire colour change very slightly). The Glow grid can be turned off.
+
+- **Classic combustion removed.** Every domain uses Realistic combustion;
+  scenes saved with Classic open as Realistic.
+
+- **Flame Sheets keeps the flames.** Dense fuel now burns at the rate of the
+  Flame Sheets amount instead of nearly stopping, so a fireball keeps burning
+  in its core instead of losing its flames.
+
+- **Clearer panels.** Preserve Turbulence, Sharp Advection and Move with
+  Object are under Advanced (Preserve Turbulence and Sharp Advection now on by
+  default); Turbulence Detail separates Disturb from Grain; Memory is named
+  VRAM; the Space line under Resolution is gone. Bake and preview controls are
+  separated under a Preview Controls heading. The play button next to Bake
+  (Resume) and Preview Bake are removed, and Stop stays available whenever a
+  preview is running.
+
 - **Oxygen Field (Combustion).** With an Oxygen Limit, the air's oxygen now
   moves with the gas: burning uses it up and fresh air mixes back in, so fire
   starves inside thick burnt gas and burns in shells where it meets new air.
@@ -22,11 +43,23 @@ All notable customer-facing changes are recorded here.
   does in Cycles, and its colour now uses Blender's own blackbody. Lighting:
   Custom keeps a preview-only light. Exposure follows the scene's exposure.
 
-- **Preview tone mapping follows Blender's colour management exactly.** With
-  Tone Mapping: Scene the preview uses the scene's own view transform, look and
-  display (AgX, Filmic, ACES, Khronos PBR Neutral, False Color, looks such as
-  Punchy) through Blender's OCIO configuration, so highlights and colours match
-  the render.
+- **Preview tone mapping follows Blender's colour management exactly.** Every
+  Tone Mapping mode now uses Blender's own OCIO transform: Scene follows the
+  scene's view transform, look and display (AgX, Filmic, ACES, Khronos PBR
+  Neutral, False Color, looks such as Punchy); AgX, Filmic and Standard use
+  those views. The approximate built-in curves remain only as a fallback.
+
+- **No more banding in dark preview smoke.** The 8-bit preview image is
+  dithered, so dark smoke no longer breaks into purple and black blotches.
+
+- **Preview Step Size replaces Ray Steps.** The distance between preview ray
+  samples in simulation cells (default 1, like Cycles' Step Rate 1). Preview
+  cost is about proportional to the number of samples: 1.5 is about 40% faster
+  than the old default. Self Shadows now also controls the sky's shadowing, so
+  it visibly changes Scene lighting.
+
+- **Faster preview.** The preview pass no longer reads velocity for ordinary
+  looks, and rays stop once nothing behind them can show.
 
 - **Scatter Glow in the preview.** The live preview now draws the material's
   Scatter Glow (glow from nearby fire in cooler smoke), so smoke around flames
@@ -66,11 +99,6 @@ All notable customer-facing changes are recorded here.
 - **User presets.** Save a domain's or a source's settings as a preset
   (Presets menu and + next to Flow Object) and apply it to any object in any
   file. Only settings that differ from the defaults are stored.
-
-- **Resume Bake.** After Stop (or a crash), the play button next to Bake
-  continues the bake: frames already on disk are simulated again without
-  writing them, then baking continues, giving exactly the frames a full bake
-  would. Refused if the simulation settings changed since that bake.
 
 - **Sparks (Output > Add Sparks).** Adds sparks and embers that spawn in hot
   gas and fly through the baked velocity with drag and gravity, glowing by

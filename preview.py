@@ -195,6 +195,8 @@ def volume_preview_signature(preview):
         round(float(preview.get("color_spread", 1.0)), 7),
         round(float(preview.get("density_low", 0.0)), 7),
         round(float(preview.get("density_high", 1.0)), 7),
+        # the Expansion view is scaled by Gas Expansion
+        round(float(preview.get("gas_expansion", 0.0)), 7),
         preview.get("depth_serial"),
     )
 

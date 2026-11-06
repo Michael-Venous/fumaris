@@ -80,7 +80,7 @@ PRESETS = {
                    # heroB): dense soot, high Contrast, a compressed camera
                    # palette (Colour Spread 0.8) and little Scatter Glow,
                    # which otherwise washes the puffs orange.
-                   "shader_flame_brightness": 7.0, "shader_flame_contrast": 4.0,
+                   "shader_flame_brightness": 7.0, "shader_flame_contrast": 3.0,
                    "shader_glow_temperature": 1620.0,
                    "shader_color_spread": 0.8, "shader_temperature_multiplier": 0.85,
                    "shader_smoke_density": 4.0, "shader_scatter_glow": 0.03,

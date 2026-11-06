@@ -184,9 +184,10 @@ def build_frame(
     preview_enabled=True,
     volume_preview=None,
 ):
-    global _BURN_DOMAIN
+    global _BURN_DOMAIN, _RESOLUTION_SCALE
     owner = domain or getattr(context, "object", None)
     _BURN_DOMAIN = getattr(owner, "fumaris", None)
+    _RESOLUTION_SCALE = max(1e-3, float(resolution_scale))
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
     preview_request = volume_preview or {"valid": False}
@@ -928,8 +929,10 @@ def _participant_channels(props, role, matrix=None, *, velocity_active=False):
     return channels
 
 
-# Domain settings of the frame being built (Burning emitters follow its combustion).
+# Domain settings of the frame being built (Burning emitters follow its combustion)
+# and its Preview Resolution scale.
 _BURN_DOMAIN = None
+_RESOLUTION_SCALE = 1.0
 
 
 def _burning_channels(channels, props, domain):
@@ -992,9 +995,13 @@ def _point_normal_velocity(props, radii, values):
         return
     domain = _BURN_DOMAIN
     resolution = max(1, int(getattr(domain, "resolution", 256))) if domain else 256
+    # The simulated resolution (Preview Resolution scales it); velocity cells
+    # are two density cells unless Full-Resolution Velocity is on.
+    resolution = max(1.0, resolution * _RESOLUTION_SCALE)
+    velocity_cells = 1.0 if getattr(domain, "full_resolution_velocity", False) else 2.0
     # Flow's spherical footprint stamps at least a sphere of ~1.29 velocity
     # cells (measured 2026-11-05: point sources match v r^2 / d^2 within 3%).
-    cell = 1.29 * 2.0 * 32.0 / resolution
+    cell = 1.29 * velocity_cells * 32.0 / resolution
     rates = values.setdefault("couple_rate_divergences", array("f", [0.0] * len(divergences)))
     for index, radius in enumerate(radii):
         if index >= len(divergences):

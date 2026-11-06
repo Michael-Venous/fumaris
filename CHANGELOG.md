@@ -32,8 +32,8 @@ All notable customer-facing changes are recorded here.
   in its core instead of losing its flames.
 
 - **Clearer panels.** Preserve Turbulence, Sharp Advection and Move with
-  Object are under Advanced (Preserve Turbulence and Sharp Advection now on by
-  default); Turbulence Detail separates Disturb from Grain; Memory is named
+  Object are under Advanced (Preserve Turbulence and Sharp Advection on for
+  new domains; scenes saved before they existed keep them off); Turbulence Detail separates Disturb from Grain; Memory is named
   VRAM; the Space line under Resolution is gone. Bake and preview controls are
   separated under a Preview Controls heading. The play button next to Bake
   (Resume) and Preview Bake are removed, and Stop stays available whenever a
@@ -160,7 +160,7 @@ All notable customer-facing changes are recorded here.
   are continuous instead of a row of beads.
 - **Influence Only** now works for particle and point emitters too.
 - **Explosion Quick Setup:** Flame Sheets 1, finer Grain (1.5 velocity cells)
-  and a new look: dense dark soot over glowing crevices (Contrast 4, Colour
+  and a new look: dense dark soot over glowing crevices (Contrast 3, Colour
   Spread 0.8, little Scatter Glow).
 
 - **Stronger pressure solve.** Two multigrid cycles with two smoothing passes
@@ -265,8 +265,8 @@ All notable customer-facing changes are recorded here.
 - **Gas Expansion (Combustion).** Burning gas now pushes the smoke around it
   outward where it actually burns, with the same strength at any resolution,
   frame rate or Sub-Steps. Use it to drive fireballs and mushroom clouds from
-  the fire itself. It replaces Expansion in the Realistic model (Expansion
-  remains for the Classic model). The Explosion Quick Setup uses 2.
+  the fire itself. It replaces the per-burn Expansion of Flow's model. The
+  Explosion Quick Setup uses 2.
 - **Temperature (Physical) flame look (Appearance).** Fire glows by its
   temperature like real soot: gas at Flame Temperature blazes yellow-orange,
   cooler gas falls off to deep red and dark crevices as on a camera exposed
@@ -323,18 +323,18 @@ All notable customer-facing changes are recorded here.
   material is picked as the domain's Volume Material; new **Anisotropy**
   (default 0.3, forward scattering like real smoke).
 - **New-domain defaults:** Sharp Advection on, Burn Time 0.5 s, Cooling Time
-  5 s, Gas Expansion 0.5, Simulation Memory 4 GB, up to 4 Sub-Steps with
-  Cells per Step 4 (Preserve Turbulence and Physical Heat on, as before).
-  Saved scenes keep their settings. The Steady Fire Quick Setup ignites its
+  5 s, Gas Expansion 0.5, VRAM 4 GB, up to 4 Sub-Steps with Cells per Step 4
+  (Preserve Turbulence and Physical Heat on). Saved scenes keep their
+  settings, with Sharp Advection and Preserve Turbulence off. The Steady Fire Quick Setup ignites its
   fuel (Temperature 0.35, Maximum) so burning makes the heat, and an emitter
   that injects fuel at Flame Temperature under Physical Heat shows a hint.
 - **Fixed:** a VDB bake could stop with "No density readback" when the last
   smoke vanished while warm air was still moving; those frames are now saved
   as empty.
-- **Sharp Advection (Turbulence).** Carries motion with a stronger error
+- **Sharp Advection (Advanced).** Carries motion with a stronger error
   correction that falls back to the plain step wherever it would overshoot,
   for crisper swirls and billow edges at the same cost per voxel. Stable at
-  any Sub-Steps. Off by default.
+  any Sub-Steps. On for new domains.
 - **Upres removed.** The experimental Upres option and its settings are gone; scenes saved with Upres enabled now simulate at their base resolution.
 
 - **Velocity attribute for mesh emitters.** A mesh or Geometry Nodes mesh
@@ -380,7 +380,7 @@ All notable customer-facing changes are recorded here.
   far the fastest flow may move per step.
 - **Vorticity Mask.** Choose whether Vorticity swirls fast motion (as before),
   dense smoke, flames or everything.
-- **Realistic combustion** (new domains; earlier scenes keep Classic). Fuel
+- **Realistic combustion** (every domain since Classic was removed). Fuel
   burns away gradually at a set **Flame Temperature**, so fires glow at real
   flame colours and fade into embers and smoke instead of turning white-hot
   and stopping at once. The Combustion panel uses Flame Temperature, Burn
@@ -390,7 +390,7 @@ All notable customer-facing changes are recorded here.
   tongues instead of an all-over glow, also in the live preview; set 1 for the
   previous look) and `Blue Core (Render Only)` (blue where fuel is just
   igniting).
-- **Preserve Turbulence** (Behavior > Turbulence Detail). Advection–reflection
+- **Preserve Turbulence** (Advanced). Advection–reflection
   keeps much more of the flow's swirling energy for livelier, longer-lasting
   turbulence, at 6–26% more time.
 - **Disturb and Shred** (Behavior > Turbulence Detail). Disturb adds small

@@ -19,8 +19,8 @@ from .memory_auto import auto_toggled
 LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
 TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
-# 1: domain created with the Realistic combustion model available. Domains from
-# earlier files load as Classic so their look does not change.
+# 1: domain created with the Realistic combustion model available. Earlier
+# domains keep their other settings; Classic itself was removed in 1.4.
 COMBUSTION_VERSION = 1
 # 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
 SUBSTEP_SETTINGS_VERSION = 1
@@ -248,7 +248,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_temperature: FloatProperty(
         name="Emitter Temperature",
-        description="Source temperature before the domain Temperature Input Scale is applied",
+        description="Source temperature as a share of the domain's Flame Temperature: 1 is Flame Temperature",
         default=2.0,
         min=0.0,
         soft_max=5.0,
@@ -595,12 +595,14 @@ class FumarisSettings(PropertyGroup):
 
     preview_tone_mapping: EnumProperty(
         name="Tone Mapping",
-        description="How bright smoke and fire fit into the preview image. Preview only; this is not Blender's scene color management",
+        description="How bright smoke and fire fit into the preview image, using Blender's own color management transforms. Preview only",
+        # Fixed numbers: files store the number, and 1.3.1 had filmic, none,
+        # agx as 0, 1, 2 (Scene was added first in the list in 1.4).
         items=(
-            ("scene", "Scene", "Follow the scene's View Transform (AgX, Filmic or Standard), so the preview tone maps like the render"),
-            ("filmic", "Filmic", "Blender's Filmic view transform"),
-            ("none", "Standard", "Blender's Standard view transform: plain sRGB, values above the display range clip to white"),
-            ("agx", "AgX", "Blender's AgX view transform"),
+            ("scene", "Scene", "Follow the scene's View Transform, Look and Display, so the preview tone maps like the render", 3),
+            ("filmic", "Filmic", "Blender's Filmic view transform", 0),
+            ("none", "Standard", "Blender's Standard view transform: plain sRGB, values above the display range clip to white", 1),
+            ("agx", "AgX", "Blender's AgX view transform", 2),
         ),
         default="scene",
     )
@@ -649,7 +651,7 @@ class FumarisSettings(PropertyGroup):
 
     sparse_block_capacity: IntProperty(
         name="Sparse Block Capacity",
-        description="Legacy space limit in sparse blocks, kept for scenes and scripts that set it. Simulation Memory replaces it once changed",
+        description="Legacy space limit in sparse blocks, kept for scenes and scripts that set it. VRAM replaces it once changed",
         default=16384,
         min=256,
         max=524288,
@@ -682,7 +684,7 @@ class FumarisSettings(PropertyGroup):
 
     full_resolution_velocity: BoolProperty(
         name="Full-Resolution Velocity",
-        description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in Simulation Memory) and more time per step. Smoke also moves about a quarter faster: Vorticity then makes smaller swirls that slow the plume less",
+        description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in VRAM) and more time per step. Smoke also moves somewhat faster: Vorticity then makes smaller swirls that slow the plume less",
         default=False,
     )
 
@@ -1575,13 +1577,15 @@ class FumarisSettings(PropertyGroup):
     sharp_advection: BoolProperty(
         name="Sharp Advection",
         description="Carry motion with a stronger error correction that falls back to the plain step wherever it would overshoot, for crisper swirls and billow edges at the same cost per voxel",
-        default=True,
+        # Off for domains saved before it existed; new domains turn it on.
+        default=False,
     )
 
     advection_reflection: BoolProperty(
         name="Preserve Turbulence",
-        description="Advection-reflection: keeps swirling motion that the solver would otherwise lose to numerical damping, for livelier, longer-lasting turbulence and larger plumes. Steps run in pairs, so the Sub-Step count is rounded up to an even number (at least 2). About 3% more GPU time per block; the livelier smoke fills more space, so it reaches Simulation Memory sooner",
-        default=True,
+        description="Advection-reflection: keeps swirling motion that the solver would otherwise lose to numerical damping, for livelier, longer-lasting turbulence and larger plumes. Steps run in pairs, so the Sub-Step count is rounded up to an even number (at least 2). About 3% more GPU time per block; the livelier smoke fills more space, so it fills VRAM sooner",
+        # Off for domains saved before it existed; new domains turn it on.
+        default=False,
     )
 
     shred: FloatProperty(
@@ -1641,7 +1645,7 @@ class FumarisSettings(PropertyGroup):
 
     export_velocity_half_res: BoolProperty(
         name="Velocity at Half Resolution",
-        description="Write velocity at half resolution: much smaller velocity grids, motion blur from coarser motion",
+        description="Halve the stored velocity grid, which is already half the density resolution (a quarter of it in all): much smaller velocity grids, motion blur from coarser motion",
         default=False,
     )
 
@@ -1659,7 +1663,7 @@ class FumarisSettings(PropertyGroup):
 
     export_temperature_vdb: BoolProperty(
         name="Export Temperature VDB",
-        description="Export nonnegative Flow temperature in a fixed Kelvin-like 0 to 5000 range for direct Blackbody shading",
+        description="Export temperature in Kelvin (0 to 5000) for Blackbody shading. Gas below 500 K, which cannot glow, is not stored and reads as 0 K",
         default=True,
     )
 
@@ -2009,6 +2013,11 @@ class FumarisSettings(PropertyGroup):
 def _migrate_temperature_mapping():
     for obj in bpy.data.objects:
         props = getattr(obj, "fumaris", None)
+        if (props is not None and props.smoke_object_type == "domain"
+                and props.get("combustion_model", 0) != 0):
+            # Classic (1) was removed in 1.4: drop the stale value so the
+            # domain reads Realistic without RNA warnings.
+            props.property_unset("combustion_model")
         if (props is not None and props.smoke_object_type == "domain"
                 and props.substep_settings_version < SUBSTEP_SETTINGS_VERSION):
             # The Adaptive toggle became Cells per Step 0.

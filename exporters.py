@@ -513,6 +513,9 @@ def _mesh_state(participant, depsgraph, payload, frame):
         "min_distance": minimum,
         "max_distance": maximum,
         "is_collision": participant["role"] == "collider",
+        # Open (non-manifold) collider meshes have no inside (bridge experiment
+        # FUMARIS_EXP_OPEN_WALL).
+        "open_surface": participant["role"] == "collider" and participant.get("closed_surface") is None,
         "is_outflow": participant["role"] == "outflow",
         "motion_velocity_scale": 0.0 if participant["role"] != "emitter" else props.motion_velocity_scale,
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,

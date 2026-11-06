@@ -656,6 +656,8 @@ def _draw_domain(layout, scene, props):
         slot = fields.row(align=True)
         slot.prop(props, "cache_slot", text="")
         slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
+        slot.operator("fumaris.cache_slot_restore_settings", icon="LOOP_BACK", text="")
+        slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
         slot.operator(
             "fumaris.cache_protect",
             icon="LOCKED" if slot_protected else "UNLOCKED",

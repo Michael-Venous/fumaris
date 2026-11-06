@@ -274,3 +274,105 @@ def _pid_is_alive(pid):
         return exit_code.value == 259
     finally:
         kernel32.CloseHandle(handle)
+
+
+# Takes: every bake stores the settings it was baked with in its cache slot,
+# so a slot can be compared with, or restored into, the current scene.
+SETTINGS_FILE = ".fumaris_settings.json"
+# Bookkeeping and identity: never restored from a slot.
+_SNAPSHOT_SKIP = {
+    "cache_slot", "cache_id", "output_dir", "output_prefix", "baked_frames",
+    "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb", "simulation_state",
+}
+
+
+def _rna_values(props):
+    """Plain values of a property group's editable settings (no pointers)."""
+    values = {}
+    for prop in props.bl_rna.properties:
+        name = prop.identifier
+        if name in ("rna_type", "name") or name in _SNAPSHOT_SKIP or prop.is_readonly:
+            continue
+        if prop.type in {"POINTER", "COLLECTION"}:
+            continue
+        if name.startswith("show_"):
+            continue
+        try:
+            value = getattr(props, name)
+        except AttributeError:
+            continue
+        if prop.type in {"FLOAT", "INT", "BOOLEAN"} and getattr(prop, "array_length", 0):
+            value = list(value)
+        elif prop.type == "ENUM" and getattr(prop, "is_enum_flag", False):
+            value = sorted(value)
+        values[name] = value
+    return values
+
+
+def write_settings_snapshot(directory, domain, participants=()):
+    """Write the domain's and its participants' settings for this bake."""
+    data = {
+        "version": 1,
+        "written": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "domain": domain.name,
+        "settings": _rna_values(domain.fumaris),
+        "participants": {},
+    }
+    for participant in participants:
+        obj = participant.get("object") if isinstance(participant, dict) else participant
+        if obj is None or obj == domain or not hasattr(obj, "fumaris"):
+            continue
+        data["participants"][obj.name] = _rna_values(obj.fumaris)
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, SETTINGS_FILE)
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, indent=1, sort_keys=True)
+    os.replace(temporary, path)
+    return path
+
+
+def read_settings_snapshot(directory):
+    path = os.path.join(directory, SETTINGS_FILE)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def _apply_values(props, values):
+    changed = 0
+    for name, value in values.items():
+        if name in _SNAPSHOT_SKIP or not hasattr(props, name):
+            continue
+        try:
+            current = getattr(props, name)
+            if hasattr(current, "__len__") and not isinstance(current, str) and not isinstance(value, str):
+                if isinstance(current, set):
+                    value = set(value)
+                elif list(current) == list(value):
+                    continue
+            elif current == value:
+                continue
+            setattr(props, name, value)
+            changed += 1
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return changed
+
+
+def apply_settings_snapshot(domain, data, objects):
+    """Restore a snapshot; participants are matched by object name.
+
+    Returns (changed settings, participants restored, participants missing).
+    """
+    changed = _apply_values(domain.fumaris, data.get("settings", {}))
+    restored, missing = 0, []
+    for name, values in data.get("participants", {}).items():
+        obj = objects.get(name)
+        if obj is None or not hasattr(obj, "fumaris"):
+            missing.append(name)
+            continue
+        changed += _apply_values(obj.fumaris, values)
+        restored += 1
+    return changed, restored, missing

@@ -76,13 +76,14 @@ PRESETS = {
                    # fuel (8) burns only once mixed below 1, in thin sheets,
                    # so dark soot puffs sit inside a glowing body.
                    "fuel_threshold": 1.0,
-                   # Bright fire body with dark puffs (output/axiom2): a
-                   # compressed camera palette (Colour Spread 0.8) keeps the
-                   # body orange; brighter still turns peach under plain AgX.
-                   "shader_flame_brightness": 8.0, "shader_flame_contrast": 2.0,
+                   # Dark soot puffs over glowing crevices (output/axiom2,
+                   # heroB): dense soot, high Contrast, a compressed camera
+                   # palette (Colour Spread 0.8) and little Scatter Glow,
+                   # which otherwise washes the puffs orange.
+                   "shader_flame_brightness": 7.0, "shader_flame_contrast": 4.0,
                    "shader_glow_temperature": 1620.0,
-                   "shader_color_spread": 0.8, "shader_temperature_multiplier": 0.8,
-                   "shader_smoke_density": 2.0, "shader_scatter_glow": 0.15,
+                   "shader_color_spread": 0.8, "shader_temperature_multiplier": 0.85,
+                   "shader_smoke_density": 4.0, "shader_scatter_glow": 0.03,
                    "shader_smoke_color": (0.45,) * 3},
         # Disturb's largest swirls relative to the sources' largest dimension.
         "disturb_size_per_size": 0.3,

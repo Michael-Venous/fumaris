@@ -14,6 +14,10 @@ from .cache import (
     create_preview_take,
     is_protected,
     next_slot_name,
+    read_settings_snapshot,
+    apply_settings_snapshot,
+    write_settings_snapshot,
+    SETTINGS_FILE,
     require_unprotected,
     set_protected,
     delete_obsolete_cache_state,
@@ -37,6 +41,7 @@ from .importers import (
     restore_generated_volumes,
     restore_recorded_previews,
     migrate_legacy_cache,
+    _frame_files,
 )
 from .jobs import FrameRangeJob
 from .protocol import CACHE_FLUSHED
@@ -136,6 +141,10 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
+        try:
+            write_settings_snapshot(self._directory, domain, self._participants)
+        except Exception as error:
+            console_log(f"Fumaris could not store the bake settings: {error}")
         mark_bake_running(domain)
         domain.fumaris.baked_frames = 0
         domain.fumaris.bake_elapsed = 0.0
@@ -1074,6 +1083,87 @@ class FUMARIS_OT_cache_slot_new(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_cache_slot_restore_settings(Operator):
+    bl_idname = "fumaris.cache_slot_restore_settings"
+    bl_label = "Restore Settings from Slot"
+    bl_description = "Set the domain and its sources back to the settings this cache slot was baked with (sources are matched by name)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        domain = _active_domain(context)
+        if not domain or active_job():
+            return False
+        return os.path.isfile(os.path.join(output_directory_for_object(domain), SETTINGS_FILE))
+
+    def execute(self, context):
+        domain = _active_domain(context)
+        data = read_settings_snapshot(output_directory_for_object(domain))
+        if not data:
+            self.report({"ERROR"}, "This cache slot has no stored settings (baked before Fumaris 1.4)")
+            return {"CANCELLED"}
+        changed, restored, missing = apply_settings_snapshot(domain, data, bpy.data.objects)
+        message = f"Restored {changed} settings from '{domain.fumaris.cache_slot}' (baked {data.get('written', '?')})"
+        if missing:
+            message += f"; not found: {', '.join(missing[:4])}"
+            self.report({"WARNING"}, message)
+        else:
+            self.report({"INFO"}, message)
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_cache_make_lighter(Operator):
+    bl_idname = "fumaris.cache_make_lighter"
+    bl_label = "Make Lighter Copy"
+    bl_description = "Copy this bake into a new cache slot at half the resolution, without the faintest smoke: files several times smaller for layout, previews and render tests. The original slot is kept"
+
+    cull: bpy.props.FloatProperty(
+        name="Drop Below",
+        description="Smoke density below which voxels are dropped",
+        default=0.01,
+        min=0.0,
+        soft_max=0.1,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        domain = _active_domain(context)
+        if not domain or active_job():
+            return False
+        return bool(baked_frame_count(output_directory_for_object(domain), domain.fumaris.output_prefix or "fumaris_"))
+
+    def execute(self, context):
+        from .lighter import make_lighter_copy
+
+        domain = _active_domain(context)
+        props = domain.fumaris
+        prefix = props.output_prefix or "fumaris_"
+        source = output_directory_for_object(domain)
+        files = [os.path.basename(path) for path in _frame_files(source, prefix)]
+
+        def taken(slot):
+            directory = cache_slot_directory(domain, slot)
+            return bool(is_protected(directory) or baked_frame_count(directory, prefix))
+
+        base = f"{props.cache_slot.strip() or 'main'}_lite"
+        slot = base if not taken(base) else next_slot_name(base, taken)
+        target = cache_slot_directory(domain, slot)
+        wm = context.window_manager
+        wm.progress_begin(0, max(1, len(files)))
+        try:
+            before, after = make_lighter_copy(
+                source, target, files, self.cull,
+                progress=lambda done, _total: wm.progress_update(done))
+        except Exception as error:
+            self.report({"ERROR"}, f"Make Lighter Copy failed: {error}")
+            return {"CANCELLED"}
+        finally:
+            wm.progress_end()
+        props.cache_slot = slot
+        self.report({"INFO"}, f"Cache slot '{slot}': {len(files)} frames, {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB")
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_cache_protect(Operator):
     bl_idname = "fumaris.cache_protect"
     bl_label = "Protect"
@@ -1262,6 +1352,8 @@ CLASSES = (
     FUMARIS_OT_bake,
     FUMARIS_OT_bake_replace,
     FUMARIS_OT_cache_slot_new,
+    FUMARIS_OT_cache_slot_restore_settings,
+    FUMARIS_OT_cache_make_lighter,
     FUMARIS_OT_cache_protect,
     FUMARIS_OT_preview_play,
     FUMARIS_OT_preview_pause,

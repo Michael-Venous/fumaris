@@ -80,6 +80,8 @@ def capture_volume_preview(context, domain, target=None):
         "temperature_multiplier": float(props.shader_temperature_multiplier),
         "color_spread": float(props.shader_color_spread),
         "gas_expansion": float(props.gas_expansion),
+        "density_low": float(props.shader_density_low),
+        "density_high": float(props.shader_density_high),
         "shadows": bool(props.preview_shadows),
         "shadow_min_light": float(props.preview_shadow_min_light),
         "light_scattering": float(props.preview_light_scattering),

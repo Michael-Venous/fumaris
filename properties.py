@@ -1718,6 +1718,24 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
+    shader_density_low: FloatProperty(
+        name="Density Low",
+        description="Smoke density that renders as empty: thinner smoke disappears. With Density High it remaps the baked density linearly (material and live preview)",
+        default=0.0,
+        min=0.0,
+        soft_max=1.0,
+        update=_appearance_updated,
+    )
+
+    shader_density_high: FloatProperty(
+        name="Density High",
+        description="Smoke density that renders at full Density; denser smoke keeps getting denser. Lower it to make thin smoke heavier",
+        default=1.0,
+        min=0.001,
+        soft_max=5.0,
+        update=_appearance_updated,
+    )
+
     shader_color_spread: FloatProperty(
         name="Colour Spread",
         description="How far fire colour moves with temperature around Full Glow. 1 is physical blackbody colour; lower values keep hot and cool gas closer to the Full Glow colour (a camera's compressed fire palette: orange body, no white-hot or deep-red extremes); higher values exaggerate the range",

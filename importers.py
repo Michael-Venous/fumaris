@@ -34,8 +34,11 @@ NODE_FLAME_CORE = "Fumaris Flame Core"
 NODE_WIEN_TERM = "Fumaris Wien Term"
 # 2: Temperature look only (the Burn look and its burn grid removed), one
 # emission closure, frames. 3: Colour Spread (colour shift is multiply-add).
+# 4: Density Remap (density read through a remap node, not the shader attribute).
 # Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 3
+GRAPH_VERSION = 4
+NODE_DENSITY_REMAP = "Fumaris Density Remap"
+NODE_DENSITY_GAIN = "Fumaris Density Gain"
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 NODE_PHYSICAL_CONTRAST = "Fumaris Physical Contrast"
 NODE_PHYSICAL_GAIN = "Fumaris Physical Gain"
@@ -226,6 +229,15 @@ def apply_generated_material_settings(material, settings):
     density = max(0.0, float(_appearance_value(settings, "shader_smoke_density", 2.0)))
     shader.inputs["Color"].default_value = (*smoke_color[:3], 1.0)
     shader.inputs["Density"].default_value = density
+    gain_node = nodes.get(NODE_DENSITY_GAIN)
+    if gain_node is not None:
+        gain_node.inputs[1].default_value = density
+    remap_node = nodes.get(NODE_DENSITY_REMAP)
+    if remap_node is not None:
+        low = float(_appearance_value(settings, "shader_density_low", 0.0))
+        high = max(low + 1e-4, float(_appearance_value(settings, "shader_density_high", 1.0)))
+        remap_node.inputs[1].default_value = 1.0 / (high - low)
+        remap_node.inputs[2].default_value = -low / (high - low)
     shader.inputs["Anisotropy"].default_value = max(
         -0.95, min(0.95, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
 
@@ -325,6 +337,24 @@ def _build_generated_material(material, blue_core=False):
     volume_info = nodes.new("ShaderNodeVolumeInfo")
     volume_info.location = (-1480, 160)
     volume_info.parent = inputs
+    # Density Remap: (density - Low) / (High - Low), floored at 0, no upper clamp.
+    density_remap = nodes.new("ShaderNodeMath")
+    density_remap.operation = "MULTIPLY_ADD"
+    density_remap.name = NODE_DENSITY_REMAP
+    density_remap.label = "Density Remap"
+    density_remap.location = (-1300, 60)
+    density_remap.parent = inputs
+    density_remap.inputs[1].default_value = 1.0
+    density_remap.inputs[2].default_value = 0.0
+    density_floor = nodes.new("ShaderNodeMath")
+    density_floor.operation = "MAXIMUM"
+    density_floor.label = "Density Floor"
+    density_floor.location = (-1150, 60)
+    density_floor.parent = inputs
+    density_floor.inputs[1].default_value = 0.0
+    links.new(volume_info.outputs["Density"], density_remap.inputs[0])
+    links.new(density_remap.outputs[0], density_floor.inputs[0])
+    density_value = density_floor.outputs[0]
     glow = nodes.new("ShaderNodeAttribute")
     glow.attribute_name = "glow"
     glow.label = "Glow (baked)"
@@ -355,7 +385,7 @@ def _build_generated_material(material, blue_core=False):
     links.new(wien_term.outputs[0], wien.inputs[0])
     links.new(wien.outputs[0], radiance.inputs[0])
     links.new(radiance.outputs[0], absorbed.inputs[0])
-    links.new(volume_info.outputs["Density"], absorbed.inputs[1])
+    links.new(density_value, absorbed.inputs[1])
     links.new(absorbed.outputs[0], gain.inputs[0])
     links.new(volume_info.outputs["Temperature"], color_scale.inputs[0])
     links.new(color_scale.outputs[0], fire_blackbody.inputs["Temperature"])
@@ -431,12 +461,12 @@ def _build_generated_material(material, blue_core=False):
     links.new(wien_term.outputs[0], local_wien.inputs[0])
     links.new(local_wien.outputs[0], local_radiance.inputs[0])
     links.new(local_radiance.outputs[0], local_source.inputs[0])
-    links.new(volume_info.outputs["Density"], local_source.inputs[1])
+    links.new(density_value, local_source.inputs[1])
     links.new(_socket(glow.outputs, "Factor", "Fac"), excess.inputs[0])
     links.new(local_source.outputs[0], excess.inputs[1])
     links.new(excess.outputs[0], positive.inputs[0])
     links.new(positive.outputs[0], glow_density.inputs[0])
-    links.new(volume_info.outputs["Density"], glow_density.inputs[1])
+    links.new(density_value, glow_density.inputs[1])
     links.new(glow_density.outputs[0], glow_gain.inputs[0])
     links.new(glow_blackbody.outputs["Color"], glow_saturation.inputs["Color"])
     links.new(glow_saturation.outputs["Color"], [s for s in albedo.inputs if s.type == "RGBA"][0])
@@ -464,7 +494,17 @@ def _build_generated_material(material, blue_core=False):
     shader.name = NODE_VOLUME_SHADER
     shader.location = (620, 200)
     shader.parent = smoke
-    shader.inputs["Density Attribute"].default_value = "density"
+    # Density comes from the remap node (times Density, set on update).
+    shader.inputs["Density Attribute"].default_value = ""
+    density_gain = nodes.new("ShaderNodeMath")
+    density_gain.operation = "MULTIPLY"
+    density_gain.name = NODE_DENSITY_GAIN
+    density_gain.label = "x Density"
+    density_gain.location = (440, 60)
+    density_gain.parent = smoke
+    density_gain.inputs[1].default_value = 2.0
+    links.new(density_value, density_gain.inputs[0])
+    links.new(density_gain.outputs[0], shader.inputs["Density"])
     shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0
     shader.inputs["Emission Strength"].default_value = 1.0

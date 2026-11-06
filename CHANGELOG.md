@@ -4,6 +4,10 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Density Low / High (Appearance).** Remap the baked smoke density in the
+  material and live preview: raise Low to clear thin haze, lower High to make
+  thin smoke heavier.
+
 - **Expansion view (preview Show).** Shows where burning gas expands, drawn as
   fire, to tune Gas Expansion and fuel placement.
 

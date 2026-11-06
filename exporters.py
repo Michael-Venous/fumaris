@@ -108,7 +108,31 @@ def build_session(
     settings["initial_domain"]["mesh_sources"] = any(item["kind"] == "mesh" for item in participants)
     # Effectors add a velocity scratch texture after the pressure solve.
     settings["initial_domain"]["effector_sources"] = any(item["kind"] == "effector" for item in participants)
+    settings["initial_domain"]["density_channels"] = density_channels(domain.fumaris, participants)
     return settings, participants
+
+
+def density_channels(domain_props, participants):
+    """Density channels the bake stores: 1 smoke, 2 smoke + temperature, 4 all.
+
+    Fuel, burning emitters or Classic combustion need all four; heat alone needs
+    temperature; otherwise only smoke is kept (more capacity per GB).
+    """
+    if getattr(domain_props, "density_storage", "auto") != "auto":
+        return 4
+    if getattr(domain_props, "combustion_model", "realistic") != "realistic":
+        return 4
+    heat = False
+    for participant in participants:
+        if participant.get("role") != "emitter":
+            continue
+        props = participant["object"].fumaris
+        if (props.emitter_fuel > 0.0 or props.emitter_burn > 0.0
+                or getattr(props, "emitter_burning", False)):
+            return 4
+        if props.emitter_temperature != 0.0:
+            heat = True
+    return 2 if heat else 1
 
 
 def session_structure_signature(domain):

@@ -728,6 +728,16 @@ class FumarisSettings(PropertyGroup):
         subtype="DIR_PATH",
     )
 
+    density_storage: EnumProperty(
+        name="Density Storage",
+        description="Which density channels the simulation stores. Auto keeps only smoke (and temperature when sources heat) when nothing burns, for up to about twice the simulated space in the same memory",
+        items=(
+            ("auto", "Auto", "Smoke only, or smoke and temperature, when no source emits fuel or burns"),
+            ("all", "All Channels", "Always store temperature, fuel, burn and smoke"),
+        ),
+        default="auto",
+    )
+
     cache_slot: StringProperty(
         name="Cache Slot",
         description="Independent baked simulation slot. Each name keeps its own bake; switching shows that slot's bake and hides the others without deleting anything",

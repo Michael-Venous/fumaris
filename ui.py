@@ -836,6 +836,9 @@ def _draw_domain(layout, scene, props):
         advanced.prop(props, "simulation_speed")
         advanced.prop(props, "advection_reflection")
         advanced.prop(props, "sharp_advection")
+        detail = advanced.row(align=True)
+        detail.prop(props, "smoke_detail", text="Smoke Detail")
+        detail.prop(props, "edge_sharpness", text="Edges")
         advanced.prop(props, "follow_object")
         if props.follow_object:
             advanced.prop(props, "carry_air", slider=True)

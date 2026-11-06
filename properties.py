@@ -1380,6 +1380,24 @@ class FumarisSettings(PropertyGroup):
         default=1.0, min=0.0, soft_max=4.0,
     )
 
+    smoke_detail: EnumProperty(
+        name="Smoke Detail",
+        description="How smoke and heat are carried between cells each step",
+        items=[
+            ("standard", "Standard", "Linear interpolation: fastest, softest fine detail"),
+            ("sharp", "Sharp", "Cubic interpolation: keeps billows about twice as fine, so lobes nest down to a few voxels instead of fading out near eight; slower smoke transport. Pair with Edge Sharpness about 0.45 to avoid stair-stepped edges in close-ups"),
+        ],
+        default="standard",
+    )
+
+    edge_sharpness: FloatProperty(
+        name="Edge Sharpness",
+        description="How strongly each step restores detail lost to interpolation (MacCormack correction of smoke and heat). High values give crisp edges that can stair-step in close-ups when Smoke Detail is Sharp; about 0.45 keeps edges near two voxels soft",
+        default=0.9,
+        min=0.0,
+        max=1.0,
+    )
+
     oxygen_mixing: FloatProperty(
         name="Oxygen Mixing",
         description="How fast fresh air mixes back into burnt gas, per second. Lower keeps smoky cores starved longer",

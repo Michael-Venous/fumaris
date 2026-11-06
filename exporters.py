@@ -365,6 +365,8 @@ def _domain_state(props, resolution_scale=1.0):
         "oxygen_field": bool(props.oxygen_field),
         "oxygen_use": float(props.oxygen_use),
         "oxygen_mixing": float(props.oxygen_mixing),
+        "smoke_detail": getattr(props, "smoke_detail", "standard"),
+        "edge_sharpness": float(getattr(props, "edge_sharpness", 0.9)),
         "physical_heat": props.physical_heat,
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,

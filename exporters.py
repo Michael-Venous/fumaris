@@ -98,6 +98,7 @@ def build_session(
         "output_prefix": domain.fumaris.output_prefix or "fumaris_",
         "vdb_compression": getattr(domain.fumaris, "vdb_compression", "active_mask"),
         "vdb_precision": getattr(domain.fumaris, "vdb_precision", "half"),
+        "low_memory_bake": bool(getattr(domain.fumaris, "low_memory_bake", False)),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
         "flow_profile_enabled": os.environ.get("FUMARIS_FLOW_PROFILE", "").strip().lower()

@@ -12,6 +12,12 @@ All notable customer-facing changes are recorded here.
   system RAM, which limits the queue but not the converting writers. Set the
   FUMARIS_VDB_WORKERS environment variable to use fewer.
 
+- **Low Memory Bake** (Output panel, off by default). Holds fewer VDB frames
+  in system memory while writing (4 writers, one frame waiting at a time). A
+  1024 Explosion using 11 GB of GPU memory peaked at 9.6 GB of system RAM
+  instead of 11.9 GB, but baked about three times slower. Use it when a bake
+  would otherwise run out of RAM or swap.
+
 - **Coarse grids rise like fine ones.** Vorticity is now weakened in
   proportion below Resolution 256 (and at a low Preview Resolution), where
   it used to swirl so hard that plumes stalled: a smoke plume at 128 rose

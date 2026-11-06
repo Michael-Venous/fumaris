@@ -827,6 +827,12 @@ class FumarisSettings(PropertyGroup):
         default="half",
     )
 
+    low_memory_bake: BoolProperty(
+        name="Low Memory Bake",
+        description="Hold fewer VDB frames in system memory while writing: about a fifth less RAM in large bakes (11.9 to 9.6 GB for a 1024 Explosion using 11 GB of GPU memory), at about three times the bake time. Use when a bake would otherwise run out of RAM or swap",
+        default=False,
+    )
+
     # Object References
     emitter_collection: PointerProperty(
         name="Emitters Collection",

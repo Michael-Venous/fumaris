@@ -688,6 +688,7 @@ def _draw_domain(layout, scene, props):
         vdb.prop(props, "vdb_precision", text="")
         labels.label(text="Material")
         fields.prop(props, "volume_material", text="")
+        output.prop(props, "low_memory_bake")
         output.separator()
         output.prop(props, "volume_selectable")
         output.separator()

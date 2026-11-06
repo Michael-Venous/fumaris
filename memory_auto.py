@@ -10,6 +10,7 @@ with the C++ (tools/tests/memory_budget_test.cpp and test_memory_auto.py check
 the same values). Drawing never starts a subprocess.
 """
 import functools
+import os
 import threading
 
 AUTO_FRACTION = 0.8
@@ -28,8 +29,19 @@ _RGBA16F, _RG16F, _R16F, _R8 = 8, 4, 2, 1
 _FLOW_UNITS_PER_RESOLUTION = 32.0
 
 
+# Border-free bricks (NvFlowSparsePool.h): 16^3 blocks packed edge to edge;
+# FUMARIS_EXP_BORDERED=1 restores Flow's 32x16x16 blocks with a one-cell border.
+_BORDER = 1 if os.environ.get("FUMARIS_EXP_BORDERED", "0") not in ("", "0") else 0
+
+
 def _density_bits(small_blocks):
-    return (4, 3, 3) if small_blocks else (5, 4, 4)
+    if small_blocks:
+        return (4, 3, 3)
+    return (5, 4, 4) if _BORDER else (4, 4, 4)
+
+
+def _extent(slots, bits):
+    return slots * ((1 << bits) + 2 * _BORDER) + (0 if _BORDER else 2)
 
 
 def _coarser(bits):
@@ -41,10 +53,11 @@ def pool_dimensions(capacity, bits, max_texture_dimension=0):
     device = max_texture_dimension or 2048
     extent_x = min(device, 4096)
     extent_yz = min(device, 2048)
+    spare = 0 if _BORDER else 2
     limits = (
-        extent_x // ((1 << bits[0]) + 2),
-        extent_yz // ((1 << bits[1]) + 2),
-        extent_yz // ((1 << bits[2]) + 2),
+        min(1024, (extent_x - spare) // ((1 << bits[0]) + 2 * _BORDER)),
+        min(1024, (extent_yz - spare) // ((1 << bits[1]) + 2 * _BORDER)),
+        min(1024, (extent_yz - spare) // ((1 << bits[2]) + 2 * _BORDER)),
     )
     if capacity >= limits[0] * limits[1] * limits[2]:
         return limits
@@ -113,7 +126,7 @@ def estimate_bytes(capacity, *, small_blocks=False, effector_sources=True,
     for bits, texel_bytes, count in _atlas_inventory(small_blocks, effector_sources, preview, full_velocity):
         raw = texel_bytes
         for axis in range(3):
-            raw *= dims[axis] * ((1 << bits[axis]) + 2)
+            raw *= _extent(dims[axis], bits[axis])
         total += (raw + raw // 10) * count
     if export_velocity:
         slots = dims[0] * dims[1] * dims[2]

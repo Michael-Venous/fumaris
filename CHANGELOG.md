@@ -4,6 +4,12 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **About 1.5x more simulation in the same Simulation Memory, ~20% faster.**
+  The sparse grid stores its blocks without the copied border Flow kept
+  around each one, in smaller 16-cell blocks that fit the smoke more tightly.
+  Results match the old layout closely; existing scenes look slightly
+  different.
+
 - **Cleaner pressure solve (checkerboard filter).** The velocity is filtered
   along each axis before the pressure correction, which removes the
   cell-sized odd-even pattern the solve cannot see: about 30% less leftover

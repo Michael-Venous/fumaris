@@ -1164,6 +1164,35 @@ class FUMARIS_OT_cache_make_lighter(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_add_sparks(Operator):
+    bl_idname = "fumaris.add_sparks"
+    bl_label = "Add Sparks"
+    bl_description = "Add sparks and embers that spawn in hot gas and fly through the baked velocity (Geometry Nodes on a new object). Needs a bake with VDB velocity"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        domain = _active_domain(context)
+        return bool(domain)
+
+    def execute(self, context):
+        from .sparks import add_sparks
+        domain = _active_domain(context)
+        directory = os.path.normpath(output_directory_for_object(domain))
+        volume = next((obj for obj in bpy.data.objects
+                       if obj.type == "VOLUME" and obj.get(VOLUME_MARKER) == directory), None)
+        if volume is None:
+            self.report({"ERROR"}, "Bake the simulation first: sparks follow the baked volume")
+            return {"CANCELLED"}
+        sparks = add_sparks(context, volume, name=f"{domain.name} Sparks")
+        if not domain.fumaris.export_velocity_vdb:
+            domain.fumaris.export_velocity_vdb = True
+            self.report({"WARNING"}, "Turned on VDB velocity: bake again so the sparks can move")
+        else:
+            self.report({"INFO"}, f"Added '{sparks.name}': play the timeline from the start to simulate")
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_cache_protect(Operator):
     bl_idname = "fumaris.cache_protect"
     bl_label = "Protect"
@@ -1354,6 +1383,7 @@ CLASSES = (
     FUMARIS_OT_cache_slot_new,
     FUMARIS_OT_cache_slot_restore_settings,
     FUMARIS_OT_cache_make_lighter,
+    FUMARIS_OT_add_sparks,
     FUMARIS_OT_cache_protect,
     FUMARIS_OT_preview_play,
     FUMARIS_OT_preview_pause,

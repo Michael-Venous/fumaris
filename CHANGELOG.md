@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Sparks (Output > Add Sparks).** Adds sparks and embers that spawn in hot
+  gas and fly through the baked velocity with drag and gravity, glowing by
+  their temperature and cooling once they leave the fire (Geometry Nodes on a
+  new object; needs a bake with VDB velocity).
+
 - **Burning emitters (Realistic combustion).** An emitter can burn where it
   sits, like a gas jet or a burning surface, without emitting fuel: it heats
   gas toward Flame Temperature and adds smoke and expansion at its Burn Rate,

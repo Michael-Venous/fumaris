@@ -4,6 +4,16 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Oxygen Field (Combustion).** With an Oxygen Limit, the air's oxygen now
+  moves with the gas: burning uses it up and fresh air mixes back in, so fire
+  starves inside thick burnt gas and burns in shells where it meets new air.
+  Oxygen Use sets how fast burning consumes it, Oxygen Mixing how fast fresh
+  air returns. Off by default.
+
+- **Smaller smoke-only bakes (Density Storage: Auto).** When nothing burns,
+  only smoke (and temperature, if emitted) is stored: up to about twice as
+  much smoke per GB, identical results.
+
 - **Live preview lit like Cycles.** The preview now uses the scene's
   lighting in Cycles units: the strongest light (or the sun in an HDRI world)
   with shadows and the material's anisotropy, the world's light where the

@@ -1354,6 +1354,24 @@ class FumarisSettings(PropertyGroup):
         soft_max=8.0,
     )
 
+    oxygen_field: BoolProperty(
+        name="Oxygen Field",
+        description="Track the air's oxygen as it moves: burning uses it up and fresh air mixes back in, so fire starves inside thick burnt gas and burns at the edges where it meets new air. Uses Oxygen Limit (with Physical Heat, 4 when 0)",
+        default=False,
+    )
+
+    oxygen_use: FloatProperty(
+        name="Oxygen Use",
+        description="How much oxygen burning uses up. 1 breaks a fireball into burning shells with starved, smoky pockets; 3 buries the core in smoke; lower burns more freely",
+        default=1.0, min=0.0, soft_max=4.0,
+    )
+
+    oxygen_mixing: FloatProperty(
+        name="Oxygen Mixing",
+        description="How fast fresh air mixes back into burnt gas, per second. Lower keeps smoky cores starved longer",
+        default=0.5, min=0.0, soft_max=4.0,
+    )
+
     soot_radiation: FloatProperty(
         name="Soot Radiation",
         description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature and capped where soot is optically thick), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",

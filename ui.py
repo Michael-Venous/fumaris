@@ -817,6 +817,12 @@ def _draw_domain(layout, scene, props):
             combustion.separator()
             combustion.prop(props, "gas_expansion")
             combustion.prop(props, "oxygen_limit")
+            oxygen = combustion.row(align=True)
+            oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
+            field = oxygen.row(align=True)
+            field.active = props.oxygen_field
+            field.prop(props, "oxygen_use", text="Use")
+            field.prop(props, "oxygen_mixing", text="Mixing")
             combustion.prop(props, "soot_radiation")
             combustion.prop(props, "wisp_cooling")
             combustion.prop(props, "fuel_threshold")

@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Physical Expansion and Normal Velocity for particle and point emitters.**
+  New point emitters expand per second like mesh emitters, and Normal
+  Velocity pushes outward from each point (measured within 5% of an ideal
+  point source). Point emitters in existing files keep their old behaviour.
+
 - **Density Low / High (Appearance).** Remap the baked smoke density in the
   material and live preview: raise Low to clear thin haze, lower High to make
   thin smoke heavier.

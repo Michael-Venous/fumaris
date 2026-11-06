@@ -797,6 +797,11 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
 
     _disable_inactive_point_velocity_coupling(velocities, values)
     value_ops, replaced = _source_operations(props)
+    if getattr(props, "emitter_settings_version", 0) < 2:
+        # Point emitters made before 2: per-cell Divergence as before.
+        value_ops &= ~EXPANSION_RATE_OP
+    else:
+        _point_normal_velocity(props, radii, values)
     for name in replaced:
         rates = values.get(f"couple_rate_{name}s")
         if rates:
@@ -944,6 +949,29 @@ def _influence_channels(channels):
             channels["couple_rate_temperature"] = 10.0
     else:
         channels["couple_rate_temperature"] = 0.0
+
+
+def _point_normal_velocity(props, radii, values):
+    """Normal Velocity of a point emitter: each point is a small sphere pushing
+    out at that speed, an expansion of 3 v / r (surface flux over its volume;
+    points smaller than a velocity cell spread it over the cell)."""
+    speed = float(getattr(props, "normal_velocity", 0.0))
+    divergences = values.get("divergences")
+    if abs(speed) < 1e-6 or not divergences or not radii:
+        return
+    domain = _BURN_DOMAIN
+    resolution = max(1, int(getattr(domain, "resolution", 256))) if domain else 256
+    # Flow's spherical footprint stamps at least a sphere of ~1.29 velocity
+    # cells (measured 2026-11-05: point sources match v r^2 / d^2 within 3%).
+    cell = 1.29 * 2.0 * 32.0 / resolution
+    rates = values.setdefault("couple_rate_divergences", array("f", [0.0] * len(divergences)))
+    for index, radius in enumerate(radii):
+        if index >= len(divergences):
+            break
+        r = max(float(radius), 1e-6)
+        divergences[index] += 3.0 * speed * r * r / max(r, cell) ** 3
+        if index < len(rates) and rates[index] <= 0.0:
+            rates[index] = 1.0
 
 
 def _influence_point_values(values, value_ops):

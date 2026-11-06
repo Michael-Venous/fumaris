@@ -27,7 +27,8 @@ SUBSTEP_SETTINGS_VERSION = 1
 # Emitters: 1 = Expansion in 1/s, applied exactly at any resolution and
 # Sub-Steps (Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE). 0 = the older per-cell
 # divergence pull, kept for saved files.
-EMITTER_SETTINGS_VERSION = 1
+# 2: point and particle emitters use physical Expansion (1/s) and Normal Velocity.
+EMITTER_SETTINGS_VERSION = 2
 # Matches the push of the older default Divergence 2 (measured 2026-11-04).
 DEFAULT_EMITTER_EXPANSION = 0.2
 

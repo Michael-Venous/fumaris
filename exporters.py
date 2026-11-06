@@ -542,6 +542,7 @@ def _box_state(participant, depsgraph):
     obj = participant["object"]
     props = obj.fumaris
     matrix, half_size = _evaluated_box(obj.evaluated_get(depsgraph))
+    wall_half_size = list(half_size)
     if participant["role"] == "collider":
         scales = [max(abs(value), 1e-6) for value in matrix.to_scale()]
         half_size = [
@@ -572,6 +573,7 @@ def _box_state(participant, depsgraph):
         "enabled": enabled,
         "local_to_world": [value for row in matrix for value in row],
         "half_size": half_size,
+        "wall_half_size": wall_half_size,
         "is_collision": participant["role"] == "collider",
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
         **channels,

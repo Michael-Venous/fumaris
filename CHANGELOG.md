@@ -4,6 +4,10 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Smoke reaches colliders.** Smoke used to stop a few cells short of
+  collider surfaces (Collider Margin pushed the solid wall out); the wall now
+  sits on the real surface, so smoke hugs ceilings, walls and obstacles.
+
 - **About 1.5x more simulation in the same Simulation Memory, ~20% faster.**
   The sparse grid stores its blocks without the copied border Flow kept
   around each one, in smaller 16-cell blocks that fit the smoke more tightly.

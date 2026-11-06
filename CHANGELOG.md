@@ -6,8 +6,11 @@ All notable customer-facing changes are recorded here.
 
 - **Faster bakes.** VDB frames are converted and written by more threads (half
   the CPU cores, up to 12): on a 24-core machine a 512 bake went from 19.9 to
-  12.3 ms a frame and a 768 bake from 61.6 to 33.2 ms, with identical files.
-  Memory for frames being written stays capped at an eighth of system RAM.
+  12.3 ms a frame and a 768 bake from 61.6 to 33.2 ms, with identical grids.
+  Peak memory of the simulation process rises about 20-25% (more frames are
+  converted at once); frames waiting to be written stay capped at an eighth of
+  system RAM, which limits the queue but not the converting writers. Set the
+  FUMARIS_VDB_WORKERS environment variable to use fewer.
 
 - **Coarse grids rise like fine ones.** Vorticity is now weakened in
   proportion below Resolution 256 (and at a low Preview Resolution), where

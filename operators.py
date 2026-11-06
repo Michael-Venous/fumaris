@@ -92,13 +92,41 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     _timer_interval = 0.001
 
     replace_confirmed: BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+    resume: BoolProperty(
+        name="Resume",
+        description="Continue a stopped bake: frames already on disk are simulated again without writing, then baking continues",
+        options={"HIDDEN", "SKIP_SAVE"},
+    )
 
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
         return bool(domain and not active_job())
 
+    def _resume_frame(self, domain):
+        """First frame to write, or raise if the bake cannot be resumed."""
+        directory = output_directory_for_object(domain)
+        prefix = domain.fumaris.output_prefix or "fumaris_"
+        done = baked_frame_count(directory, prefix)
+        start, end = simulation_frame_range(domain)
+        if done <= 0:
+            raise RuntimeError("Nothing to resume: bake from the start")
+        if start + done > end:
+            raise RuntimeError("The bake is already complete")
+        snapshot = read_settings_snapshot(directory)
+        if snapshot:
+            from .cache import _rna_values
+            current = _rna_values(domain.fumaris)
+            changed = [key for key, value in snapshot.get("settings", {}).items()
+                       if key in current and current[key] != value and not key.startswith("shader_")]
+            if changed:
+                raise RuntimeError(
+                    f"Settings changed since this bake ({', '.join(changed[:3])}): bake again instead")
+        return start + done
+
     def invoke(self, context, _event):
+        if self.resume:
+            return self.execute(context)
         # Pressing Bake clears the slot first. Ask before that destroys an
         # earlier bake; scripts calling the operator directly are not asked.
         domain = _active_domain(context)
@@ -121,13 +149,21 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
             return {"CANCELLED"}
 
         self._domain_name = domain.name
+        resume_frame = None
+        if self.resume:
+            try:
+                resume_frame = self._resume_frame(domain)
+            except RuntimeError as error:
+                self.report({"ERROR"}, str(error))
+                return {"CANCELLED"}
         try:
             claim_job(self, "baking")
             clear_all_previews()
             self._configure_job(
                 context,
                 domain,
-                clear_cache=True,
+                clear_cache=resume_frame is None,
+                resume_frame=resume_frame,
                 write_vdb=True,
                 preview_enabled=bool(domain.fumaris.preview_bake),
                 show_progress=True,

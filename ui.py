@@ -510,6 +510,10 @@ def _draw_domain(layout, scene, props):
     sub = row.row(align=True)
     sub.enabled = mode is None and not slot_protected
     sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
+    if props.simulation_state == "stopped":
+        resume = row.row(align=True)
+        resume.enabled = mode is None and not slot_protected
+        resume.operator("fumaris.bake", icon="PLAY", text="").resume = True
     stop = row.row(align=True)
     stop.enabled = is_baking
     stop.operator("fumaris.stop", icon="CANCEL", text="Stop")

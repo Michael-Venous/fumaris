@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Resume Bake.** After Stop (or a crash), the play button next to Bake
+  continues the bake: frames already on disk are simulated again without
+  writing them, then baking continues, giving exactly the frames a full bake
+  would. Refused if the simulation settings changed since that bake.
+
 - **Sparks (Output > Add Sparks).** Adds sparks and embers that spawn in hot
   gas and fly through the baked velocity with drag and gravity, glowing by
   their temperature and cooling once they leave the fire (Geometry Nodes on a

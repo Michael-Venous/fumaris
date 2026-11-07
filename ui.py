@@ -876,7 +876,6 @@ def _draw_domain(layout, scene, props):
         if _foldout(advanced, props, "show_panel_experimental", "Experimental"):
             experimental = advanced.column(align=True)
             experimental.prop(props, "exp_pressure_filter", slider=True)
-            experimental.prop(props, "exp_vorticity_full_resolution")
 
     _draw_diagnostics(layout, props)
 

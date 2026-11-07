@@ -398,7 +398,6 @@ def _domain_state(props, resolution_scale=1.0):
         "smoke_detail": getattr(props, "smoke_detail", "standard"),
         "edge_sharpness": float(getattr(props, "edge_sharpness", 0.9)),
         "exp_pressure_filter": float(getattr(props, "exp_pressure_filter", 1.0)),
-        "exp_vorticity_full_resolution": float(getattr(props, "exp_vorticity_full_resolution", 256)),
         "open_collider_wall": float(getattr(props, "open_collider_wall", 1.0)),
         "closed_collider_margin": float(getattr(props, "closed_collider_margin", 0.0)),
         "physical_heat": props.physical_heat,

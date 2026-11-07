@@ -98,9 +98,8 @@ All notable customer-facing changes are recorded here.
   colliders can hold the air still in a thinner layer, so fire resting on them
   rises freely.
 
-- **Experimental options** (Advanced > Experimental): Projection Filter and
-  Vorticity Full Strength At, for testing solver changes that are not yet
-  defaults.
+- **Experimental option** (Advanced > Experimental): Projection Filter, for
+  testing a solver change that is not yet a default.
 
 - **Faster bakes.** VDB frames are converted and written by more threads (half
   the CPU cores, up to 12): on a 24-core machine a 512 bake went from 19.9 to
@@ -117,10 +116,11 @@ All notable customer-facing changes are recorded here.
   would otherwise run out of RAM or swap.
 
 - **Coarse grids rise like fine ones.** Vorticity is now weakened in
-  proportion below Resolution 256 (and at a low Preview Resolution), where
+  proportion below Resolution 512 (and at a low Preview Resolution), where
   it used to swirl so hard that plumes stalled: a smoke plume at 128 rose
-  about half as high as at 256 or more and now rises about as high. Scenes at
-  256 and above are unchanged; coarser ones swirl less.
+  about half as high as at 256 or more and now rises about as high, and an
+  Explosion spreads alike at 128, 256 and 512 (radius within 23%, was 2x).
+  Scenes at 512 and above are unchanged; coarser ones swirl less.
 
 - **Vorticity no longer keeps speeding up the gas.** Its limit let each
   direction of the flow grow to the fastest neighbour's, so turbulence kept

@@ -1522,7 +1522,7 @@ class FumarisSettings(PropertyGroup):
 
     vorticity: FloatProperty(
         name="Vorticity",
-        description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off. Below Resolution 256 (or a lower Preview Resolution) it is weakened in proportion so coarse grids rise like finer ones",
+        description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off. Below Resolution 512 (or a lower Preview Resolution) it is weakened in proportion, so coarse grids swirl and spread like finer ones",
         default=2.0,
         min=0.0,
         max=10.0,
@@ -1612,12 +1612,6 @@ class FumarisSettings(PropertyGroup):
         name="Projection Filter",
         description="Experimental. How strongly the pressure solve smooths out cell-to-cell (checkerboard) motion. 1 is Flow's. Lower lets fine motion through: fire flickers and puffs (about 0.25 restores natural puffing at moderate resolution) and small swirls survive, at the risk of grid-scale noise",
         default=1.0, min=0.0, max=1.0, subtype="FACTOR",
-    )
-
-    exp_vorticity_full_resolution: IntProperty(
-        name="Vorticity Full Strength At",
-        description="Experimental. Vorticity is weakened on grids coarser than this Resolution so a plume does not stall in its own swirls. 256 is the shipped value; 512 keeps an Explosion's spread more alike from Resolution 128 to 512 but calms swirls at 256-511",
-        default=256, min=64, max=4096,
     )
 
     open_collider_wall: FloatProperty(

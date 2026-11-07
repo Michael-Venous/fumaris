@@ -87,6 +87,11 @@ All notable customer-facing changes are recorded here.
   the material; needs a new bake (it adds a small glow_depth grid). 0 keeps the
   previous look.
 
+- **The live preview shows Glow Spread and Glow Shadowing** (approximately:
+  the preview's shadowing uses the average smoke around a point rather than
+  the baked least smoke between it and the fire). Dissipation and Smoke Decay
+  share one row.
+
 - **Gravity from Scene** button next to Gravity, and clearer Gravity and Smoke
   Buoyancy tooltips: Gravity acts through buoyancy only, so cold smoke ignores
   it unless Smoke Buoyancy is negative.

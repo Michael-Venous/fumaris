@@ -7,15 +7,14 @@ import bpy
 from bpy.props import EnumProperty
 from mathutils import Vector
 
-from . import memory_auto
 from .runtime import active_job
 
 
+# Presets start from the new-domain defaults (properties._object_type_updated)
+# and change only what makes each effect what it is (1.4 preset pass,
+# 2026-11-07): the look, combustion and fade settings stay the defaults.
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
-    "dissipation": 0.2,
-    "smoke_decay": 0.1,
-    "temp_per_burn": 1.0,
     "preview_max_ray_steps": 256,
 }
 
@@ -26,75 +25,39 @@ PRESETS = {
     "SMOKE": {
         "name": "Rising Smoke",
         "description": "A continuous rising plume without flames",
-        "domain": {"shader_flame_enabled": False, "vorticity": 4.0,
-                   "shader_smoke_density": 2.0,
-                   "shader_smoke_color": (0.6038313,) * 3},
+        "domain": {"shader_flame_enabled": False},
+        # Hot (Flame Temperature) smoke rises on its own heat.
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 2.0,
                     "emitter_fuel": 0.0, "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
     "FIRE": {
         "name": "Steady Fire",
         "description": "Continuous flames with rising smoke",
-        "domain": {"shader_flame_enabled": True, "vorticity": 4.0,
-                   "buoyancy_per_temp": 1.5, "shader_smoke_density": 3.0,
-                   "shader_smoke_color": (0.3185545,) * 3},
-        # The source only ignites the fuel; burning makes the heat.
+        # Short-lived fuel ends the flames a few source widths up instead of
+        # in a tall column; more Vorticity makes them flicker (2026-11-07).
+        "domain": {"shader_flame_enabled": True, "burn_time": 0.5, "vorticity": 4.0},
+        # The source only ignites the fuel; burning makes the heat (Fuel 1
+        # burns at Flame Temperature with the default Fuel Energy).
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 10.0, "source_op_temperature": "max",
-                    "emitter_fuel": 0.5, "normal_velocity": 0.25, "emitter_divergence": 0.2},
+                    "emitter_fuel": 1.0, "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
     "EXPLOSION": {
         "name": "Explosion",
         "description": "A short burst of expanding fire and smoke",
-        "domain": {"shader_flame_enabled": True, "vorticity": 6.0,
-                   # Hot gas rises at about g (1 - T_air / T) ~ 8 m/s^2: the
-                   # fireball lifts into a cap over a smoke stem.
-                   "buoyancy_per_temp": 8.0, "burn_per_temp": 2.0,
-                   "divergence_per_burn": 4.0, "cooling_rate": 0.5,
-                   # Realistic model (new domains): fuel released in one short
-                   # burst ignites; with the Oxygen Limit it burns where it meets
-                   # air, so temperatures vary. Boiling cells on its surface
-                   # need about 250 voxels across the fireball (resolution).
-                   # Photoreal pass (2026-11-05, output/photoreal): fuel that
-                   # burns for about a second where it meets air (Oxygen
-                   # Limit), soot that radiates heat away so temperatures
-                   # spread instead of pinning at Flame Temperature, less soot
-                   # per burn so the fireball stays visible, smoke that lasts,
-                   # and Disturb at a fifth of the source size (set below) for
-                   # lumpy, cauliflower billows.
-                   "burn_time": 1.0, "cooling_time": 10.0, "gas_expansion": 1.0,
-                   "shred": 2.0,
-                   "disturb": 175.0, "disturb_detail": 3,
-                   "dissipation": 0.1, "soot_radiation": 1.0, "oxygen_limit": 1.5,
-                   "smoke_per_burn": 1.0,
-                   # Grain (block-random kicks, world size set below) on the
-                   # thin, breaking-up gas only: sooty cauliflower puffs over
-                   # glowing crevices instead of smooth glowing lobes; thin gas
-                   # cools faster (Wisp Cooling), so edges go dark first.
-                   "grain": 120.0, "grain_edge": 2.0, "wisp_cooling": 3.0,
-                   # Flame Sheets (2026-11-05 Axiom pass): the source's dense
-                   # fuel (8) burns only once mixed below 1, in thin sheets,
-                   # so dark soot puffs sit inside a glowing body.
-                   "fuel_threshold": 1.0,
-                   # Dark soot puffs over glowing crevices (output/axiom2,
-                   # heroB): dense soot, high Contrast, a compressed camera
-                   # palette (Colour Spread 0.8) and little Scatter Glow,
-                   # which otherwise washes the puffs orange.
-                   "shader_flame_brightness": 7.0, "shader_flame_contrast": 3.0,
-                   "shader_glow_temperature": 1620.0,
-                   "shader_color_spread": 0.8, "shader_temperature_multiplier": 0.85,
-                   "shader_smoke_density": 4.0, "shader_scatter_glow": 0.03,
-                   "shader_smoke_color": (0.45,) * 3},
+        # Hot gas rises at about g (1 - T_air / T) ~ 8 m/s^2: the fireball
+        # lifts into a cap over a smoke stem. Disturb (size set below) breaks
+        # it into cauliflower billows; the fire burns out in about a second,
+        # leaving glowing cracks in the smoke (output/presets1.4).
+        "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0,
+                   "disturb": 175.0, "disturb_detail": 3},
         # Disturb's largest swirls relative to the sources' largest dimension.
         "disturb_size_per_size": 0.3,
-        # Grain blocks in voxels at the preset resolution (about 1.5 velocity
-        # cells: finer cauliflower than 4; 2026-11-05 Axiom pass).
-        "grain_size_voxels": 3.0,
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
-        # Temperature); burning heats it.
-        # Light source smoke: soot forms as the fuel burns, so the young
-        # fireball glows instead of hiding in smoke.
+        # Temperature); burning heats it. Light source smoke: soot forms as
+        # the fuel burns, so the young fireball glows instead of hiding in
+        # smoke.
         "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
                     # Expansion burst: the source gas swells about 8x per
@@ -108,11 +71,8 @@ PRESETS = {
     "FOG": {
         "name": "Ground Fog",
         "description": "Cold, heavy fog that spills out and creeps along the ground",
-        # Cold smoke heavier than air sinks; low swirl and a slow fade keep
-        # it a smooth layer.
-        "domain": {"shader_flame_enabled": False, "vorticity": 1.5,
-                   "buoyancy_per_temp": 0.0, "buoyancy_per_smoke": -0.4,
-                   "dissipation": 0.15, "shader_smoke_density": 1.0,
+        # Cold smoke heavier than air sinks and spreads along the ground.
+        "domain": {"shader_flame_enabled": False, "buoyancy_per_smoke": -0.4,
                    "shader_smoke_color": (0.8,) * 3},
         "emitter": {"emitter_smoke": 2.0, "emitter_temperature": 0.0,
                     "emitter_fuel": 0.0, "normal_velocity": 0.5, "emitter_divergence": 0.3},
@@ -121,9 +81,7 @@ PRESETS = {
     "STACK": {
         "name": "Chimney Smoke",
         "description": "A warm column of smoke blown upward from the source, as from a chimney or stack",
-        "domain": {"shader_flame_enabled": False, "vorticity": 3.0,
-                   "buoyancy_per_temp": 2.0, "dissipation": 0.3,
-                   "shader_smoke_density": 2.0, "shader_smoke_color": (0.45,) * 3},
+        "domain": {"shader_flame_enabled": False},
         # Warm exhaust (a quarter of Flame Temperature) pushed up at 4 m/s.
         "emitter": {"emitter_smoke": 4.0, "emitter_temperature": 0.25,
                     "emitter_fuel": 0.0, "normal_velocity": 0.0, "emitter_divergence": 0.0,
@@ -405,9 +363,6 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
             # Disturb's size is in world units: scale it to the sources so
             # large explosions get large billows (0.1 m did nothing at 20 m).
             props.disturb_size = max(0.05, preset["disturb_size_per_size"] * max(maximum - minimum))
-        if "grain_size_voxels" in preset:
-            # World size, so the grit keeps its scale when the resolution changes.
-            props.grain_size = preset["grain_size_voxels"] * memory_auto.voxel_size(props.resolution)
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:

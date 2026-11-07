@@ -1,8 +1,10 @@
 """User presets: save and reuse the settings of a domain or a source.
 
-A preset stores the settings that differ from Fumaris's defaults for one role
-(domain, or emitter/collider/effector), as JSON in the extension's user folder,
-so it survives add-on updates and is shared between .blend files.
+A preset stores every setting of one role (domain, or
+emitter/collider/effector), as JSON in the extension's user folder, so it
+survives add-on updates and is shared between .blend files. Applying it
+restores that state: settings the file does not hold (older presets kept only
+non-default values) go back to their defaults.
 """
 import json
 import os
@@ -16,10 +18,14 @@ from .cache import _rna_values
 # holds both). Identity and per-object wiring are never stored.
 _SOURCE_PREFIXES = ("emitter_", "couple_rate_", "source_op_", "normal_velocity", "mesh_emission_",
                     "point_", "attr_", "collider_", "effector_", "outflow_", "motion_",
-                    "participant_enabled", "physics_", "particle_subtype")
+                    "participant_enabled", "physics_", "particle_subtype", "sphere_",
+                    "volume_file", "volume_frame_offset", "volume_grid_", "volume_use_")
+_SOURCE_NAMES = {"velocity", "velocity_scale", "mesh_velocity_attribute"}
+# The frame range belongs to the scene, not the look.
 _NEVER = {"smoke_object_type", "participant_type", "particle_system_name", "gn_subtype",
           "cache_slot", "cache_id", "output_dir", "output_prefix", "simulation_state",
-          "baked_frames", "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb"}
+          "baked_frames", "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb",
+          "sim_start_frame", "sim_end_frame", "use_scene_frame_range"}
 
 
 def preset_role(props):
@@ -29,7 +35,7 @@ def preset_role(props):
 def _belongs(name, role):
     if name in _NEVER or name.endswith("_version") or "collection" in name:
         return False
-    source = name.startswith(_SOURCE_PREFIXES)
+    source = name in _SOURCE_NAMES or name.startswith(_SOURCE_PREFIXES)
     return source if role == "source" else not source
 
 
@@ -54,23 +60,19 @@ def _safe(name):
 
 def save_preset(props, name):
     role = preset_role(props)
-    values = {}
-    for key, value in _rna_values(props).items():
-        if not _belongs(key, role):
-            continue
-        default = props.bl_rna.properties[key]
-        default_value = getattr(default, "default_array", None) if getattr(default, "is_array", False) else getattr(default, "default", None)
-        if default_value is not None:
-            try:
-                if (list(default_value) if hasattr(default_value, "__len__") and not isinstance(default_value, str) else default_value) == value:
-                    continue
-            except TypeError:
-                pass
-        values[key] = value
+    values = {key: value for key, value in _rna_values(props).items() if _belongs(key, role)}
     path = os.path.join(presets_directory(role, create=True), _safe(name) + ".json")
     with open(path, "w", encoding="utf-8") as stream:
-        json.dump({"version": 1, "role": role, "settings": values}, stream, indent=1, sort_keys=True)
+        json.dump({"version": 2, "role": role, "settings": values}, stream, indent=1, sort_keys=True)
     return path, len(values)
+
+
+def _default(prop):
+    if prop.type == "ENUM":
+        return set(prop.default_flag) if prop.is_enum_flag else prop.default
+    if getattr(prop, "array_length", 0):
+        return list(prop.default_array)
+    return prop.default
 
 
 def apply_preset(props, name):
@@ -78,8 +80,12 @@ def apply_preset(props, name):
     path = os.path.join(presets_directory(role), _safe(name) + ".json")
     with open(path, encoding="utf-8") as stream:
         data = json.load(stream)
+    settings = dict(data.get("settings", {}))
+    for key in _rna_values(props):
+        if _belongs(key, role) and key not in settings:
+            settings[key] = _default(props.bl_rna.properties[key])
     applied = 0
-    for key, value in data.get("settings", {}).items():
+    for key, value in settings.items():
         if not _belongs(key, role) or not hasattr(props, key):
             continue
         try:

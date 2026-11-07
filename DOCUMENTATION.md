@@ -805,8 +805,11 @@ Add menu. **Rising Smoke**, **Steady Fire**, **Explosion**, **Ground Fog** and
 left intact; the new setup has separate emitter, collider, effector and outflow
 collections. The new simulation object is an axes empty, with no physical domain bounds.
 
-Rising Smoke emits continuously without fuel; Steady Fire emits smoke and fuel.
-Explosion emits for 10 frames, then disables its source, with a 100-frame range.
+Presets start from the defaults of a new domain and change only what makes the
+effect. Rising Smoke emits continuously without fuel; Steady Fire emits smoke and
+fuel that burns out within half a second, so flames stay a few source widths tall.
+Explosion emits a burst of fuel for 4 frames, then disables its source, with a
+100-frame range; strong buoyancy and Disturb lift it into a billowing cap.
 Ground Fog emits cold smoke that is heavier than air, and adds a collider floor
 just under the source for it to spread over. Chimney Smoke blows warm smoke
 straight up at 4 m/s.

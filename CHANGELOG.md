@@ -11,6 +11,20 @@ All notable customer-facing changes are recorded here.
   (the default Flame Temperature), Flame Brightness 2, Scatter Glow 2, Glow
   Shadowing 1, Blue Core 1, Smoke Density 1, smoke colour 0.45.
 
+- **Quick Setup presets start from the defaults** and change only what makes
+  each effect: Steady Fire uses Burn Time 0.5 s and Vorticity 4 (flickering
+  flames a few source widths tall; it was dim since 1.4's heat changes), the
+  Explosion Temperature Buoyancy 8 and Disturb (billows; the fire burns out in
+  about a second and leaves glowing cracks in the smoke), Ground Fog heavy,
+  light smoke. Look, fade and combustion settings are the new defaults
+  everywhere.
+
+- **User presets restore the whole saved state.** Applying a preset now resets
+  settings it does not change to their defaults (before, a setting at its
+  default when saved, such as Flame Sheets 0, was left as it was). The frame
+  range is no longer stored, and emitter velocity, VDB source and sphere
+  sampling settings belong to source presets.
+
 - **Smoke fades more gradually.** New domains and Quick Setup use Dissipation
   0.2 and Smoke Decay 0.1 (were 0.5 / 0.3, and 1.0 in Quick Setup), so a
   rising column thins over several seconds instead of ending about 13 m up.

@@ -52,7 +52,6 @@ class FrameRangeJob:
         completed_frames=None,
         keep_alive=False,
         output_directory=None,
-        resume_frame=None,
     ):
         runtime_error = runtime_validation_error()
         if runtime_error:
@@ -99,8 +98,6 @@ class FrameRangeJob:
             log_participants=True,
         )
         session["output_directory"] = self._directory
-        if resume_frame is not None:
-            session["resume_frame"] = int(resume_frame)
 
         self._prefix = session["output_prefix"]
         if not all(character.isalnum() or character in "._-" for character in self._prefix):

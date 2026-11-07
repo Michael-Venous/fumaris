@@ -1906,7 +1906,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_flame_core: FloatProperty(
         name="Blue Core (Render Only)",
-        description="Blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation; zero turns it off",
+        description="Blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation, and the bake then also writes the fuel grid (larger files); the live preview does not show it. Zero turns it off",
         default=0.0,
         min=0.0,
         max=1.0,

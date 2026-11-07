@@ -355,7 +355,9 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 ### Smoke Behavior
 
 - `Gravity` accelerates the velocity field.
-- `Temperature Buoyancy` lifts hot gas.
+- `Temperature Buoyancy` lifts hot gas. The checkbox beside it, `Physical
+  Buoyancy`, replaces it with the gas-law lift for Flame Temperature (gas at
+  2000 K is 6.8 times lighter than 293 K air: about 5.8 g).
 - `Smoke Buoyancy` controls density-driven lift or sinking.
 - `Vorticity` restores small rotational motion lost through advection.
   `Vorticity Mask` chooses where: `Fast Motion` (default), `Smoke` (in
@@ -395,6 +397,9 @@ Every domain uses **Realistic** combustion (the Classic model was removed in
   instead of stopping at once. `Smoke Amount` is soot per unit of fuel burnt
   and `Expansion` how hard burning pushes the gas outward. Temperature
   Buoyancy is measured at Flame Temperature, so a cooler flame still lifts.
+  `Temperature Diffusion` evens heat out between neighbouring voxels (the
+  share per 1/24 s), smoothing speckle in fire at about 7% more simulation
+  time; 0 turns it off.
   Flame Temperature sets the colour: about 1500 K deep orange, 2000–2400 K
   orange to yellow (most fuel fires), 3000 K and above pale yellow-white.
   Fuel amounts of about 1–3 suit a source that burns where it emits; a

@@ -1326,6 +1326,12 @@ class FumarisSettings(PropertyGroup):
         soft_max=20.0,
     )
 
+    physical_buoyancy: BoolProperty(
+        name="Physical Buoyancy",
+        description="Lift hot gas as much as real air would: gas at Flame Temperature is that many times lighter than 293 K air (about 5.8 g of lift at 2000 K), replacing Temperature Buoyancy. Flames rise faster and puff more strongly",
+        default=False,
+    )
+
     buoyancy_per_smoke: FloatProperty(
         name="Smoke Buoyancy",
         description="Force per unit smoke density along Gravity: negative makes smoke heavy so it sinks and spreads along the ground even when cold, positive makes it rise like a light gas. 0 = smoke has no weight; it moves only with the air and heat",
@@ -1393,6 +1399,15 @@ class FumarisSettings(PropertyGroup):
         default=0.0,
         min=0.0,
         soft_max=8.0,
+    )
+
+    temperature_diffusion: FloatProperty(
+        name="Temperature Diffusion",
+        description="Heat evens out between neighbouring voxels: each 1/24 s, temperature moves this share of the way to its neighbours' average. Flame brightness rises steeply with temperature, so this smooths speckle and noise in fire and softens flame edges; large shapes keep their look. 0 = off; try 0.1-0.3",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
     )
 
     oxygen_field: BoolProperty(

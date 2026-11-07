@@ -30,6 +30,15 @@ def flame_temperature_range(start, full):
     return start, full
 
 
+AMBIENT_AIR_KELVIN = 293.15
+
+
+def physical_buoyancy(props):
+    """Temperature Buoyancy (in g, at Flame Temperature) from the gas law:
+    hot gas is T / T_air times lighter, so a parcel lifts at g (T - T_air) / T_air."""
+    return max(0.0, (props.flame_temperature - AMBIENT_AIR_KELVIN) / AMBIENT_AIR_KELVIN)
+
+
 def addon_directory():
     return os.path.dirname(os.path.abspath(__file__))
 

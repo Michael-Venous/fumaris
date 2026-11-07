@@ -7,7 +7,7 @@ from . import diagnostics
 from .exporters import simulation_memory_mb
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
-from .utils import peek_output_directory_for_object, get_addon_preferences
+from .utils import peek_output_directory_for_object, get_addon_preferences, physical_buoyancy
 
 
 def _foldout(layout, props, property_name, label):
@@ -791,7 +791,15 @@ def _draw_domain(layout, scene, props):
         right.prop(props, name, text="")
     behavior.separator()
     buoyancy = behavior.row(align=True)
-    buoyancy.prop(props, "buoyancy_per_temp")
+    temperature = buoyancy.row(align=True)
+    temperature.prop(props, "physical_buoyancy", text="")
+    if props.physical_buoyancy:
+        # The gas-law lift replaces the slider; shown greyed for reference.
+        value = temperature.row(align=True)
+        value.enabled = False
+        value.label(text=f"Physical Buoyancy {physical_buoyancy(props):.1f}")
+    else:
+        temperature.prop(props, "buoyancy_per_temp")
     buoyancy.prop(props, "buoyancy_per_smoke")
     behavior.separator()
     fade = behavior.row(align=True)
@@ -843,6 +851,7 @@ def _draw_domain(layout, scene, props):
         combustion.separator()
         combustion.prop(props, "burn_time")
         combustion.prop(props, "cooling_time")
+        combustion.prop(props, "temperature_diffusion")
         combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
         combustion.separator()
         combustion.prop(props, "gas_expansion")

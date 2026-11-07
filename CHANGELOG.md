@@ -11,6 +11,16 @@ All notable customer-facing changes are recorded here.
   (the default Flame Temperature), Flame Brightness 2, Scatter Glow 2, Glow
   Shadowing 1, Blue Core 1, Smoke Density 1, smoke colour 0.45.
 
+- **Temperature Diffusion** (Combustion): heat evens out between neighbouring
+  voxels, smoothing speckle and noise in fire. 0.1 lowers cell-to-cell
+  temperature noise about 12%, 0.3 about 30% (Steady Fire and Explosion);
+  thin fire cools a little sooner. Off by default; on, it adds about 7% to
+  the simulation time.
+
+- **Physical Buoyancy**: a checkbox beside Temperature Buoyancy. When on, hot
+  gas lifts as the gas law says (about 5.8 g at 2000 K, following Flame
+  Temperature) instead of the slider's value; flames rise faster and taller.
+
 - **Quick Setup presets start from the defaults** and change only what makes
   each effect: Steady Fire uses Burn Time 0.5 s and Vorticity 4 (flickering
   flames a few source widths tall; it was dim since 1.4's heat changes), the

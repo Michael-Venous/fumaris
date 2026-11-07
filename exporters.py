@@ -36,7 +36,7 @@ from .participants import (
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
 from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
-from .utils import executable_path, output_directory_for_object, simulation_frame_range
+from .utils import executable_path, output_directory_for_object, physical_buoyancy, simulation_frame_range
 
 _FRAME_ZERO_VERSION = 1 << 40
 _SEQUENCE_NAME = re.compile(r"^(.*?)(-?)(\d+)(\.[^.]+)$")
@@ -369,7 +369,7 @@ def _domain_state(props, resolution_scale=1.0):
         "air_margin": max(0.0, float(props.air_margin)),
         "gravity": list(props.gravity),
         "wind": list(props.wind),
-        "buoyancy_per_temp": props.buoyancy_per_temp,
+        "buoyancy_per_temp": physical_buoyancy(props) if props.physical_buoyancy else props.buoyancy_per_temp,
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
         "vorticity": props.vorticity,
         "vorticity_mask": props.vorticity_mask,
@@ -388,6 +388,7 @@ def _domain_state(props, resolution_scale=1.0):
         "advection_reflection": props.advection_reflection,
         "gas_expansion": props.gas_expansion,
         "soot_radiation": props.soot_radiation,
+        "temperature_diffusion": props.temperature_diffusion,
         "oxygen_limit": props.oxygen_limit,
         "oxygen_field": bool(props.oxygen_field),
         "oxygen_use": float(props.oxygen_use),

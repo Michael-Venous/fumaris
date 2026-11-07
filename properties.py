@@ -21,7 +21,7 @@ TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
 # 1: domain created with the Realistic combustion model available. Earlier
 # domains keep their other settings; Classic itself was removed in 1.4.
-COMBUSTION_VERSION = 1
+COMBUSTION_VERSION = 2
 # 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
 SUBSTEP_SETTINGS_VERSION = 1
 # 1: new domains fade smoke over several seconds (Dissipation 0.2, Smoke Decay
@@ -46,9 +46,9 @@ def _object_type_updated(self, _context):
         self.use_scene_frame_range = True
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
-        # Physical Heat and Preserve Turbulence stay off for new domains
+        # Preserve Turbulence stays off for new domains
         # (user decision, 2026-11-06).
-        # Defaults pass 2026-11-04: crisp advection, a short burn (Physical Heat
+        # Defaults pass 2026-11-04: crisp advection, a short burn (burning
         # lets fuel last by mixing), heat that lingers, mild expansion, 4 GB.
         self.burn_time = 0.5
         self.cooling_time = 5.0
@@ -1361,15 +1361,18 @@ class FumarisSettings(PropertyGroup):
         soft_max=1.0,
     )
 
-    physical_heat: BoolProperty(
-        name="Physical Heat",
-        description="Burning releases heat for the fuel it uses (one unit of fuel takes cold air to Flame Temperature) and needs air, so fire forms hot shells where fuel meets fresh air and gas cools as it mixes, instead of all burning gas sitting at Flame Temperature. Use a short Burn Time (about 0.3-1 s; mixing sets how long fire lasts) and emitters below Flame Temperature (about 0.35, Maximum) so burning makes the heat",
-        default=False,
+    fuel_energy: FloatProperty(
+        name="Fuel Energy",
+        description="Heat released by burning, per unit of fuel: 1 takes cold air to Flame Temperature, so fuel 1 burns as hot as fire gets while thinner, mixed fuel burns cooler. Raise it to make lean fuel burn hot; lower it for dimmer, smouldering fire. Burn Time sets how long fuel lasts and Cooling Time how fast heat fades; neither changes how hot it burns",
+        default=1.0,
+        min=0.0,
+        soft_max=4.0,
+        max=100.0,
     )
 
     oxygen_limit: FloatProperty(
         name="Oxygen Limit",
-        description="Burning needs fresh air: hot, already-burnt gas burns slower, so fire concentrates in shells where it mixes with air and temperatures vary instead of the whole fireball sitting at Flame Temperature. Fireballs that burned everywhere at once become smaller and leaner. Gas emitted at Flame Temperature burns only as it mixes. 0 = off (with Physical Heat: 4); try 1-4 (higher limits less)",
+        description="Burning needs fresh air: hot, already-burnt gas burns slower, so fire concentrates in shells where it mixes with air and temperatures vary instead of the whole fireball sitting at Flame Temperature. Fireballs that burned everywhere at once become smaller and leaner. Gas emitted at Flame Temperature burns only as it mixes. 0 = burns evenly everywhere, air or not; try 1-4 (higher limits less)",
         default=0.0,
         min=0.0,
         soft_max=8.0,
@@ -1377,7 +1380,7 @@ class FumarisSettings(PropertyGroup):
 
     oxygen_field: BoolProperty(
         name="Oxygen Field",
-        description="Track the air's oxygen as it moves: burning uses it up and fresh air mixes back in, so fire starves inside thick burnt gas and burns at the edges where it meets new air. Uses Oxygen Limit (with Physical Heat, 4 when 0). Always on with Physical Heat",
+        description="Track the air's oxygen as it moves: burning uses it up and fresh air mixes back in, so fire starves inside thick burnt gas and burns at the edges where it meets new air. Needs an Oxygen Limit above 0",
         default=False,
     )
 
@@ -1437,7 +1440,7 @@ class FumarisSettings(PropertyGroup):
 
     burn_time: FloatProperty(
         name="Burn Time",
-        description="Seconds for burning gas to use up 95% of its fuel: how long fire lasts. Without Physical Heat, gas burns at Flame Temperature while it holds at least a quarter unit of fuel (leaner gas cooler), so a long Burn Time with rich fuel keeps a whole fireball at full heat; about 1-2 s lets it break into sooty smoke with glowing cracks",
+        description="Seconds for burning gas to use up 95% of its fuel: how long fire lasts. It does not change how hot fuel burns (see Fuel Energy); about 1-2 s lets a fireball break into sooty smoke with glowing cracks",
         default=2.0,
         min=0.05,
         soft_max=10.0,
@@ -2111,6 +2114,10 @@ def _migrate_temperature_mapping():
             props.substep_settings_version = SUBSTEP_SETTINGS_VERSION
         if (props is not None and props.smoke_object_type == "domain"
                 and props.combustion_version < COMBUSTION_VERSION):
+            # 2: Physical Heat was removed (one physical heat law, Fuel Energy
+            # 1). Its Oxygen Limit 0 meant 4; keep that air limit.
+            if props.get("physical_heat") and props.oxygen_limit == 0.0:
+                props.oxygen_limit = 4.0
             # Saved before Realistic combustion existed. Classic is gone (1.4): Realistic.
             props.combustion_version = COMBUSTION_VERSION
         props = getattr(obj, "fumaris", None)

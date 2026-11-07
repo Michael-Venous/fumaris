@@ -180,15 +180,16 @@ def _draw_emitter_shape(box, obj, props):
         box.label(text="Source meshes need no Fumaris role")
 
 
-def _physical_heat_hot_fuel(obj, props):
-    # Physical Heat: burning should make the heat; fuel injected at (or above)
-    # Flame Temperature starts at the ceiling and every flame looks alike.
+def _hot_fuel_without_air(obj, props):
+    # With an Oxygen Limit and no Oxygen Field the air left is judged from
+    # temperature, so fuel injected at Flame Temperature counts as burnt gas
+    # and cannot burn until it mixes.
     if props.emitter_fuel <= 0.0 or props.emitter_temperature < 1.0:
         return False
     for domain in bpy.data.objects:
         settings = getattr(domain, "fumaris", None)
         if (settings is None or settings.smoke_object_type != "domain"
-                or not settings.physical_heat):
+                or settings.oxygen_limit <= 0.0 or settings.oxygen_field):
             continue
         collection = settings.emitter_collection
         if collection is not None and obj.name in collection.all_objects:
@@ -232,11 +233,11 @@ def _draw_emitter(layout, obj, props):
     smoke_row.prop(props, "emitter_smoke")
     box.prop(props, "emitter_temperature")
     box.prop(props, "emitter_fuel")
-    if _physical_heat_hot_fuel(obj, props):
+    if _hot_fuel_without_air(obj, props):
         hint = box.column(align=True)
-        hint.label(text="Fuel enters at Flame Temperature, so its", icon="INFO")
-        hint.label(text="fire cannot vary. Physical Heat works best")
-        hint.label(text="with Temperature about 0.35, Maximum")
+        hint.label(text="Fuel enters at Flame Temperature, which the", icon="INFO")
+        hint.label(text="Oxygen Limit reads as burnt gas: it waits to mix.")
+        hint.label(text="Use Temperature about 0.35, or the Oxygen Field")
     cold = _emitter_below_ignition(obj, props)
     if cold is not None:
         hint = box.column(align=True)
@@ -829,6 +830,7 @@ def _draw_domain(layout, scene, props):
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
         combustion.prop(props, "flame_temperature")
+        combustion.prop(props, "fuel_energy")
         combustion.prop(props, "ignition_temperature_k")
         combustion.separator()
         combustion.prop(props, "burn_time")
@@ -838,12 +840,10 @@ def _draw_domain(layout, scene, props):
         combustion.prop(props, "gas_expansion")
         combustion.prop(props, "oxygen_limit")
         oxygen = combustion.row(align=True)
-        tracked = oxygen.row(align=True)
-        # Physical Heat always tracks the oxygen (its air estimate needs it).
-        tracked.enabled = not props.physical_heat
-        tracked.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
+        oxygen.active = props.oxygen_limit > 0.0
+        oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
         field = oxygen.row(align=True)
-        field.active = props.oxygen_field or props.physical_heat
+        field.active = props.oxygen_field and props.oxygen_limit > 0.0
         field.prop(props, "oxygen_use", text="Use")
         field.prop(props, "oxygen_mixing", text="Mixing")
         combustion.prop(props, "soot_radiation")
@@ -864,7 +864,6 @@ def _draw_domain(layout, scene, props):
         if props.follow_object:
             advanced.prop(props, "carry_air", slider=True)
         advanced.separator()
-        advanced.prop(props, "physical_heat")
         advanced.prop(props, "full_resolution_velocity")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")

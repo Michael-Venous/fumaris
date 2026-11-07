@@ -399,7 +399,7 @@ def _domain_state(props, resolution_scale=1.0):
         "exp_pressure_filter": float(getattr(props, "exp_pressure_filter", 1.0)),
         "open_collider_wall": float(getattr(props, "open_collider_wall", 1.0)),
         "closed_collider_margin": float(getattr(props, "closed_collider_margin", 0.0)),
-        "physical_heat": props.physical_heat,
+        "fuel_energy": float(getattr(props, "fuel_energy", 1.0)),
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,
         "velocity_damping": props.velocity_damping,

@@ -9,24 +9,24 @@ All notable customer-facing changes are recorded here.
   rising column thins over several seconds instead of ending about 13 m up.
   Saved scenes keep their values.
 
-- **Physical Heat and Preserve Turbulence are off for new domains.** Turn
-  them on under Advanced. Saved scenes keep their settings.
+- **Preserve Turbulence is off for new domains.** Turn it on under Advanced.
+  Saved scenes keep their setting.
 
-- **Burn Time and Cooling Time do one thing each.** Without Physical Heat,
-  burning gas now sits at Flame Temperature while it holds at least a quarter
-  unit of fuel (leaner gas proportionally cooler). Burn Time sets how long fire
-  lasts and Cooling Time how fast heat fades after it; before, a longer Cooling
-  Time made flames dimmer (hottest gas 1189 / 922 / 792 K at 1 / 5 / 20 s, now
-  about 1700 K for all) and could stop fuel igniting, and a long Burn Time
-  overheated everything. Scenes without Physical Heat look different: rich
-  fuel with a long Burn Time now burns at full heat for that long.
+- **One physical combustion model; Physical Heat removed.** Burning releases
+  Fuel Energy (Combustion, default 1) times the heat that takes cold air to
+  Flame Temperature, per unit of fuel. Gas that is still burning keeps its heat
+  and cools only as its fuel runs out, so Burn Time sets how long fire lasts,
+  Cooling Time how fast heat fades after it, and neither sets how hot fire
+  gets or whether fuel stays lit (Steady Fire, Cooling Time 1 / 5 / 20 s:
+  hottest gas 1731 / 1907 / 1990 K; before, 1189 / 922 / 792 K, and fuel failed
+  to light with fast cooling). Oxygen Limit 0 burns uniformly; above 0 fire
+  needs air, from temperature or from the Oxygen Field (a toggle again).
+  Scenes saved with Physical Heat and Oxygen Limit 0 keep their air limit (4).
+  Fire scenes look different: rich fuel burns hotter, lean fuel cooler. Bake
+  speed is unchanged.
 
 - **Sharp Advection is always on** (the setting is gone): it reuses passes
   that already run, so it costs nothing, and its limiter cannot overshoot.
-
-- **Physical Heat always tracks the air's oxygen.** Without the Oxygen Field it
-  judged the air left by temperature, so heat from an emitter counted as burnt
-  gas; it now uses the tracked oxygen (Oxygen Use and Mixing apply).
 
 - **Exact cooling and burning.** A short Cooling Time could make gas reheat
   (it overshot below zero and rebounded); heat now always decays. Burn Time

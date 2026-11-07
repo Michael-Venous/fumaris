@@ -38,7 +38,7 @@ PRESETS = {
         "domain": {"shader_flame_enabled": True, "vorticity": 4.0,
                    "buoyancy_per_temp": 1.5, "shader_smoke_density": 3.0,
                    "shader_smoke_color": (0.3185545,) * 3},
-        # Physical Heat: the source only ignites the fuel; burning makes the heat.
+        # The source only ignites the fuel; burning makes the heat.
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 10.0, "source_op_temperature": "max",
                     "emitter_fuel": 0.5, "normal_velocity": 0.25, "emitter_divergence": 0.2},
@@ -52,10 +52,9 @@ PRESETS = {
                    "buoyancy_per_temp": 8.0, "burn_per_temp": 2.0,
                    "divergence_per_burn": 4.0, "cooling_rate": 0.5,
                    # Realistic model (new domains): fuel released in one short
-                   # burst ignites; with Physical Heat it burns where it meets
+                   # burst ignites; with the Oxygen Limit it burns where it meets
                    # air, so temperatures vary. Boiling cells on its surface
                    # need about 250 voxels across the fireball (resolution).
-                   "physical_heat": True,
                    # Photoreal pass (2026-11-05, output/photoreal): fuel that
                    # burns for about a second where it meets air (Oxygen
                    # Limit), soot that radiates heat away so temperatures

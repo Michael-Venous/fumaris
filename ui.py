@@ -766,8 +766,8 @@ def _draw_domain(layout, scene, props):
     participants.label(text="Participants", icon="OUTLINER_COLLECTION")
     participants = participants.column(align=True)
     # Labels in a narrow column so the collection fields start close to them.
-    for name, label in (("emitter_collection", "Emitters"), ("collider_collection", "Colliders"),
-                        ("effector_collection", "Effectors"), ("outflow_collection", "Outflows")):
+    for name, label in (("emitter_collection", "Emitters Collection:"), ("collider_collection", "Collider Collection:"),
+                        ("effector_collection", "Effector Collection:"), ("outflow_collection", "Outflow Collection:")):
         split = participants.split(factor=0.18, align=True)
         split.label(text=label)
         split.prop(props, name, text="")

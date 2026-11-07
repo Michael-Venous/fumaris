@@ -865,27 +865,24 @@ def _draw_domain(layout, scene, props):
     if _foldout(advanced_box, props, "show_panel_advanced", "Advanced"):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
-        # Solver
         advanced.prop(props, "simulation_speed")
-        advanced.prop(props, "advection_reflection")
         detail = advanced.row(align=True)
         detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
         advanced.prop(props, "projection_filter", slider=True)
-        advanced.prop(props, "full_resolution_velocity")
         advanced.separator()
-        # Moving domain
-        advanced.prop(props, "follow_object")
+        # The on/off switches, two by two.
+        grid = advanced.grid_flow(row_major=True, columns=2, even_columns=True, even_rows=True, align=True)
+        grid.prop(props, "advection_reflection")
+        grid.prop(props, "full_resolution_velocity")
+        grid.prop(props, "follow_object")
+        grid.prop(props, "physics_convex_collision")
+        advanced.separator()
         if props.follow_object:
             advanced.prop(props, "carry_air", slider=True)
-        advanced.separator()
-        # Colliders
-        advanced.prop(props, "physics_convex_collision")
         walls = advanced.row(align=True)
         walls.prop(props, "open_collider_wall")
         walls.prop(props, "closed_collider_margin")
-        advanced.separator()
-        # Memory
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "sparse_block_min_lifetime")
         allocation = advanced.row(align=True)

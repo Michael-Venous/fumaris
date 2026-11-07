@@ -68,7 +68,9 @@ def _object_type_updated(self, _context):
         self.shader_glow_temperature = 2000.0
         self.shader_flame_brightness = 2.0
         self.shader_scatter_glow = 2.0
-        self.shader_glow_shadowing = 1.0
+        # Higher hid Scatter Glow in dense smoke (1 left 2-5% in a few
+        # density-metres), so Scatter Glow and Glow Spread looked dead.
+        self.shader_glow_shadowing = 0.3
         self.shader_flame_core = 1.0
         self.shader_smoke_density = 1.0
         self.shader_smoke_color = (0.45, 0.45, 0.45)
@@ -1886,7 +1888,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_glow_shadowing: FloatProperty(
         name="Glow Shadowing",
-        description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 1.4 or later",
+        description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. High values can hide Scatter Glow almost entirely in dense smoke; lower this if Scatter Glow or Glow Spread seem to do nothing. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 1.4 or later",
         default=0.0,
         min=0.0,
         soft_max=10.0,

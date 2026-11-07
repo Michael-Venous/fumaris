@@ -105,8 +105,6 @@ def build_session(
         in {"1", "true", "yes", "on"},
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
-    # Mesh participants add a closest-face texture that the memory budget must hold.
-    settings["initial_domain"]["mesh_sources"] = any(item["kind"] == "mesh" for item in participants)
     # Effectors add a velocity scratch texture after the pressure solve.
     settings["initial_domain"]["effector_sources"] = any(item["kind"] == "effector" for item in participants)
     settings["initial_domain"]["density_channels"] = density_channels(domain.fumaris, participants)
@@ -557,8 +555,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
         "min_distance": minimum,
         "max_distance": maximum,
         "is_collision": participant["role"] == "collider",
-        # Open (non-manifold) collider meshes have no inside (bridge experiment
-        # FUMARIS_EXP_OPEN_WALL).
+        # Open (non-manifold) collider meshes have no inside (Open Collider Wall).
         "open_surface": participant["role"] == "collider" and participant.get("closed_surface") is None,
         "is_outflow": participant["role"] == "outflow",
         "motion_velocity_scale": 0.0 if participant["role"] != "emitter" else props.motion_velocity_scale,

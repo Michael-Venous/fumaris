@@ -15,7 +15,9 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
   tightly (about 35% more smoke per GB, on macOS too). Smoke-only scenes store
   only the channels they use (Density Storage: Auto), up to about twice the
   smoke per GB. Bakes of the test scenes run about 30% faster than 1.3.1 while
-  holding 36–59% more smoke; Apple silicon bakes up to 80% faster.
+  holding 36–59% more smoke; Apple silicon bakes up to 80% faster. Advection
+  reads across block faces with fewer lookups: about 6% less GPU time per
+  frame on Apple M4 and 8–10% on Intel Arc.
 - **Physical fire.** One combustion model: burning releases Fuel Energy times
   the heat that takes cold air to Flame Temperature, per unit of fuel. Burn
   Time sets how long fire lasts and Cooling Time how fast heat fades after it;

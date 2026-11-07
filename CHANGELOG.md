@@ -14,8 +14,12 @@ All notable customer-facing changes are recorded here.
 - **Temperature Diffusion** (Combustion): heat evens out between neighbouring
   voxels, smoothing speckle and noise in fire. 0.1 lowers cell-to-cell
   temperature noise about 12%, 0.3 about 30% (Steady Fire and Explosion);
-  thin fire cools a little sooner. Off by default; on, it adds about 7% to
-  the simulation time.
+  thin fire cools a little sooner. New domains start at 0.1 (saved scenes
+  keep 0); it adds about 7% to the simulation time, nothing at 0.
+
+- **Point attributes replace the emitter's values.** The tooltips now say so:
+  a per-point Smoke, Temperature, Fuel, Expansion or coupling attribute is
+  used instead of the emitter's setting, not multiplied by it.
 
 - **Physical Buoyancy**: a checkbox beside Temperature Buoyancy. When on, hot
   gas lifts as the gas law says (about 5.8 g at 2000 K, following Flame

@@ -61,6 +61,8 @@ def _object_type_updated(self, _context):
         self.fuel_threshold = 0.0
         self.soot_radiation = 1.0
         self.edge_sharpness = 0.5
+        # Smooths fire speckle (Axiom's default is the same 0.1), 2026-11-07.
+        self.temperature_diffusion = 0.1
         # Look: Full Glow at the default Flame Temperature, so Brightness reads
         # as exposure for the hottest gas.
         self.shader_glow_temperature = 2000.0
@@ -951,49 +953,49 @@ class FumarisSettings(PropertyGroup):
 
     attr_smoke: StringProperty(
         name="Smoke",
-        description="Smoke amount attribute; empty uses smoke/density/mass",
+        description="Smoke amount attribute; empty uses smoke/density/mass. Each point's value replaces the emitter's Smoke (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_temperature: StringProperty(
         name="Temperature",
-        description="Temperature attribute; empty uses temperature/temp/heat",
+        description="Temperature attribute; empty uses temperature/temp/heat. Each point's value replaces the emitter's Temperature (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_fuel: StringProperty(
         name="Fuel",
-        description="Fuel attribute; empty uses fuel/combustible",
+        description="Fuel attribute; empty uses fuel/combustible. Each point's value replaces the emitter's Fuel (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_burn: StringProperty(
         name="Burn",
-        description="Burn/flame attribute; empty uses burn/flame/fire",
+        description="Burn/flame attribute; empty uses burn/flame/fire. Each point's value replaces the emitter's Burn (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_smoke_coupling: StringProperty(
         name="Smoke Coupling",
-        description="Smoke coupling attribute; empty uses smoke_coupling/density_coupling",
+        description="Smoke coupling attribute; empty uses smoke_coupling/density_coupling. Each point's value replaces the emitter's Smoke Coupling (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_temperature_coupling: StringProperty(
         name="Temperature Coupling",
-        description="Temperature coupling attribute; empty uses temperature_coupling/heat_coupling",
+        description="Temperature coupling attribute; empty uses temperature_coupling/heat_coupling. Each point's value replaces the emitter's Temperature Coupling (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_velocity_coupling: StringProperty(
         name="Velocity Coupling",
-        description="Velocity coupling attribute; empty uses velocity_coupling/force_strength/strength",
+        description="Velocity coupling attribute; empty uses velocity_coupling/force_strength/strength. Each point's value replaces the emitter's Velocity Coupling (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 
     attr_divergence: StringProperty(
         name="Divergence",
-        description="Divergence attribute; empty uses divergence/expansion/pressure",
+        description="Expansion attribute; empty uses divergence/expansion/pressure. Each point's value replaces the emitter's Expansion (it does not scale it); without the attribute the emitter's value is used",
         default="",
     )
 

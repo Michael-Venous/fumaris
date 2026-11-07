@@ -34,6 +34,11 @@ All notable customer-facing changes are recorded here.
   Memory Bake (6.6 GB without it), with identical results and slightly faster
   bakes.
 
+- **Faster Collection Mesh emitters with many copies.** Copies of the same
+  mesh are read from Blender once instead of once per copy: 200 copies of a
+  1,000-triangle sphere export in 8.5 ms a frame instead of 67 ms (whole frame
+  91 ms instead of 150 at Resolution 512), with the same emitted geometry.
+
 - **Glow Shadowing** (Appearance, under Scatter Glow). Smoke between a spot and
   the fire now blocks Scatter Glow, so dense outer billows stay dark and fire
   light shows in the crevices next to the flames ("cracks of flame"). Live in

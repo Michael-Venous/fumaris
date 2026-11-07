@@ -182,6 +182,41 @@ def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame)
     )
 
 
+def _shared_mesh_arrays(obj, depsgraph, props, matrix, shared, used):
+    """Collection members that are copies of one undeformed mesh: evaluate its
+    local vertices and triangles once (cached across frames in `shared`, keyed
+    like the static-mesh cache), then add each copy's own Normal Velocity.
+    Same arrays as _evaluated_mesh; None when the member needs its own
+    evaluation (modifiers, shape keys, a mask or a velocity attribute)."""
+    if (obj.type != "MESH" or obj.modifiers or obj.data.shape_keys
+            or str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip()
+            or uses_velocity_attribute(props)):
+        return None
+    mesh = obj.data
+    key = (
+        mesh.as_pointer(),
+        obj.evaluated_get(depsgraph).data.as_pointer(),
+        geometry_revision(mesh),
+        len(mesh.vertices),
+        len(mesh.polygons),
+        len(mesh.edges),
+    )
+    entry = shared.get(key)
+    if entry is None:
+        surface_out = {}
+        positions, indices, _, emission_weights = _evaluated_mesh(
+            obj, depsgraph, props, matrix, surface_out)
+        entry = (positions, indices, emission_weights, surface_out.get("surface"))
+        shared[key] = entry
+    used[key] = entry
+    positions, indices, emission_weights, surface = entry
+    if surface is not None and getattr(props, "emitter_settings_version", 0) >= 1:
+        velocities = array("f")
+    else:
+        velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
+    return positions, indices, velocities, emission_weights
+
+
 def _static_mesh_cache_key(obj, depsgraph, props):
     if obj.type != "MESH" or obj.modifiers or obj.data.shape_keys:
         return None

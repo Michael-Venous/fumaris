@@ -782,8 +782,9 @@ def _draw_domain(layout, scene, props):
     wind = behavior.row(align=True)
     wind.prop(props, "wind")
     behavior.separator()
-    behavior.prop(props, "buoyancy_per_temp")
-    behavior.prop(props, "buoyancy_per_smoke")
+    buoyancy = behavior.row(align=True)
+    buoyancy.prop(props, "buoyancy_per_temp")
+    buoyancy.prop(props, "buoyancy_per_smoke")
     behavior.separator()
     fade = behavior.row(align=True)
     fade.prop(props, "dissipation")
@@ -837,7 +838,12 @@ def _draw_domain(layout, scene, props):
         combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
         combustion.separator()
         combustion.prop(props, "gas_expansion")
-        combustion.prop(props, "oxygen_limit")
+        shaping = combustion.row(align=True)
+        shaping.prop(props, "wisp_cooling")
+        shaping.prop(props, "fuel_threshold")
+        air = combustion.row(align=True)
+        air.prop(props, "oxygen_limit")
+        air.prop(props, "soot_radiation")
         oxygen = combustion.row(align=True)
         oxygen.active = props.oxygen_limit > 0.0
         oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
@@ -845,9 +851,6 @@ def _draw_domain(layout, scene, props):
         field.active = props.oxygen_field and props.oxygen_limit > 0.0
         field.prop(props, "oxygen_use", text="Use")
         field.prop(props, "oxygen_mixing", text="Mixing")
-        combustion.prop(props, "soot_radiation")
-        combustion.prop(props, "wisp_cooling")
-        combustion.prop(props, "fuel_threshold")
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking
@@ -870,14 +873,16 @@ def _draw_domain(layout, scene, props):
         advanced.separator()
         # Colliders
         advanced.prop(props, "physics_convex_collision")
-        advanced.prop(props, "open_collider_wall")
-        advanced.prop(props, "closed_collider_margin")
+        walls = advanced.row(align=True)
+        walls.prop(props, "open_collider_wall")
+        walls.prop(props, "closed_collider_margin")
         advanced.separator()
         # Memory
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "sparse_block_min_lifetime")
-        advanced.prop(props, "allocation_smoke_threshold")
-        advanced.prop(props, "allocation_speed_threshold")
+        allocation = advanced.row(align=True)
+        allocation.prop(props, "allocation_smoke_threshold")
+        allocation.prop(props, "allocation_speed_threshold")
 
     _draw_diagnostics(layout, props)
 

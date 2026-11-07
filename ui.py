@@ -866,6 +866,8 @@ def _draw_domain(layout, scene, props):
         advanced.prop(props, "full_resolution_velocity")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "physics_convex_collision")
+        advanced.prop(props, "open_collider_wall")
+        advanced.prop(props, "closed_collider_margin")
         advanced.separator()
         advanced.prop(props, "sparse_block_min_lifetime")
         advanced.prop(props, "allocation_smoke_threshold")
@@ -875,9 +877,6 @@ def _draw_domain(layout, scene, props):
             experimental = advanced.column(align=True)
             experimental.prop(props, "exp_pressure_filter", slider=True)
             experimental.prop(props, "exp_vorticity_full_resolution")
-            experimental.prop(props, "exp_expansion_coverage")
-            experimental.prop(props, "exp_open_wall")
-            experimental.prop(props, "exp_closed_margin")
 
     _draw_diagnostics(layout, props)
 

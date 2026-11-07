@@ -83,10 +83,24 @@ All notable customer-facing changes are recorded here.
   Properties > Light Paths > Volumes > Biased), which renders the glow cleanly
   and faster.
 
-- **Experimental options** (Advanced > Experimental, all off by default):
-  Projection Filter, Vorticity Full Strength At, Expansion Coverage, Open
-  Collider Wall and Closed Collider Margin, for testing solver changes that
-  are not yet defaults.
+- **Expansion is exact at any resolution and position.** Box, sphere and
+  Surface mesh emitters stamp the share of each edge cell they cover, so the
+  volume they push out no longer depends on how their edge falls on the grid:
+  within 2.6% of the exact value for all three shapes at Resolution 128-512
+  (was -17% to +8%), at no measurable cost. Explosions from sphere emitters
+  spread a little less than before (the old stamp overshot by 4-5%).
+
+- **Open Collider Wall** (Advanced, default 1 cell): the wall behind open
+  collider meshes such as planes is at least one velocity cell deep, so smoke
+  no longer leaks through when Collider Margin is thin.
+
+- **Closed Collider Margin** (Advanced, default 0 = full margin): closed
+  colliders can hold the air still in a thinner layer, so fire resting on them
+  rises freely.
+
+- **Experimental options** (Advanced > Experimental): Projection Filter and
+  Vorticity Full Strength At, for testing solver changes that are not yet
+  defaults.
 
 - **Faster bakes.** VDB frames are converted and written by more threads (half
   the CPU cores, up to 12): on a 24-core machine a 512 bake went from 19.9 to

@@ -114,8 +114,10 @@ All notable customer-facing changes are recorded here.
   colliders can hold the air still in a thinner layer, so fire resting on them
   rises freely.
 
-- **Experimental option** (Advanced > Experimental): Projection Filter, for
-  testing a solver change that is not yet a default.
+- **Projection Filter** (Advanced, default 1): lower lets fine motion through
+  the pressure solve, so fire flickers and puffs (about 0.25), at the risk of
+  grid-scale noise. Advanced is regrouped: solver, moving domain, colliders,
+  memory.
 
 - **Faster bakes.** VDB frames are converted and written by more threads (half
   the CPU cores, up to 12): on a 24-core machine a 512 bake went from 19.9 to

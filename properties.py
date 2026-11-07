@@ -1608,11 +1608,10 @@ class FumarisSettings(PropertyGroup):
         unit="VELOCITY",
     )
 
-    # Experimental (Advanced > Experimental): solver changes under evaluation.
-    # The defaults are the shipped behavior.
-    exp_pressure_filter: FloatProperty(
+    # Advanced solver and collider options.
+    projection_filter: FloatProperty(
         name="Projection Filter",
-        description="Experimental. How strongly the pressure solve smooths out cell-to-cell (checkerboard) motion. 1 is Flow's. Lower lets fine motion through: fire flickers and puffs (about 0.25 restores natural puffing at moderate resolution) and small swirls survive, at the risk of grid-scale noise",
+        description="How strongly the pressure solve smooths out cell-to-cell (checkerboard) motion. 1 is Flow's. Lower lets fine motion through: fire flickers and puffs (about 0.25 restores natural puffing at moderate resolution) and small swirls survive, at the risk of grid-scale noise",
         default=1.0, min=0.0, max=1.0, subtype="FACTOR",
     )
 
@@ -2020,11 +2019,6 @@ class FumarisSettings(PropertyGroup):
     # UI-only organization flags. These do not affect the simulation.
     show_panel_advanced: BoolProperty(
         name="Advanced",
-        default=False,
-    )
-
-    show_panel_experimental: BoolProperty(
-        name="Experimental",
         default=False,
     )
 

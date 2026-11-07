@@ -855,28 +855,30 @@ def _draw_domain(layout, scene, props):
     if _foldout(advanced_box, props, "show_panel_advanced", "Advanced"):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
+        # Solver
         advanced.prop(props, "simulation_speed")
         advanced.prop(props, "advection_reflection")
         detail = advanced.row(align=True)
         detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
+        advanced.prop(props, "projection_filter", slider=True)
+        advanced.prop(props, "full_resolution_velocity")
+        advanced.separator()
+        # Moving domain
         advanced.prop(props, "follow_object")
         if props.follow_object:
             advanced.prop(props, "carry_air", slider=True)
         advanced.separator()
-        advanced.prop(props, "full_resolution_velocity")
-        advanced.prop(props, "auto_cell_size")
+        # Colliders
         advanced.prop(props, "physics_convex_collision")
         advanced.prop(props, "open_collider_wall")
         advanced.prop(props, "closed_collider_margin")
         advanced.separator()
+        # Memory
+        advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "sparse_block_min_lifetime")
         advanced.prop(props, "allocation_smoke_threshold")
         advanced.prop(props, "allocation_speed_threshold")
-        advanced.separator()
-        if _foldout(advanced, props, "show_panel_experimental", "Experimental"):
-            experimental = advanced.column(align=True)
-            experimental.prop(props, "exp_pressure_filter", slider=True)
 
     _draw_diagnostics(layout, props)
 

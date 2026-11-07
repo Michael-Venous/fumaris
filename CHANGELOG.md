@@ -28,6 +28,19 @@ All notable customer-facing changes are recorded here.
   four times farther, so Scatter Glow reaches deeper into thick smoke with a
   long, soft falloff, changeable without re-baking. Needs a new bake.
 
+- **Glow Shadowing** (Appearance, under Scatter Glow). Smoke between a spot and
+  the fire now blocks Scatter Glow, so dense outer billows stay dark and fire
+  light shows in the crevices next to the flames ("cracks of flame"). Live in
+  the material; needs a new bake (it adds a small glow_depth grid). 0 keeps the
+  previous look.
+
+- **Gravity from Scene** button next to Gravity, and clearer Gravity and Smoke
+  Buoyancy tooltips: Gravity acts through buoyancy only, so cold smoke ignores
+  it unless Smoke Buoyancy is negative.
+
+- **Smoke Detail Sharp is about 4% faster** (its fallback reuses the samples it
+  already read).
+
 - **Scatter Glow square patches:** these come from Cycles' unbiased volume
   rendering. Fumaris now shows a hint with a Use Biased button (Render
   Properties > Light Paths > Volumes > Biased), which renders the glow cleanly

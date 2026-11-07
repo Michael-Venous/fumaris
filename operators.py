@@ -1229,6 +1229,22 @@ class FUMARIS_OT_add_sparks(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_gravity_from_scene(Operator):
+    bl_idname = "fumaris.gravity_from_scene"
+    bl_label = "Gravity from Scene"
+    bl_description = "Copy the Scene's gravity (Scene Properties > Gravity) into this domain's Gravity. The domain keeps its own value afterwards"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_active_domain(context)) and context.scene is not None
+
+    def execute(self, context):
+        domain = _active_domain(context)
+        domain.fumaris.gravity = tuple(context.scene.gravity)
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_use_biased_volumes(Operator):
     bl_idname = "fumaris.use_biased_volumes"
     bl_label = "Use Biased Volumes"
@@ -1499,6 +1515,7 @@ CLASSES = (
     FUMARIS_OT_cache_make_lighter,
     FUMARIS_OT_add_sparks,
     FUMARIS_OT_use_biased_volumes,
+    FUMARIS_OT_gravity_from_scene,
     FUMARIS_OT_preset_save,
     FUMARIS_OT_preset_apply,
     FUMARIS_OT_preset_delete,

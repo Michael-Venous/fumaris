@@ -1294,7 +1294,7 @@ class FumarisSettings(PropertyGroup):
     # Advanced Settings
     gravity: FloatVectorProperty(
         name="Gravity",
-        description="Direction and strength of buoyancy: hot gas rises against it, heavy smoke sinks along it (Buoyancy settings scale how much). It is a force, so it only moves smoke where gas is hotter or denser than the air. Wind is different: it carries all air along at a steady speed without any force",
+        description="Direction and strength of buoyancy: hot gas rises against it, heavy smoke sinks along it (Temperature and Smoke Buoyancy scale how much). It acts only through buoyancy: cold smoke ignores it unless Smoke Buoyancy is negative (heavy smoke). This is the domain's own gravity, not the Scene gravity. Wind is different: it carries all air along at a steady speed without any force",
         default=(0.0, 0.0, -9.81),
         size=3,
         subtype="ACCELERATION",
@@ -1310,7 +1310,7 @@ class FumarisSettings(PropertyGroup):
 
     buoyancy_per_smoke: FloatProperty(
         name="Smoke Buoyancy",
-        description="Force per unit smoke density; negative follows gravity, positive rises against gravity",
+        description="Force per unit smoke density along Gravity: negative makes smoke heavy so it sinks and spreads along the ground even when cold, positive makes it rise like a light gas. 0 = smoke has no weight; it moves only with the air and heat",
         default=0.0,
         soft_min=-20.0,
         soft_max=20.0,
@@ -1852,6 +1852,16 @@ class FumarisSettings(PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
+        update=_appearance_updated,
+    )
+
+    shader_glow_shadowing: FloatProperty(
+        name="Glow Shadowing",
+        description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 1.4 or later",
+        default=0.0,
+        min=0.0,
+        soft_max=10.0,
+        max=100.0,
         update=_appearance_updated,
     )
 

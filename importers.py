@@ -52,6 +52,8 @@ NODE_SCATTER_GLOW_COLOR = "Fumaris Scatter Glow Color"
 NODE_SCATTER_GLOW_ALBEDO = "Fumaris Scatter Glow Albedo"
 # Glow Spread: blend of the baked glow and glow_wide (4x the radius).
 NODE_SCATTER_GLOW_SPREAD = "Fumaris Scatter Glow Spread"
+# Glow Shadowing: glow x exp(-shadowing x glow_depth) (smoke between it and the fire).
+NODE_SCATTER_GLOW_SHADOW = "Fumaris Scatter Glow Shadowing"
 GLOW_REFERENCE_K = 1500.0
 SCATTER_GLOW_SCALE = 1.0
 PHYSICAL_SATURATION = 1.8
@@ -272,6 +274,10 @@ def apply_generated_material_settings(material, settings):
     if glow_spread is not None:
         glow_spread.inputs["Factor"].default_value = max(
             0.0, min(1.0, float(_appearance_value(settings, "shader_glow_spread", 0.0))))
+    glow_shadow = nodes.get(NODE_SCATTER_GLOW_SHADOW)
+    if glow_shadow is not None:
+        glow_shadow.inputs[1].default_value = -max(
+            0.0, float(_appearance_value(settings, "shader_glow_shadowing", 0.0)))
     albedo = nodes[NODE_SCATTER_GLOW_ALBEDO]
     [socket for socket in albedo.inputs if socket.type == "RGBA"][1].default_value = (*smoke_color[:3], 1.0)
 
@@ -371,6 +377,11 @@ def _build_generated_material(material, blue_core=False):
     glow_wide.label = "Glow, wide (baked)"
     glow_wide.location = (-1480, -560)
     glow_wide.parent = inputs
+    glow_depth = nodes.new("ShaderNodeAttribute")
+    glow_depth.attribute_name = "glow_depth"
+    glow_depth.label = "Smoke to the fire (baked)"
+    glow_depth.location = (-1480, -740)
+    glow_depth.parent = inputs
 
     # Fire: shared Wien term, radiance, strength and colour.
     floor = math_node("MAXIMUM", (-1100, 380), "Temperature Floor", flame)
@@ -483,7 +494,15 @@ def _build_generated_material(material, blue_core=False):
     float_inputs = [socket for socket in spread.inputs if socket.type == "VALUE" and socket.name != "Factor"]
     links.new(_socket(glow.outputs, "Factor", "Fac"), float_inputs[0])
     links.new(_socket(glow_wide.outputs, "Factor", "Fac"), float_inputs[1])
-    links.new([socket for socket in spread.outputs if socket.type == "VALUE"][0], excess.inputs[0])
+    shadow_exponent = math_node("MULTIPLY", (-1280, -560), "Glow Shadowing", glow_frame, NODE_SCATTER_GLOW_SHADOW)
+    shadow_exponent.inputs[1].default_value = -0.0
+    shadow = math_node("EXPONENT", (-1100, -560), "Light Reaching", glow_frame)
+    shadowed = math_node("MULTIPLY", (-1100, -380), "Shadowed Glow", glow_frame)
+    links.new(_socket(glow_depth.outputs, "Factor", "Fac"), shadow_exponent.inputs[0])
+    links.new(shadow_exponent.outputs[0], shadow.inputs[0])
+    links.new([socket for socket in spread.outputs if socket.type == "VALUE"][0], shadowed.inputs[0])
+    links.new(shadow.outputs[0], shadowed.inputs[1])
+    links.new(shadowed.outputs[0], excess.inputs[0])
     links.new(local_source.outputs[0], excess.inputs[1])
     links.new(excess.outputs[0], positive.inputs[0])
     links.new(positive.outputs[0], glow_density.inputs[0])

@@ -656,6 +656,9 @@ def _draw_domain(layout, scene, props):
         glow_spread = fire.row(align=True)
         glow_spread.enabled = props.shader_scatter_glow > 0.0
         glow_spread.prop(props, "shader_glow_spread", slider=True)
+        glow_shadowing = fire.row(align=True)
+        glow_shadowing.enabled = props.shader_scatter_glow > 0.0
+        glow_shadowing.prop(props, "shader_glow_shadowing")
         if (props.shader_scatter_glow > 0.0 and scene.render.engine == "CYCLES"
                 and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
             # Cycles' unbiased volumes drop the glow in square patches
@@ -771,7 +774,9 @@ def _draw_domain(layout, scene, props):
     behavior_box.enabled = not is_baking
     behavior_box.label(text="Smoke Behavior", icon="MOD_FLUID")
     behavior = behavior_box.column(align=True)
-    behavior.prop(props, "gravity")
+    gravity = behavior.row(align=True)
+    gravity.prop(props, "gravity")
+    gravity.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
     behavior.prop(props, "wind")
     behavior.separator()
     behavior.prop(props, "buoyancy_per_temp")

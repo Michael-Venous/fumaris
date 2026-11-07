@@ -28,6 +28,12 @@ All notable customer-facing changes are recorded here.
   four times farther, so Scatter Glow reaches deeper into thick smoke with a
   long, soft falloff, changeable without re-baking. Needs a new bake.
 
+- **Less system memory while baking.** Each exported channel kept one more
+  pinned readback buffer than it needed. A 1024 Explosion (11 GB of GPU
+  memory) now peaks at 5.7 GB of real system memory instead of 7.0 GB with Low
+  Memory Bake (6.6 GB without it), with identical results and slightly faster
+  bakes.
+
 - **Glow Shadowing** (Appearance, under Scatter Glow). Smoke between a spot and
   the fire now blocks Scatter Glow, so dense outer billows stay dark and fire
   light shows in the crevices next to the flames ("cracks of flame"). Live in

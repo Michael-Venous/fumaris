@@ -464,9 +464,21 @@ def _draw_memory_usage(layout, domain):
     used, allocated = usage
     fraction = used / allocated
     gib = 1073741824.0
-    text = f"Memory in use: {used / gib:.1f} of {allocated / gib:.1f} GB ({fraction:.0%})"
+    # Show the VRAM the session reserved (the setting it started with, or the
+    # Auto amount), not only Flow's own allocations, so the total matches the
+    # VRAM field; the fill is the share of the smoke pool in use.
+    started = state.get("vram_setting")
+    if isinstance(started, float):
+        allocated = started * gib
+    elif started == "auto" and diagnostics.value(state, "flow_auto_memory_bytes") > 0:
+        allocated = diagnostics.value(state, "flow_auto_memory_bytes")
+    used = fraction * allocated
+    # GPU memory: the simulation's reserved pool and the share smoke fills.
+    text = f"VRAM in use: {used / gib:.1f} of {allocated / gib:.1f} GB ({fraction:.0%})"
     if not state.get("active"):
         text = "Last run · " + text
+    elif diagnostics.vram_setting_changed(domain, state):
+        text += " · VRAM changes on restart"
     try:
         layout.progress(factor=fraction, type="BAR", text=text)
     except (AttributeError, TypeError):

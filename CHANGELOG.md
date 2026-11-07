@@ -149,7 +149,9 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - **Sparks** (Output > Add Sparks): sparks and embers flying through the baked
   velocity, glowing by temperature.
 - A GPU-memory-full warning when the driver starts moving the simulation to
-  system memory.
+  system memory. The bar under the controls reads "VRAM in use", its total is
+  the VRAM the simulation reserved (matching the VRAM field), and it notes
+  when a changed VRAM waits for a restart.
 
 ### Workflow
 

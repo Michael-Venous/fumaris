@@ -23,6 +23,21 @@ def _key(domain):
     return int(domain.session_uid)
 
 
+def _vram_setting(domain):
+    props = getattr(domain, "fumaris", None)
+    if props is None:
+        return None
+    if getattr(props, "simulation_memory_auto", False):
+        return "auto"
+    return round(float(props.simulation_memory), 3)
+
+
+def vram_setting_changed(domain, state):
+    """True when VRAM (or Auto) differs from what the session started with."""
+    started = (state or {}).get("vram_setting")
+    return started is not None and started != _vram_setting(domain)
+
+
 def begin(domain, mode):
     key = _key(domain)
     _STATES[key] = {
@@ -32,6 +47,9 @@ def begin(domain, mode):
         "active": True,
         "metrics": {},
         "log": deque(maxlen=80),
+        # The VRAM setting this session started with: a later change applies
+        # only when the simulation restarts.
+        "vram_setting": _vram_setting(domain),
     }
     # Diagnostics are session-only, not part of the .blend or cache.
     while len(_STATES) > 64:

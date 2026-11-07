@@ -777,16 +777,16 @@ def _draw_domain(layout, scene, props):
     behavior_box.label(text="Smoke Behavior", icon="MOD_FLUID")
     behavior = behavior_box.column(align=True)
     # One split for both rows so their X / Y / Z columns line up; the Gravity
-    # from Scene button sits at the left edge (a blank slot under it for Wind).
+    # from Scene button sits just left of the fields (a blank slot for Wind).
     for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
         split = behavior.split(factor=0.25, align=True)
-        left = split.row(align=True)
+        split.label(text=label)
+        right = split.row(align=True)
         if button:
-            left.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
+            right.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
         else:
-            left.label(text="", icon="BLANK1")
-        left.label(text=label)
-        split.row(align=True).prop(props, name, text="")
+            right.label(text="", icon="BLANK1")
+        right.prop(props, name, text="")
     behavior.separator()
     buoyancy = behavior.row(align=True)
     buoyancy.prop(props, "buoyancy_per_temp")

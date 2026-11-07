@@ -130,7 +130,8 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
   following Blender's colour management exactly (Standard replaces Off), and
   dithered so dark smoke does not band.
 - Dense smoke as opaque as in Cycles and flame colours matching the material;
-  Scatter Glow, Glow Spread and Glow Shadowing drawn in the preview.
+  Scatter Glow, Glow Spread and Glow Shadowing drawn in the preview (Glow
+  Spread mixes two blur widths as the material does, so it changes smoothly).
 - **Show** views: Speed, Expansion, Fuel and Active Blocks.
 - **Preview Step Size** replaces Ray Steps; the preview is faster (no velocity
   reads for ordinary looks, rays stop once nothing behind can show).

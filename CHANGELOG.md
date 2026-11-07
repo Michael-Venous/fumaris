@@ -4,6 +4,13 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **New defaults for new domains** (saved scenes keep their values): Burn Time
+  2 s, Cooling Time 2 s, Gas Expansion 0.3, Soot Radiation 1, Edge Sharpness
+  0.5 (less temperature speckle), even burning (Oxygen Limit 0, Oxygen Field,
+  Wisp Cooling and Flame Sheets off), Cells per Step 8; look: Full Glow 2000 K
+  (the default Flame Temperature), Flame Brightness 2, Scatter Glow 2, Glow
+  Shadowing 1, Blue Core 1, Smoke Density 1, smoke colour 0.45.
+
 - **Smoke fades more gradually.** New domains and Quick Setup use Dissipation
   0.2 and Smoke Decay 0.1 (were 0.5 / 0.3, and 1.0 in Quick Setup), so a
   rising column thins over several seconds instead of ending about 13 m up.

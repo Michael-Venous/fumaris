@@ -46,19 +46,36 @@ def _object_type_updated(self, _context):
         self.use_scene_frame_range = True
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
-        # Preserve Turbulence stays off for new domains
-        # (user decision, 2026-11-06).
-        # Defaults pass 2026-11-04: crisp advection, a short burn (burning
-        # lets fuel last by mixing), heat that lingers, mild expansion, 4 GB.
-        self.burn_time = 0.5
-        self.cooling_time = 5.0
-        self.gas_expansion = 0.5
+        # Defaults pass 2026-11-07 (user, from the Cube.002 setup): fire that
+        # lasts about 2 s and fades as fast, some expansion, sooty caps with
+        # glowing cracks, softer heat edges; even burning (Oxygen Limit 0, no
+        # Oxygen Field), no Wisp Cooling or Flame Sheets. Preserve Turbulence
+        # stays off. Saved domains keep their values.
+        self.burn_time = 2.0
+        self.cooling_time = 2.0
+        self.gas_expansion = 0.3
         self.simulation_memory = 4.0
+        self.oxygen_limit = 0.0
+        self.oxygen_field = False
+        self.wisp_cooling = 0.0
+        self.fuel_threshold = 0.0
+        self.soot_radiation = 1.0
+        self.edge_sharpness = 0.5
+        # Look: Full Glow at the default Flame Temperature, so Brightness reads
+        # as exposure for the hottest gas.
+        self.shader_glow_temperature = 2000.0
+        self.shader_flame_brightness = 2.0
+        self.shader_scatter_glow = 2.0
+        self.shader_glow_shadowing = 1.0
+        self.shader_flame_core = 1.0
+        self.shader_smoke_density = 1.0
+        self.shader_smoke_color = (0.45, 0.45, 0.45)
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
         # New domains: up to 4 Sub-Steps, added when the smoke moves more than
-        # 4 voxels per step (slow smoke stays at 2).
+        # 8 voxels per step (8 was a safe speed-up; 16 lost half an Explosion's
+        # smoke, 2026-11-04).
         self.num_sub_steps = 4
-        self.adaptive_cfl = 4.0
+        self.adaptive_cfl = 8.0
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
     if self.smoke_object_type == "domain" and self.fade_settings_version == 0:
         self.dissipation = 0.2

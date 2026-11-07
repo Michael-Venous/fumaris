@@ -43,6 +43,12 @@ All notable customer-facing changes are recorded here.
   scale) and Active Blocks (the look with the simulated blocks outlined, to see
   where memory and time go).
 
+- **Transport status and Scrub Recording.** The Fumaris playback controls
+  (3D viewport and Timeline headers) show "Live 42 / Recorded 1-40" for the
+  domain, and Scrub Recording pauses the live preview (importing its Bake on
+  Preview frames) and puts the playhead in the recorded range, so scrubbing
+  the timeline plays the recording; Resume continues the live simulation.
+
 - **Add Source** (Participants): ready-made Geometry Nodes sources added to
   the domain at the 3D cursor: Candle (a flickering flame that burns where it
   sits), Burst (an expanding shell of fuel and heat over a few frames), Trail

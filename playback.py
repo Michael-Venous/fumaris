@@ -120,6 +120,83 @@ class FUMARIS_OT_preview_toggle(bpy.types.Operator):
         return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
 
 
+def recorded_volume(domain):
+    """The domain's visible imported recording (a bake or a Bake on Preview
+    take), or None. Its folders all live below the domain's output folder."""
+    if domain is None:
+        return None
+    import os
+    from .importers import VOLUME_MARKER
+    from .utils import output_directory_for_object
+    root = os.path.normpath(output_directory_for_object(domain))
+    found = None
+    for obj in bpy.data.objects:
+        marker = obj.get(VOLUME_MARKER) if obj.type == 'VOLUME' else None
+        if not marker:
+            continue
+        marker = os.path.normpath(marker)
+        if marker != root and not marker.startswith(root + os.sep):
+            continue
+        if found is None or (found.hide_viewport and not obj.hide_viewport):
+            found = obj
+    return found
+
+
+def recorded_range(volume):
+    """(first, last) scene frame of a recorded sequence, or None."""
+    data = getattr(volume, 'data', None)
+    if data is None or not data.is_sequence or data.frame_duration <= 0:
+        return None
+    first = int(data.frame_start + data.frame_offset)
+    return first, first + int(data.frame_duration) - 1
+
+
+def transport_status(context, domain):
+    """'Live 42 / Recorded 1-40' for the transport row."""
+    parts = []
+    job = active_job()
+    if active_mode() == 'previewing' and job is not None:
+        live = getattr(job, '_frame', None)
+        if live:
+            parts.append(f'Live {int(live)}')
+    span = recorded_range(recorded_volume(domain))
+    if span:
+        parts.append(f'Recorded {span[0]}\u2013{span[1]}')
+    return ' / '.join(parts)
+
+
+class FUMARIS_OT_scrub_recording(bpy.types.Operator):
+    bl_idname = 'fumaris.scrub_recording'
+    bl_label = 'Scrub Recording'
+    bl_description = ('Show the recorded frames: pause the live preview (its recorded frames are '
+                      'imported) and move the playhead into the recorded range, so scrubbing '
+                      'the timeline plays the recording. Resume continues the live simulation')
+
+    @classmethod
+    def poll(cls, context):
+        domain = resolve_domain(context)
+        if recorded_volume(domain) is None and not (
+                active_mode() == 'previewing' and domain is not None
+                and getattr(domain.fumaris, 'bake_on_preview', False)):
+            cls.poll_message_set('Nothing recorded: bake, or enable Bake on Preview')
+            return False
+        return True
+
+    def execute(self, context):
+        job = active_job()
+        if active_mode() == 'previewing' and job is not None and not getattr(job, '_pause_requested', False):
+            bpy.ops.fumaris.preview_pause()
+        volume = recorded_volume(resolve_domain(context))
+        span = recorded_range(volume)
+        if volume is None or span is None:
+            self.report({'INFO'}, 'Paused; the recording appears once its frames are written')
+            return {'FINISHED'}
+        volume.hide_viewport = False
+        scene = context.scene
+        scene.frame_set(min(max(scene.frame_current, span[0]), span[1]))
+        return {'FINISHED'}
+
+
 def draw_controls(layout, context, *, compact=False):
     domain = resolve_domain(context)
     job = active_job()
@@ -131,6 +208,12 @@ def draw_controls(layout, context, *, compact=False):
     row.operator('fumaris.preview_toggle', text='' if compact else ('Resume' if paused else 'Pause' if running else 'Play'),
                  icon='PAUSE' if running and not paused else 'PLAY')
     row.operator('fumaris.preview_stop', text='' if compact else 'Stop', icon='SNAP_FACE')
+    if recorded_volume(domain) is not None or (running and domain is not None
+                                               and getattr(domain.fumaris, 'bake_on_preview', False)):
+        row.operator('fumaris.scrub_recording', text='' if compact else 'Scrub Recording', icon='SEQUENCE')
+    status = transport_status(context, domain)
+    if status:
+        (row if compact else layout).label(text=status)
     if not compact:
         layout.label(text='Domain: ' + domain.name if domain else 'Choose a domain', icon='MOD_FLUID')
         if running:
@@ -178,7 +261,7 @@ def register():
     bpy.types.Scene.fumaris_preview_domain = PointerProperty(
         name='Preview Domain', type=bpy.types.Object, poll=_domain_poll,
         description='Domain controlled while editing other objects. A single available domain is chosen automatically')
-    for cls in (FUMARIS_OT_preview_toggle, FUMARIS_PT_playback):
+    for cls in (FUMARIS_OT_preview_toggle, FUMARIS_OT_scrub_recording, FUMARIS_PT_playback):
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_HT_header.append(draw_header)
     bpy.types.DOPESHEET_HT_header.append(draw_header)
@@ -196,6 +279,6 @@ def unregister():
     _KEYMAPS.clear()
     bpy.types.DOPESHEET_HT_header.remove(draw_header)
     bpy.types.VIEW3D_HT_header.remove(draw_header)
-    for cls in (FUMARIS_PT_playback, FUMARIS_OT_preview_toggle):
+    for cls in (FUMARIS_PT_playback, FUMARIS_OT_scrub_recording, FUMARIS_OT_preview_toggle):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.fumaris_preview_domain

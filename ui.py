@@ -779,7 +779,7 @@ def _draw_domain(layout, scene, props):
     # One split for both rows so their X / Y / Z columns line up; the Gravity
     # from Scene button sits just left of the fields (a blank slot for Wind).
     for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
-        split = behavior.split(factor=0.25, align=True)
+        split = behavior.split(factor=0.12, align=True)
         split.label(text=label)
         right = split.row(align=True)
         if button:

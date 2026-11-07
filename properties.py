@@ -1437,7 +1437,7 @@ class FumarisSettings(PropertyGroup):
 
     burn_time: FloatProperty(
         name="Burn Time",
-        description="Seconds for burning gas to use up 95% of its fuel. Longer keeps flames alive longer",
+        description="Seconds for burning gas to use up 95% of its fuel: how long fire lasts. Without Physical Heat, gas burns at Flame Temperature while it holds at least a quarter unit of fuel (leaner gas cooler), so a long Burn Time with rich fuel keeps a whole fireball at full heat; about 1-2 s lets it break into sooty smoke with glowing cracks",
         default=2.0,
         min=0.05,
         soft_max=10.0,
@@ -1446,7 +1446,7 @@ class FumarisSettings(PropertyGroup):
 
     cooling_time: FloatProperty(
         name="Cooling Time",
-        description="Seconds for hot gas to lose 95% of its heat once nothing heats it. Longer keeps embers glowing and smoke rising for longer",
+        description="Seconds for hot gas to lose 95% of its heat once it has stopped burning. Longer keeps embers glowing and smoke rising for longer; it does not change how hot burning gas is",
         default=2.0,
         min=0.05,
         soft_max=10.0,

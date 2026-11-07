@@ -12,6 +12,15 @@ All notable customer-facing changes are recorded here.
 - **Physical Heat and Preserve Turbulence are off for new domains.** Turn
   them on under Advanced. Saved scenes keep their settings.
 
+- **Burn Time and Cooling Time do one thing each.** Without Physical Heat,
+  burning gas now sits at Flame Temperature while it holds at least a quarter
+  unit of fuel (leaner gas proportionally cooler). Burn Time sets how long fire
+  lasts and Cooling Time how fast heat fades after it; before, a longer Cooling
+  Time made flames dimmer (hottest gas 1189 / 922 / 792 K at 1 / 5 / 20 s, now
+  about 1700 K for all) and could stop fuel igniting, and a long Burn Time
+  overheated everything. Scenes without Physical Heat look different: rich
+  fuel with a long Burn Time now burns at full heat for that long.
+
 - **Sharp Advection is always on** (the setting is gone): it reuses passes
   that already run, so it costs nothing, and its limiter cannot overshoot.
 

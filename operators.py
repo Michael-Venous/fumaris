@@ -1229,6 +1229,22 @@ class FUMARIS_OT_add_sparks(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_use_biased_volumes(Operator):
+    bl_idname = "fumaris.use_biased_volumes"
+    bl_label = "Use Biased Volumes"
+    bl_description = "Render volumes with Cycles' Biased (ray-marched) method: Scatter Glow renders without the square patches the unbiased method leaves, and smoke renders faster. Render Properties > Light Paths > Volumes > Biased"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene is not None and hasattr(context.scene, "cycles")
+
+    def execute(self, context):
+        context.scene.cycles.volume_biased = True
+        self.report({"INFO"}, "Cycles volumes set to Biased")
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_preset_save(Operator):
     bl_idname = "fumaris.preset_save"
     bl_label = "Save Preset"
@@ -1482,6 +1498,7 @@ CLASSES = (
     FUMARIS_OT_cache_slot_restore_settings,
     FUMARIS_OT_cache_make_lighter,
     FUMARIS_OT_add_sparks,
+    FUMARIS_OT_use_biased_volumes,
     FUMARIS_OT_preset_save,
     FUMARIS_OT_preset_apply,
     FUMARIS_OT_preset_delete,

@@ -129,13 +129,40 @@ def density_channels(domain_props, participants):
     for participant in participants:
         if participant.get("role") != "emitter":
             continue
-        props = participant["object"].fumaris
+        obj = participant["object"]
+        props = obj.fumaris
+        # Keyed or driven values count as present: the channels are fixed
+        # for the session, and one that starts at 0 would never simulate.
+        animated = _animated_paths(obj)
         if (props.emitter_fuel > 0.0 or props.emitter_burn > 0.0
-                or getattr(props, "emitter_burning", False)):
+                or getattr(props, "emitter_burning", False)
+                or animated & {"fumaris.emitter_fuel", "fumaris.emitter_burn", "fumaris.emitter_burning"}):
             return 4
-        if props.emitter_temperature != 0.0:
+        if props.emitter_temperature != 0.0 or "fumaris.emitter_temperature" in animated:
             heat = True
     return 2 if heat else 1
+
+
+def _animated_paths(obj):
+    """Data paths of obj that have F-Curves or drivers."""
+    paths = set()
+    anim = getattr(obj, "animation_data", None)
+    if anim is None:
+        return paths
+    paths.update(driver.data_path for driver in anim.drivers)
+    action = anim.action
+    if action is None:
+        return paths
+    # Layered actions (Blender 4.4+): every channelbag; older: action.fcurves.
+    fcurve_sets = []
+    for layer in getattr(action, "layers", ()):
+        for strip in layer.strips:
+            fcurve_sets.extend(bag.fcurves for bag in getattr(strip, "channelbags", ()))
+    if not fcurve_sets and hasattr(action, "fcurves"):
+        fcurve_sets.append(action.fcurves)
+    for fcurves in fcurve_sets:
+        paths.update(fcurve.data_path for fcurve in fcurves)
+    return paths
 
 
 def session_structure_signature(domain):
@@ -144,6 +171,9 @@ def session_structure_signature(domain):
     participants = _participants(props)
     return (
         int(props.sparse_block_capacity),
+        # Channel storage is fixed per session: a change (an emitter gaining
+        # heat or fuel) starts a new one instead of dropping the channel.
+        density_channels(props, participants),
         simulation_memory_mb(props),
         bool(getattr(props, "simulation_memory_auto", False)),
         bool(getattr(props, "full_resolution_velocity", False)),
@@ -367,6 +397,11 @@ def _domain_state(props, resolution_scale=1.0):
         "oxygen_mixing": float(props.oxygen_mixing),
         "smoke_detail": getattr(props, "smoke_detail", "standard"),
         "edge_sharpness": float(getattr(props, "edge_sharpness", 0.9)),
+        "exp_pressure_filter": float(getattr(props, "exp_pressure_filter", 1.0)),
+        "exp_vorticity_full_resolution": float(getattr(props, "exp_vorticity_full_resolution", 256)),
+        "exp_open_wall": float(getattr(props, "exp_open_wall", 0.0)),
+        "exp_expansion_coverage": bool(getattr(props, "exp_expansion_coverage", False)),
+        "exp_closed_margin": float(getattr(props, "exp_closed_margin", 0.0)),
         "physical_heat": props.physical_heat,
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,

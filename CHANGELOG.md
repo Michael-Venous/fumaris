@@ -4,6 +4,40 @@ All notable customer-facing changes are recorded here.
 
 ## 1.4.0 — Unreleased
 
+- **Smoke fades more gradually.** New domains and Quick Setup use Dissipation
+  0.2 and Smoke Decay 0.1 (were 0.5 / 0.3, and 1.0 in Quick Setup), so a
+  rising column thins over several seconds instead of ending about 13 m up.
+  Saved scenes keep their values.
+
+- **Physical Heat and Preserve Turbulence are off for new domains.** Turn
+  them on under Advanced. Saved scenes keep their settings.
+
+- **Exact cooling and burning.** A short Cooling Time could make gas reheat
+  (it overshot below zero and rebounded); heat now always decays. Burn Time
+  now means what it says at any Sub-Steps (a very short Burn Time used to
+  burn everything in one step).
+
+- **Keyed heat and fuel are always simulated.** With Density Storage on Auto,
+  an emitter whose Temperature or Fuel was keyed from 0 lost those channels
+  for the whole bake. Live changes now restart the session instead.
+
+- **Oxygen Field follows the gas exactly**, including under Wind and with a
+  moving domain (fuel burnt differed by 14% under wind).
+
+- **Glow Spread** (Appearance, under Scatter Glow). Blends in fire light spread
+  four times farther, so Scatter Glow reaches deeper into thick smoke with a
+  long, soft falloff, changeable without re-baking. Needs a new bake.
+
+- **Scatter Glow square patches:** these come from Cycles' unbiased volume
+  rendering. Fumaris now shows a hint with a Use Biased button (Render
+  Properties > Light Paths > Volumes > Biased), which renders the glow cleanly
+  and faster.
+
+- **Experimental options** (Advanced > Experimental, all off by default):
+  Projection Filter, Vorticity Full Strength At, Expansion Coverage, Open
+  Collider Wall and Closed Collider Margin, for testing solver changes that
+  are not yet defaults.
+
 - **Faster bakes.** VDB frames are converted and written by more threads (half
   the CPU cores, up to 12): on a 24-core machine a 512 bake went from 19.9 to
   12.3 ms a frame and a 768 bake from 61.6 to 33.2 ms, with identical grids.

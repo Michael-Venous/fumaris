@@ -653,6 +653,16 @@ def _draw_domain(layout, scene, props):
         fire.prop(props, "shader_color_spread")
         fire.prop(props, "shader_temperature_multiplier")
         fire.prop(props, "shader_scatter_glow")
+        glow_spread = fire.row(align=True)
+        glow_spread.enabled = props.shader_scatter_glow > 0.0
+        glow_spread.prop(props, "shader_glow_spread", slider=True)
+        if (props.shader_scatter_glow > 0.0 and scene.render.engine == "CYCLES"
+                and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
+            # Cycles' unbiased volumes drop the glow in square patches
+            # (2026-11-06); Biased renders it correctly and faster.
+            hint = appearance.row(align=True)
+            hint.label(text="Scatter Glow shows square patches in unbiased Cycles volumes", icon="ERROR")
+            hint.operator("fumaris.use_biased_volumes", text="Use Biased")
         if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
             appearance.label(
                 text="Custom Volume Material overrides baked appearance",
@@ -851,6 +861,14 @@ def _draw_domain(layout, scene, props):
         advanced.prop(props, "sparse_block_min_lifetime")
         advanced.prop(props, "allocation_smoke_threshold")
         advanced.prop(props, "allocation_speed_threshold")
+        advanced.separator()
+        if _foldout(advanced, props, "show_panel_experimental", "Experimental"):
+            experimental = advanced.column(align=True)
+            experimental.prop(props, "exp_pressure_filter", slider=True)
+            experimental.prop(props, "exp_vorticity_full_resolution")
+            experimental.prop(props, "exp_expansion_coverage")
+            experimental.prop(props, "exp_open_wall")
+            experimental.prop(props, "exp_closed_margin")
 
     _draw_diagnostics(layout, props)
 

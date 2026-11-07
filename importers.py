@@ -50,6 +50,8 @@ PHYSICAL_COLOR_SHIFT = 1.3
 NODE_SCATTER_GLOW_GAIN = "Fumaris Scatter Glow Gain"
 NODE_SCATTER_GLOW_COLOR = "Fumaris Scatter Glow Color"
 NODE_SCATTER_GLOW_ALBEDO = "Fumaris Scatter Glow Albedo"
+# Glow Spread: blend of the baked glow and glow_wide (4x the radius).
+NODE_SCATTER_GLOW_SPREAD = "Fumaris Scatter Glow Spread"
 GLOW_REFERENCE_K = 1500.0
 SCATTER_GLOW_SCALE = 1.0
 PHYSICAL_SATURATION = 1.8
@@ -266,6 +268,10 @@ def apply_generated_material_settings(material, settings):
         SCATTER_GLOW_SCALE * scatter * brightness * density * to_full_glow) if enabled else 0.0
     nodes[NODE_SCATTER_GLOW_COLOR].inputs["Temperature"].default_value = (
         reference * PHYSICAL_COLOR_SHIFT * multiplier)
+    glow_spread = nodes.get(NODE_SCATTER_GLOW_SPREAD)
+    if glow_spread is not None:
+        glow_spread.inputs["Factor"].default_value = max(
+            0.0, min(1.0, float(_appearance_value(settings, "shader_glow_spread", 0.0))))
     albedo = nodes[NODE_SCATTER_GLOW_ALBEDO]
     [socket for socket in albedo.inputs if socket.type == "RGBA"][1].default_value = (*smoke_color[:3], 1.0)
 
@@ -360,6 +366,11 @@ def _build_generated_material(material, blue_core=False):
     glow.label = "Glow (baked)"
     glow.location = (-1480, -380)
     glow.parent = inputs
+    glow_wide = nodes.new("ShaderNodeAttribute")
+    glow_wide.attribute_name = "glow_wide"
+    glow_wide.label = "Glow, wide (baked)"
+    glow_wide.location = (-1480, -560)
+    glow_wide.parent = inputs
 
     # Fire: shared Wien term, radiance, strength and colour.
     floor = math_node("MAXIMUM", (-1100, 380), "Temperature Floor", flame)
@@ -462,7 +473,17 @@ def _build_generated_material(material, blue_core=False):
     links.new(local_wien.outputs[0], local_radiance.inputs[0])
     links.new(local_radiance.outputs[0], local_source.inputs[0])
     links.new(density_value, local_source.inputs[1])
-    links.new(_socket(glow.outputs, "Factor", "Fac"), excess.inputs[0])
+    spread = nodes.new("ShaderNodeMix")
+    spread.data_type = "FLOAT"
+    spread.name = NODE_SCATTER_GLOW_SPREAD
+    spread.label = "Glow Spread"
+    spread.location = (-1280, -380)
+    spread.parent = glow_frame
+    spread.inputs["Factor"].default_value = 0.0
+    float_inputs = [socket for socket in spread.inputs if socket.type == "VALUE" and socket.name != "Factor"]
+    links.new(_socket(glow.outputs, "Factor", "Fac"), float_inputs[0])
+    links.new(_socket(glow_wide.outputs, "Factor", "Fac"), float_inputs[1])
+    links.new([socket for socket in spread.outputs if socket.type == "VALUE"][0], excess.inputs[0])
     links.new(local_source.outputs[0], excess.inputs[1])
     links.new(excess.outputs[0], positive.inputs[0])
     links.new(positive.outputs[0], glow_density.inputs[0])

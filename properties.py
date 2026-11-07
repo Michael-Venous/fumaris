@@ -24,6 +24,10 @@ TEMPERATURE_MAPPING_VERSION = 2
 COMBUSTION_VERSION = 1
 # 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
 SUBSTEP_SETTINGS_VERSION = 1
+# 1: new domains fade smoke over several seconds (Dissipation 0.2, Smoke Decay
+# 0.1); saved domains keep the older 0.5 / 0.3, which ended a rising column
+# about 13 m up (2026-11-06).
+FADE_SETTINGS_VERSION = 1
 # Emitters: 1 = Expansion in 1/s, applied exactly at any resolution and
 # Sub-Steps (Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE). 0 = the older per-cell
 # divergence pull, kept for saved files.
@@ -42,9 +46,8 @@ def _object_type_updated(self, _context):
         self.use_scene_frame_range = True
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
-        # Saved domains keep the older heat; new ones take their heat from
-        # the fuel burnt and keep their turbulence (Preserve Turbulence).
-        self.physical_heat = True
+        # Physical Heat and Preserve Turbulence stay off for new domains
+        # (user decision, 2026-11-06).
         # Defaults pass 2026-11-04: crisp advection, a short burn (Physical Heat
         # lets fuel last by mixing), heat that lingers, mild expansion, 4 GB.
         self.sharp_advection = True
@@ -52,13 +55,16 @@ def _object_type_updated(self, _context):
         self.cooling_time = 5.0
         self.gas_expansion = 0.5
         self.simulation_memory = 4.0
-        self.advection_reflection = True
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
         # New domains: up to 4 Sub-Steps, added when the smoke moves more than
         # 4 voxels per step (slow smoke stays at 2).
         self.num_sub_steps = 4
         self.adaptive_cfl = 4.0
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
+    if self.smoke_object_type == "domain" and self.fade_settings_version == 0:
+        self.dissipation = 0.2
+        self.smoke_decay = 0.1
+        self.fade_settings_version = FADE_SETTINGS_VERSION
     if self.smoke_object_type == "emitter" and self.emitter_settings_version == 0:
         self.emitter_settings_version = EMITTER_SETTINGS_VERSION
         self.emitter_divergence = DEFAULT_EMITTER_EXPANSION
@@ -1598,6 +1604,38 @@ class FumarisSettings(PropertyGroup):
         unit="VELOCITY",
     )
 
+    # Experimental (Advanced > Experimental): solver changes under evaluation.
+    # The defaults are the shipped behavior.
+    exp_pressure_filter: FloatProperty(
+        name="Projection Filter",
+        description="Experimental. How strongly the pressure solve smooths out cell-to-cell (checkerboard) motion. 1 is Flow's. Lower lets fine motion through: fire flickers and puffs (about 0.25 restores natural puffing at moderate resolution) and small swirls survive, at the risk of grid-scale noise",
+        default=1.0, min=0.0, max=1.0, subtype="FACTOR",
+    )
+
+    exp_vorticity_full_resolution: IntProperty(
+        name="Vorticity Full Strength At",
+        description="Experimental. Vorticity is weakened on grids coarser than this Resolution so a plume does not stall in its own swirls. 256 is the shipped value; 512 keeps an Explosion's spread more alike from Resolution 128 to 512 but calms swirls at 256-511",
+        default=256, min=64, max=4096,
+    )
+
+    exp_open_wall: FloatProperty(
+        name="Open Collider Wall",
+        description="Experimental. Minimum thickness, in velocity cells, of the wall behind an open (non-closed) collider mesh such as a plane, so smoke cannot leak through it when Collider Margin is thin. 0 = off; try 1",
+        default=0.0, min=0.0, max=8.0,
+    )
+
+    exp_expansion_coverage: BoolProperty(
+        name="Expansion Coverage",
+        description="Experimental. Emitter cells cut by the emitter's edge expand by the fraction of the cell inside it, so box, sphere and Surface mesh emitters push out the same total volume at any resolution and orientation instead of depending on which cells their edge happens to cover",
+        default=False,
+    )
+
+    exp_closed_margin: FloatProperty(
+        name="Closed Collider Margin",
+        description="Experimental. Closed colliders (and boxes) hold the air still only this many velocity cells out from their surface instead of the full Collider Margin, so smoke and fire resting on them are not slowed by a layer of stuck air. 0 = off (full margin); try 0.25",
+        default=0.0, min=0.0, max=8.0,
+    )
+
     sharp_advection: BoolProperty(
         name="Sharp Advection",
         description="Carry motion with a stronger error correction that falls back to the plain step wherever it would overshoot, for crisper swirls and billow edges at the same cost per voxel",
@@ -1807,6 +1845,16 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
+    shader_glow_spread: FloatProperty(
+        name="Glow Spread",
+        description="How far Scatter Glow reaches into the smoke. 0 keeps fire light within Glow Radius of the flames; higher values blend in light spread four times farther, so the falloff gets a long, soft tail and thick smoke glows deep inside; 1 is only the wide, soft glow. Needs a bake from Fumaris 1.4 or later",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_appearance_updated,
+    )
+
     shader_flame_sharpness: FloatProperty(
         name="Sharpness",
         description="How abruptly flames fade at their edges: 1 glows softly through the fireball, higher values fade weak glow into the smoke and brighten the strongest flames for crisp tongues",
@@ -1895,6 +1943,11 @@ class FumarisSettings(PropertyGroup):
         options={"HIDDEN"},
     )
 
+    fade_settings_version: IntProperty(
+        default=0,
+        options={"HIDDEN"},
+    )
+
     emitter_settings_version: IntProperty(
         default=0,
         options={"HIDDEN"},
@@ -1961,6 +2014,11 @@ class FumarisSettings(PropertyGroup):
     # UI-only organization flags. These do not affect the simulation.
     show_panel_advanced: BoolProperty(
         name="Advanced",
+        default=False,
+    )
+
+    show_panel_experimental: BoolProperty(
+        name="Experimental",
         default=False,
     )
 

@@ -13,7 +13,8 @@ from .runtime import active_job
 
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
-    "dissipation": 1.0,
+    "dissipation": 0.2,
+    "smoke_decay": 0.1,
     "temp_per_burn": 1.0,
     "preview_max_ray_steps": 256,
 }

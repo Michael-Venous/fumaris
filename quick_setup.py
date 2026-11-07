@@ -64,7 +64,7 @@ PRESETS = {
                    # and Disturb at a fifth of the source size (set below) for
                    # lumpy, cauliflower billows.
                    "burn_time": 1.0, "cooling_time": 10.0, "gas_expansion": 1.0,
-                   "sharp_advection": True, "shred": 2.0,
+                   "shred": 2.0,
                    "disturb": 175.0, "disturb_detail": 3,
                    "dissipation": 0.1, "soot_radiation": 1.0, "oxygen_limit": 1.5,
                    "smoke_per_burn": 1.0,

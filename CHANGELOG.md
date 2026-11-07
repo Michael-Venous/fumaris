@@ -12,6 +12,13 @@ All notable customer-facing changes are recorded here.
 - **Physical Heat and Preserve Turbulence are off for new domains.** Turn
   them on under Advanced. Saved scenes keep their settings.
 
+- **Sharp Advection is always on** (the setting is gone): it reuses passes
+  that already run, so it costs nothing, and its limiter cannot overshoot.
+
+- **Physical Heat always tracks the air's oxygen.** Without the Oxygen Field it
+  judged the air left by temperature, so heat from an emitter counted as burnt
+  gas; it now uses the tracked oxygen (Oxygen Use and Mixing apply).
+
 - **Exact cooling and burning.** A short Cooling Time could make gas reheat
   (it overshot below zero and rebounded); heat now always decays. Burn Time
   now means what it says at any Sub-Steps (a very short Burn Time used to

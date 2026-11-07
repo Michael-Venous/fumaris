@@ -388,7 +388,6 @@ def _domain_state(props, resolution_scale=1.0):
         "wisp_cooling": props.wisp_cooling,
         "fuel_threshold": props.fuel_threshold,
         "advection_reflection": props.advection_reflection,
-        "sharp_advection": props.sharp_advection,
         "gas_expansion": props.gas_expansion,
         "soot_radiation": props.soot_radiation,
         "oxygen_limit": props.oxygen_limit,

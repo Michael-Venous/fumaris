@@ -50,7 +50,6 @@ def _object_type_updated(self, _context):
         # (user decision, 2026-11-06).
         # Defaults pass 2026-11-04: crisp advection, a short burn (Physical Heat
         # lets fuel last by mixing), heat that lingers, mild expansion, 4 GB.
-        self.sharp_advection = True
         self.burn_time = 0.5
         self.cooling_time = 5.0
         self.gas_expansion = 0.5
@@ -1378,7 +1377,7 @@ class FumarisSettings(PropertyGroup):
 
     oxygen_field: BoolProperty(
         name="Oxygen Field",
-        description="Track the air's oxygen as it moves: burning uses it up and fresh air mixes back in, so fire starves inside thick burnt gas and burns at the edges where it meets new air. Uses Oxygen Limit (with Physical Heat, 4 when 0)",
+        description="Track the air's oxygen as it moves: burning uses it up and fresh air mixes back in, so fire starves inside thick burnt gas and burns at the edges where it meets new air. Uses Oxygen Limit (with Physical Heat, 4 when 0). Always on with Physical Heat",
         default=False,
     )
 
@@ -1624,13 +1623,6 @@ class FumarisSettings(PropertyGroup):
         name="Closed Collider Margin",
         description="Closed colliders (and boxes) hold the air still only this many velocity cells out from their surface instead of the full Collider Margin, so smoke and fire resting on them are not slowed by a layer of stuck air (a fire on a closed floor rose 35-42% slower with the full margin). 0 = the full Collider Margin; try 0.25",
         default=0.0, min=0.0, max=8.0,
-    )
-
-    sharp_advection: BoolProperty(
-        name="Sharp Advection",
-        description="Carry motion with a stronger error correction that falls back to the plain step wherever it would overshoot, for crisper swirls and billow edges at the same cost per voxel",
-        # Off for domains saved before it existed; new domains turn it on.
-        default=False,
     )
 
     advection_reflection: BoolProperty(

@@ -771,6 +771,7 @@ def _draw_domain(layout, scene, props):
     participants.prop(props, "collider_collection")
     participants.prop(props, "effector_collection")
     participants.prop(props, "outflow_collection")
+    participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
     _draw_participant_list(participants, props)
 
     behavior_box = layout.box()

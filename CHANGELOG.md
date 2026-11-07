@@ -43,6 +43,13 @@ All notable customer-facing changes are recorded here.
   scale) and Active Blocks (the look with the simulated blocks outlined, to see
   where memory and time go).
 
+- **Add Source** (Participants): ready-made Geometry Nodes sources added to
+  the domain at the 3D cursor: Candle (a flickering flame that burns where it
+  sits), Burst (an expanding shell of fuel and heat over a few frames), Trail
+  (fire travelling along a curve) and Spreading Fire (a burning front growing
+  across a surface from an ignition point). Their settings (timing, size,
+  speed) are on the object's Geometry Nodes modifier.
+
 - **Flame Tint** (Appearance): multiplies the flame colour, in the material
   and the live preview, for stylised or chemical flames. Contrast's tooltip now
   says it is the flame-width control (lower = wider, fuller flames).

@@ -6,6 +6,7 @@ import json
 import bpy
 from bpy.app.handlers import persistent
 from bpy.props import BoolProperty
+from .gn_sources import SOURCES as GN_SOURCES
 from bpy.types import Operator
 
 from .bake_state import mark_bake_cancelled, mark_bake_complete, mark_bake_running
@@ -1229,6 +1230,29 @@ class FUMARIS_OT_add_sparks(Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_add_source(Operator):
+    bl_idname = "fumaris.add_source"
+    bl_label = "Add Source"
+    bl_description = "Add a ready-made Geometry Nodes source to this domain's emitters at the 3D cursor; its settings are on the object's Geometry Nodes modifier"
+    bl_options = {"REGISTER", "UNDO"}
+
+    kind: bpy.props.EnumProperty(
+        name="Source",
+        items=GN_SOURCES,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_active_domain(context))
+
+    def execute(self, context):
+        from .gn_sources import add_source
+        domain = _active_domain(context)
+        obj = add_source(context, self.kind, domain)
+        self.report({"INFO"}, f"Added '{obj.name}' to {domain.name}'s emitters")
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_gravity_from_scene(Operator):
     bl_idname = "fumaris.gravity_from_scene"
     bl_label = "Gravity from Scene"
@@ -1516,6 +1540,7 @@ CLASSES = (
     FUMARIS_OT_add_sparks,
     FUMARIS_OT_use_biased_volumes,
     FUMARIS_OT_gravity_from_scene,
+    FUMARIS_OT_add_source,
     FUMARIS_OT_preset_save,
     FUMARIS_OT_preset_apply,
     FUMARIS_OT_preset_delete,

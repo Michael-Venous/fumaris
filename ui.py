@@ -776,13 +776,17 @@ def _draw_domain(layout, scene, props):
     behavior_box.enabled = not is_baking
     behavior_box.label(text="Smoke Behavior", icon="MOD_FLUID")
     behavior = behavior_box.column(align=True)
-    gravity = behavior.row(align=True)
-    gravity.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
-    gravity.prop(props, "gravity")
-    # A blank slot as wide as the Gravity from Scene button keeps the columns aligned.
-    wind = behavior.row(align=True)
-    wind.label(text="", icon="BLANK1")
-    wind.prop(props, "wind")
+    # One split for both rows so their X / Y / Z columns line up; the Gravity
+    # from Scene button sits at the left edge (a blank slot under it for Wind).
+    for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
+        split = behavior.split(factor=0.25, align=True)
+        left = split.row(align=True)
+        if button:
+            left.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
+        else:
+            left.label(text="", icon="BLANK1")
+        left.label(text=label)
+        split.row(align=True).prop(props, name, text="")
     behavior.separator()
     buoyancy = behavior.row(align=True)
     buoyancy.prop(props, "buoyancy_per_temp")

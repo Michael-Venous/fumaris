@@ -141,6 +141,9 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 
 ### Baking and files
 
+- **Faster Scatter Glow grids**: the glow is computed only around gas that
+  glows, in parallel, and smoke far from the fire is skipped (a mushroom bake:
+  glow time 8.4 s to 1.9 s, worst frame 234 to 95 ms, same grids).
 - **Faster, smaller VDB bakes**: only cells holding smoke are read back,
   VDB files are written by more threads (FUMARIS_VDB_WORKERS limits them),
   bakes use far less RAM, and **Low Memory Bake** trades speed for even less.

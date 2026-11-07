@@ -537,6 +537,8 @@ class FumarisSettings(PropertyGroup):
             ("look", "Look", "Smoke and fire as the Appearance settings render them"),
             ("speed", "Speed", "How fast the air moves, drawn as fire: slow air is dark, about 5 m/s glows at Full Glow"),
             ("expansion", "Expansion", "Where burning gas expands (Gas Expansion), drawn as fire: about 4 per second glows at Full Glow"),
+            ("fuel", "Fuel", "Unburnt fuel, drawn as fire on a log scale: 1 glows at Full Glow, 0.1 dimly, 8 brightly. Shows where fuel waits for heat or air"),
+            ("blocks", "Active Blocks", "The smoke as it looks, with the outlines of the simulated blocks: shows where the solver spends memory and time"),
         ],
         default="look",
     )

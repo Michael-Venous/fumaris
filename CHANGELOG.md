@@ -39,6 +39,10 @@ All notable customer-facing changes are recorded here.
   1,000-triangle sphere export in 8.5 ms a frame instead of 67 ms (whole frame
   91 ms instead of 150 at Resolution 512), with the same emitted geometry.
 
+- **Two more preview Show views:** Fuel (unburnt fuel drawn as fire, on a log
+  scale) and Active Blocks (the look with the simulated blocks outlined, to see
+  where memory and time go).
+
 - **Glow Shadowing** (Appearance, under Scatter Glow). Smoke between a spot and
   the fire now blocks Scatter Glow, so dense outer billows stay dark and fire
   light shows in the crevices next to the flames ("cracks of flame"). Live in

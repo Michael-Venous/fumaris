@@ -240,10 +240,9 @@ def apply_generated_material_settings(material, settings):
         gain_node.inputs[1].default_value = density
     remap_node = nodes.get(NODE_DENSITY_REMAP)
     if remap_node is not None:
-        low = float(_appearance_value(settings, "shader_density_low", 0.0))
-        high = max(low + 1e-4, float(_appearance_value(settings, "shader_density_high", 1.0)))
-        remap_node.inputs[1].default_value = 1.0 / (high - low)
-        remap_node.inputs[2].default_value = -low / (high - low)
+        # Materials made before Density Low / High were removed: pass through.
+        remap_node.inputs[1].default_value = 1.0
+        remap_node.inputs[2].default_value = 0.0
     shader.inputs["Anisotropy"].default_value = max(
         -0.95, min(0.95, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
 
@@ -356,23 +355,14 @@ def _build_generated_material(material, blue_core=False):
     volume_info = nodes.new("ShaderNodeVolumeInfo")
     volume_info.location = (-1480, 160)
     volume_info.parent = inputs
-    # Density Remap: (density - Low) / (High - Low), floored at 0, no upper clamp.
-    density_remap = nodes.new("ShaderNodeMath")
-    density_remap.operation = "MULTIPLY_ADD"
-    density_remap.name = NODE_DENSITY_REMAP
-    density_remap.label = "Density Remap"
-    density_remap.location = (-1300, 60)
-    density_remap.parent = inputs
-    density_remap.inputs[1].default_value = 1.0
-    density_remap.inputs[2].default_value = 0.0
+    # Density, floored at 0 (no remap: Density Low / High were removed).
     density_floor = nodes.new("ShaderNodeMath")
     density_floor.operation = "MAXIMUM"
     density_floor.label = "Density Floor"
     density_floor.location = (-1150, 60)
     density_floor.parent = inputs
     density_floor.inputs[1].default_value = 0.0
-    links.new(volume_info.outputs["Density"], density_remap.inputs[0])
-    links.new(density_remap.outputs[0], density_floor.inputs[0])
+    links.new(volume_info.outputs["Density"], density_floor.inputs[0])
     density_value = density_floor.outputs[0]
     glow = nodes.new("ShaderNodeAttribute")
     glow.attribute_name = "glow"

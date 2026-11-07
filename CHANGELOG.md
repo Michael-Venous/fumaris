@@ -87,6 +87,11 @@ All notable customer-facing changes are recorded here.
   the material; needs a new bake (it adds a small glow_depth grid). 0 keeps the
   previous look.
 
+- **Density Low / High removed** (Appearance). Low hid smoke thinner than it
+  and High only rescaled what Density already scales. Saved scenes fold their
+  remap into Density (Density / (High - Low)), so they look the same except
+  that thin smoke below Low is no longer hidden.
+
 - **The live preview shows Glow Spread and Glow Shadowing** (approximately:
   the preview's shadowing uses the average smoke around a point rather than
   the baked least smoke between it and the fire). Dissipation and Smoke Decay

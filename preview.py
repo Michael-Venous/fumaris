@@ -82,8 +82,6 @@ def capture_volume_preview(context, domain, target=None):
         "color_spread": float(props.shader_color_spread),
         "flame_tint": [float(value) for value in getattr(props, "shader_flame_tint", (1.0, 1.0, 1.0))],
         "gas_expansion": float(props.gas_expansion),
-        "density_low": float(props.shader_density_low),
-        "density_high": float(props.shader_density_high),
         "scatter_glow": float(props.shader_scatter_glow),
         "glow_radius": max(0.0, float(props.glow_radius)),
         "glow_spread": float(getattr(props, "shader_glow_spread", 0.0)),
@@ -199,8 +197,6 @@ def volume_preview_signature(preview):
         round(float(preview.get("phase_g", 0.0)), 7),
         int(preview.get("volume_bounces", 0)),
         round(float(preview.get("color_spread", 1.0)), 7),
-        round(float(preview.get("density_low", 0.0)), 7),
-        round(float(preview.get("density_high", 1.0)), 7),
         # the Expansion view is scaled by Gas Expansion
         round(float(preview.get("gas_expansion", 0.0)), 7),
         preview.get("depth_serial"),

@@ -1880,24 +1880,6 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
-    shader_density_low: FloatProperty(
-        name="Density Low",
-        description="Smoke density that renders as empty: thinner smoke disappears. With Density High it remaps the baked density linearly (material and live preview)",
-        default=0.0,
-        min=0.0,
-        soft_max=1.0,
-        update=_appearance_updated,
-    )
-
-    shader_density_high: FloatProperty(
-        name="Density High",
-        description="Smoke density that renders at full Density; denser smoke keeps getting denser. Lower it to make thin smoke heavier",
-        default=1.0,
-        min=0.001,
-        soft_max=5.0,
-        update=_appearance_updated,
-    )
-
     shader_color_spread: FloatProperty(
         name="Colour Spread",
         description="How far fire colour moves with temperature around Full Glow. 1 is physical blackbody colour; lower values keep hot and cool gas closer to the Full Glow colour (a camera's compressed fire palette: orange body, no white-hot or deep-red extremes); higher values exaggerate the range",
@@ -2100,6 +2082,18 @@ def _migrate_temperature_mapping():
             # Classic (1) was removed in 1.4: drop the stale value so the
             # domain reads Realistic without RNA warnings.
             props.property_unset("combustion_model")
+        if (props is not None and props.smoke_object_type == "domain"
+                and ("shader_density_low" in props or "shader_density_high" in props)):
+            # Density Low / High were removed (2026-11-07): fold their scale
+            # into Density so the look stays; Low no longer hides thin smoke.
+            low = float(props.get("shader_density_low", 0.0))
+            high = float(props.get("shader_density_high", 1.0))
+            scale = 1.0 / max(high - low, 1e-4)
+            if abs(scale - 1.0) > 1e-6:
+                props.shader_smoke_density = props.shader_smoke_density * scale
+            for key in ("shader_density_low", "shader_density_high"):
+                if key in props:
+                    del props[key]
         if (props is not None and props.smoke_object_type == "domain"
                 and props.substep_settings_version < SUBSTEP_SETTINGS_VERSION):
             # The Adaptive toggle became Cells per Step 0.

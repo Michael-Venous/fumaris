@@ -637,9 +637,6 @@ def _draw_domain(layout, scene, props):
     if appearance_open:
         appearance.label(text="Smoke")
         appearance.prop(props, "shader_smoke_density")
-        remap = appearance.row(align=True)
-        remap.prop(props, "shader_density_low", text="Low")
-        remap.prop(props, "shader_density_high", text="High")
         color = appearance.split(factor=0.2, align=True)
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")

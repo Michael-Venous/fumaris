@@ -428,7 +428,7 @@ class FumarisSettings(PropertyGroup):
 
     normal_velocity: FloatProperty(
         name="Normal Velocity",
-        description="Air blown out along the mesh normals (negative sucks in). On a closed mesh it is a real source that spreads evenly; on open meshes and instances it pushes along averaged vertex normals, which can be uneven across hard edges",
+        description="Air blown out along the mesh normals (negative sucks in). On a closed mesh it is a real source that spreads evenly. An open mesh (such as a plane) cannot add air, so it acts as a fan: air passes through it at about this speed (about 90% within a second). Instances push along averaged vertex normals, which can be uneven across hard edges",
         default=0.0,
         soft_min=-100.0,
         soft_max=100.0,
@@ -1829,7 +1829,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_flame_contrast: FloatProperty(
         name="Contrast",
-        description="How fast glow falls off as gas cools below Full Glow. 1 matches a camera exposed for the hottest gas (sparkly hot spots); lower values let cooler gas glow too",
+        description="How fast glow falls off as gas cools below Full Glow, which sets how wide flames look. 1 matches a camera exposed for the hottest gas (thin, sparkly flames); lower values let cooler gas glow too (wider, fuller flames) without brightening the hottest gas",
         default=0.5,
         min=0.05,
         max=3.0,
@@ -1854,6 +1854,17 @@ class FumarisSettings(PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
+        update=_appearance_updated,
+    )
+
+    shader_flame_tint: FloatVectorProperty(
+        name="Flame Tint",
+        description="Multiplies the flame colour, for stylised or chemical flames (green copper, blue gas) on top of the blackbody colour. White keeps the physical colour. Scattered glow keeps the fire light's colour",
+        default=(1.0, 1.0, 1.0),
+        size=3,
+        min=0.0,
+        soft_max=1.0,
+        subtype="COLOR",
         update=_appearance_updated,
     )
 

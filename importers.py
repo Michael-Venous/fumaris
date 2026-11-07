@@ -54,6 +54,8 @@ NODE_SCATTER_GLOW_ALBEDO = "Fumaris Scatter Glow Albedo"
 NODE_SCATTER_GLOW_SPREAD = "Fumaris Scatter Glow Spread"
 # Glow Shadowing: glow x exp(-shadowing x glow_depth) (smoke between it and the fire).
 NODE_SCATTER_GLOW_SHADOW = "Fumaris Scatter Glow Shadowing"
+# Flame Tint: multiplies the flame colour (not the scattered glow).
+NODE_FLAME_TINT = "Fumaris Flame Tint"
 GLOW_REFERENCE_K = 1500.0
 SCATTER_GLOW_SCALE = 1.0
 PHYSICAL_SATURATION = 1.8
@@ -270,6 +272,11 @@ def apply_generated_material_settings(material, settings):
         SCATTER_GLOW_SCALE * scatter * brightness * density * to_full_glow) if enabled else 0.0
     nodes[NODE_SCATTER_GLOW_COLOR].inputs["Temperature"].default_value = (
         reference * PHYSICAL_COLOR_SHIFT * multiplier)
+    flame_tint = nodes.get(NODE_FLAME_TINT)
+    if flame_tint is not None:
+        tint_color = _appearance_value(settings, "shader_flame_tint", (1.0, 1.0, 1.0))
+        [socket for socket in flame_tint.inputs if socket.type == "RGBA"][1].default_value = (
+            *[max(0.0, float(value)) for value in tuple(tint_color)[:3]], 1.0)
     glow_spread = nodes.get(NODE_SCATTER_GLOW_SPREAD)
     if glow_spread is not None:
         glow_spread.inputs["Factor"].default_value = max(
@@ -523,7 +530,18 @@ def _build_generated_material(material, blue_core=False):
     fire_part = vector_node("SCALE", (160, 300), "Fire")
     glow_part = vector_node("SCALE", (160, 60), "Glow")
     total = vector_node("ADD", (360, 200), "Fire + Glow")
-    links.new(fire_color, fire_part.inputs[0])
+    tint = nodes.new("ShaderNodeMix")
+    tint.data_type = "RGBA"
+    tint.blend_type = "MULTIPLY"
+    tint.name = NODE_FLAME_TINT
+    tint.label = "Flame Tint"
+    tint.location = (-40, 300)
+    tint.parent = combine
+    tint.inputs["Factor"].default_value = 1.0
+    tint_inputs = [socket for socket in tint.inputs if socket.type == "RGBA"]
+    tint_inputs[1].default_value = (1.0, 1.0, 1.0, 1.0)
+    links.new(fire_color, tint_inputs[0])
+    links.new([socket for socket in tint.outputs if socket.type == "RGBA"][0], fire_part.inputs[0])
     links.new(gain.outputs[0], fire_part.inputs["Scale"])
     links.new([s for s in albedo.outputs if s.type == "RGBA"][0], glow_part.inputs[0])
     links.new(glow_gain.outputs[0], glow_part.inputs["Scale"])

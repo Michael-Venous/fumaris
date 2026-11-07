@@ -542,6 +542,15 @@ def _mesh_state(participant, depsgraph, payload, frame):
     )
     if enabled and participant["role"] == "emitter":
         channels.update(_closed_surface_source(participant, props, matrix))
+        if (props.participant_type == "mesh" and participant.get("closed_surface") is None
+                and abs(props.normal_velocity) > 1e-6 and channels.get("couple_rate_velocity", 0.0) > 0.0):
+            # An open surface cannot add volume, so Normal Velocity makes it a
+            # fan: air passes through at that speed. At the default coupling
+            # (8/s) a 4 m plane at 2 m/s moved air at only 1.16-1.40 m/s
+            # (Resolution 128-512); at 40/s, 1.75-1.84 m/s at all three
+            # (2026-11-06, output/review-fixes/plane_normal_velocity.py).
+            channels["couple_rate_velocity"] = max(
+                channels["couple_rate_velocity"], OPEN_SURFACE_FAN_COUPLING)
 
     state = {
         "id": participant["id"],
@@ -1190,6 +1199,10 @@ def _channel_values(props, **overrides):
     }
     data.update(overrides)
     return data
+
+
+# Velocity coupling (1/s) for open-mesh Normal Velocity (see _mesh_state).
+OPEN_SURFACE_FAN_COUPLING = 40.0
 
 
 def _effective_divergence_coupling(props, divergence):

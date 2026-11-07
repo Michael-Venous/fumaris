@@ -43,6 +43,15 @@ All notable customer-facing changes are recorded here.
   scale) and Active Blocks (the look with the simulated blocks outlined, to see
   where memory and time go).
 
+- **Flame Tint** (Appearance): multiplies the flame colour, in the material
+  and the live preview, for stylised or chemical flames. Contrast's tooltip now
+  says it is the flame-width control (lower = wider, fuller flames).
+
+- **Open meshes with Normal Velocity act as fans.** An open surface such as a
+  plane cannot add air, so air now passes through it at about its Normal
+  Velocity (a 4 m plane at 2 m/s: 1.75-1.84 m/s at Resolution 128-512, was
+  1.16-1.40 m/s and resolution-dependent). Closed meshes are unchanged.
+
 - **Glow Shadowing** (Appearance, under Scatter Glow). Smoke between a spot and
   the fire now blocks Scatter Glow, so dense outer billows stay dark and fire
   light shows in the crevices next to the flames ("cracks of flame"). Live in

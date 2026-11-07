@@ -652,6 +652,9 @@ def _draw_domain(layout, scene, props):
         fire.prop(props, "shader_flame_contrast")
         fire.prop(props, "shader_color_spread")
         fire.prop(props, "shader_temperature_multiplier")
+        tint = fire.split(factor=0.4, align=True)
+        tint.label(text="Flame Tint")
+        tint.prop(props, "shader_flame_tint", text="")
         fire.prop(props, "shader_scatter_glow")
         glow_spread = fire.row(align=True)
         glow_spread.enabled = props.shader_scatter_glow > 0.0

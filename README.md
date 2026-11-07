@@ -1,6 +1,6 @@
 # Fumaris Blender Integration
 
-Current release: **1.3.1**.
+Current release: **1.4.0**.
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Develop
 motion with a live volume preview, then bake OpenVDB sequences for Blender's
@@ -30,8 +30,8 @@ operating system.
 ## Workflow
 
 1. Choose **Quick Setup…** in Fumaris Physics settings or the 3D Viewport's Add
-   menu. Pick **Rising Smoke**, **Steady Fire**, or **Explosion**, using selected
-   meshes or a new source. It creates a simulation empty and connects
+   menu. Pick **Rising Smoke**, **Steady Fire**, **Explosion**, **Ground Fog** or
+   **Chimney Smoke**, using selected meshes or a new source. It creates a simulation empty and connects
    its participant collections.
 2. Press **Play** and adjust the simulation. **Shift–Alt–Space** plays,
    pauses, or resumes; **Shift–Alt–X** stops. The controls show your current
@@ -50,18 +50,34 @@ off it is temporary; with it on, recorded volumes use Blender's scene shading
 when imported. Only one Fumaris preview or bake runs at a time.
 
 The simulation empty is a settings reference, not a hard smoke
-boundary. If **Simulation capacity reached** appears, increase **Sparse Block
-Capacity** or lower **Resolution**, then restart to recover a complete result.
+boundary. If **Simulation capacity reached** appears, increase **Simulation
+Memory** (or use Auto) or lower **Resolution**, then restart to recover a
+complete result.
 Doubling resolution needs approximately eight times the cells for equal coverage.
 
-## What's New In 1.3.1
+## What's New In 1.4.0
+
+- About 1.5x more simulation in the same GPU memory and faster bakes, set
+  directly as Simulation Memory (GB or Auto).
+- Physical fire: one combustion model with Fuel Energy, Burn Time, Cooling
+  Time, Temperature Diffusion, Oxygen Limit and Field, Soot Radiation, Wisp
+  Cooling and Flame Sheets; fire glows by its temperature.
+- A live preview lit like Cycles, tone mapped with Blender's own view
+  transforms, and Scatter Glow with Glow Spread and Glow Shadowing.
+- Stronger pressure solve, colliders as walls, Wind, physical emitter
+  Expansion and Normal Velocity, Turbulence Detail (Disturb, Grain, Shred).
+- Quick Setup for five effects, Add Source (Candle, Burst, Trail, Spreading
+  Fire), user presets, Sparks, Takes and Make Lighter Copy.
+
+Saved scenes keep their settings but simulate somewhat differently. See the
+[changelog](CHANGELOG.md).
+
+## Earlier 1.3.1 Features
 
 - Choose and save the GPU used by the next simulation job.
 - Use Timeline follows the scene range, with optional warmup frames.
 - Preserve bakes with New Slot, overwrite/delete confirmations and Protect.
-- The live preview is lit like Cycles (scene lights and world, fire light,
-  Scatter Glow) and tone mapped with Blender's own view transforms. These
-  controls affect the live preview, not baked VDB materials.
+- Preview Flame Light: flames light the smoke around them in the live preview.
 
 ## Earlier 1.2.0 Features
 

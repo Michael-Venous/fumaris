@@ -1,4 +1,4 @@
-# Fumaris 1.3.1 Documentation
+# Fumaris 1.4.0 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
@@ -354,7 +354,11 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 
 ### Smoke Behavior
 
-- `Gravity` accelerates the velocity field.
+- `Gravity` is the domain's own gravity (the button beside it copies the
+  Scene's). It acts through buoyancy only: hot gas rises against it, and cold
+  smoke ignores it unless Smoke Buoyancy is negative.
+- `Wind` carries all air along at a steady speed, so plumes lean and trail
+  while sources stay put. It costs nothing; use Wind effectors for gusts.
 - `Temperature Buoyancy` lifts hot gas. The checkbox beside it, `Physical
   Buoyancy`, replaces it with the gas-law lift for Flame Temperature (gas at
   2000 K is 6.8 times lighter than 293 K air: about 5.8 g).
@@ -381,30 +385,65 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   **0.01** is close to free air; raise it to calm turbulence and shorten how
   far smoke travels.
 
-Combustion is active when its coefficients require it. Fuel burns above the
-ignition threshold, producing configurable smoke, heat, and expansion. Large
-changes can require retuning Sub-Steps because combustion adds velocity.
+### Combustion
 
-Every domain uses **Realistic** combustion (the Classic model was removed in
-1.4; scenes saved with it open as Realistic).
+Every domain uses one physical combustion model (the Classic model was removed
+in 1.4; scenes saved with it open as Realistic).
 
-- Once gas with fuel is hotter than `Ignition Temperature`, a
-  fixed share of its fuel burns each second (95% within `Burn Time`), heating
-  the gas toward `Flame Temperature`, the hottest any gas gets (emitters
-  included; Emitter Temperature 1 means Flame Temperature). When the fuel
-  thins out, burning can no longer keep the gas hot and it cools (95% of its
-  heat within `Cooling Time`), so flames fade into glowing embers and smoke
-  instead of stopping at once. `Smoke Amount` is soot per unit of fuel burnt
-  and `Expansion` how hard burning pushes the gas outward. Temperature
-  Buoyancy is measured at Flame Temperature, so a cooler flame still lifts.
-  `Temperature Diffusion` evens heat out between neighbouring voxels (the
+- Gas with fuel that is hotter than `Ignition Temperature` burns a fixed share
+  of its fuel each second: 95% within `Burn Time`, so Burn Time is how long
+  fire lasts.
+- Burning one unit of fuel releases `Fuel Energy` times the heat that takes
+  cold air to `Flame Temperature`. Fuel 1 at Fuel Energy 1 burns as hot as fire
+  gets; thinner, mixed fuel burns cooler. No gas gets hotter than Flame
+  Temperature (emitters included; Emitter Temperature 1 means Flame
+  Temperature), which sets the colour: about 1500 K deep orange, 2000–2400 K
+  orange to yellow, 3000 K and above pale yellow-white.
+- Gas that is still burning keeps its heat; once its fuel runs out it loses
+  95% of its heat within `Cooling Time`, so flames fade into embers and smoke.
+  Neither Burn Time nor Cooling Time changes how hot fire gets.
+- `Temperature Diffusion` evens heat out between neighbouring voxels (the
   share per 1/24 s), smoothing speckle in fire at about 7% more simulation
-  time; 0 turns it off.
-  Flame Temperature sets the colour: about 1500 K deep orange, 2000–2400 K
-  orange to yellow (most fuel fires), 3000 K and above pale yellow-white.
-  Fuel amounts of about 1–3 suit a source that burns where it emits; a
-  source that expands a lot before burning (a growing fireball) needs more,
-  about 10–30, because its fuel thins out as it mixes with air.
+  time; 0 turns it off. New domains use 0.1.
+- `Smoke Amount` is soot per unit of fuel burnt; `Gas Expansion` is how hard
+  burning gas pushes outward, per unit of fuel burnt per second, the same at
+  any resolution.
+- `Wisp Cooling` makes thin gas cool faster, so edges go dark around glowing
+  cores. `Flame Sheets` lets dense fuel burn only as fast as that much fuel
+  would, so rich cores smoulder and fuel burns in sheets where it mixes with
+  air.
+- `Oxygen Limit` makes fire need fresh air (0 burns evenly everywhere), so it
+  burns in shells where fuel meets air. `Oxygen Field` tracks the air's oxygen
+  as it moves: burning uses it up (`Use`) and fresh air mixes back in
+  (`Mixing`), so fire starves inside thick burnt gas.
+- `Soot Radiation` lets sooty gas radiate its heat away, so dense pockets cool
+  and darken while thin hot gas stays bright.
+- Temperature Buoyancy is measured at Flame Temperature, so a cooler flame
+  lifts less.
+
+Fuel amounts of about 1–3 suit a source that burns where it emits; a source
+that expands a lot before burning (a growing fireball) needs more, about
+10–30, because its fuel thins out as it mixes with air.
+
+### Advanced
+
+- `Simulation Speed` scales time.
+- `Smoke Detail` chooses how smoke and heat are carried between cells:
+  Standard (linear) or Sharp (cubic, finer billows, slower). `Edges` (Edge
+  Sharpness) sets how strongly each step restores detail lost to
+  interpolation; about 0.5 avoids stair-stepped edges in close-ups.
+- `Projection Filter` (1 = Flow's) is how strongly the pressure solve smooths
+  out cell-to-cell motion; lower lets fire flicker and puff (about 0.25) at
+  the risk of grid-scale noise.
+- `Preserve Turbulence` (see Smoke Behavior), `Full-Resolution Velocity`
+  (motion at the full Resolution: rounder, finer billows at about twice the
+  memory per block; changing it restarts the simulation), `Move With Object`
+  and `Convex Collision`.
+- `Open Collider Wall` is the minimum thickness, in velocity cells, of the
+  wall behind open collider meshes such as planes, so smoke cannot leak through
+  when Collider Margin is thin. `Closed Collider Margin` (0 = the full Collider
+  Margin) holds the air still only that many velocity cells out from closed
+  colliders, so fire resting on them rises freely.
 
 ## Emitters
 
@@ -661,39 +700,42 @@ region. Their mask and motion controls follow the mesh participant workflow.
 Density is the standard smoke grid. Additional outputs are:
 
 - `temperature`: Kelvin-like values in a fixed `0-5000` range, suitable for a
-  Blackbody node or a custom remap.
+  Blackbody node or a custom remap. Gas below 500 K, which cannot glow, is not
+  stored. Temperature and Velocity can be written at half resolution (Output >
+  Grids) for smaller files, and VDB Precision Half (default) stores 16-bit
+  values.
 - `burn`: raw timestep-dependent combustion activity for advanced control.
 - `fuel`: remaining unburned fuel.
 - `velocity`: world-space motion used for volume motion blur and compositing.
 
-When `Volume Material` is unset, Fumaris automatically includes temperature
-and burn and creates a material whose fire response is evaluated at render
-time:
+With fire, bakes also write a coarse `glow` grid (fire light blurred into the
+smoke around it, for Scatter Glow), `glow_wide` (the same light spread four
+times farther, for Glow Spread) and `glow_depth` (the least smoke between a
+cell and the fire, for Glow Shadowing). `Glow Radius` (Output) sets how far the
+light reaches; 0 follows the size of the fire.
 
-```text
-heat = smoothstep(Start Temperature, Full Temperature, temperature)
-source = max(burn, 0) * heat * (fps * Sub-Steps / Simulation Speed)
-flame = 1 - exp(-source)
-```
+When `Volume Material` is unset, Fumaris creates a material driven by the
+domain's Appearance settings; changing them does not require a rebake.
 
-`flame * Brightness` drives Emission Strength. Temperature multiplied by
-`Blackbody Scale` drives a Blackbody node for Emission Color. The default scale
-is `1.0`; changing it, the smoke settings, or the fire settings does not require
-a rebake.
+- Smoke: `Density`, `Color` and `Anisotropy` (forward scattering, 0.3 by
+  default, like real smoke).
+- Fire glows by its temperature like soot on a camera exposed for the hottest
+  gas: gas at `Full Glow` glows at full `Brightness`, hotter gas brighter,
+  cooler gas falls off by `Contrast` (lower = wider, fuller flames). `Colour
+  Spread` below 1 compresses the colour range (an orange body without
+  white-hot or deep-red extremes); `Blackbody Scale` multiplies the temperature
+  before the Blackbody colour; `Flame Tint` multiplies the flame colour.
+- `Scatter Glow` adds the baked fire light in the surrounding smoke, so dark
+  billows glow from inside near the flames. `Glow Spread` blends in the
+  wider glow for a long, soft falloff; `Glow Shadowing` lets smoke between a
+  spot and the fire block it, so dense outer billows stay dark and fire light
+  shows in the crevices next to the flames. Cycles' unbiased volumes render
+  the glow in square patches; Fumaris then shows a hint and a Use Biased
+  button.
 
-`Sharpness` adds contrast to the source around a typical strong flame
-(`source' = 0.5 * (source / 0.5)^Sharpness` before the exponential): at 1
-flames glow softly through the fireball; at 2 (default) and above, weak,
-diffuse glow fades into the smoke while the strongest flames get brighter,
-giving crisp flame tongues instead of an all-over glow. `Blue Core (Render
-Only)` blends the
-emission toward blue where fuel is still present near ignition temperature,
-as at a gas burner's base; it needs fuel in the simulation (the generated
-material then exports the fuel grid, so bakes made without it need a rebake)
-and stays subtle in fireballs, where fuel is hot by the time it shows.
-Sharpness also applies to the live preview; Blue Core only to renders (the
-preview has no fuel channel). Volumes imported before these controls existed
-get them the first time an Appearance setting changes. Raw burn remains in the VDB for custom materials and compositing.
+The live preview uses the same settings. The material reads only the density,
+temperature and glow grids (and fuel when Blue Core is on); `burn` stays
+available for custom materials and compositing.
 
 When a custom `Volume Material` is assigned, enable the additional grids that
 material needs explicitly. Fumaris does not export a separate derived `flame`

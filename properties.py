@@ -88,8 +88,6 @@ def _object_type_updated(self, _context):
     if self.smoke_object_type == "emitter" and self.emitter_settings_version == 0:
         self.emitter_settings_version = EMITTER_SETTINGS_VERSION
         self.emitter_divergence = DEFAULT_EMITTER_EXPANSION
-    # Auto for new domains awaits the user's defaults decision:
-    # apply_new_domain_default(self)
 
 
 def _cache_slot_updated(self, _context):
@@ -587,11 +585,6 @@ class FumarisSettings(PropertyGroup):
         default=0.5, min=0.0, max=1.0, subtype="FACTOR",
     )
 
-    preview_flame_light: FloatProperty(
-        name="Flame Light",
-        description="How strongly flames light the smoke around them. 0 turns it off. Preview only; does not change baked volumes or materials",
-        default=1.0, min=0.0, soft_max=2.0, max=4.0,
-    )
 
     preview_lighting: EnumProperty(
         name="Lighting",
@@ -635,11 +628,6 @@ class FumarisSettings(PropertyGroup):
         default="scene",
     )
 
-    preview_exposure: FloatProperty(
-        name="Exposure",
-        description="Brightness of preview smoke and fire, in stops: +1 doubles the light, -1 halves it. Does not change density, baked volumes, materials, or scene lighting",
-        default=0.0, min=-10.0, max=10.0, soft_min=-4.0, soft_max=4.0,
-    )
 
     preview_light_direction: FloatVectorProperty(
         name="Light Direction",
@@ -665,11 +653,6 @@ class FumarisSettings(PropertyGroup):
         options=set(),
     )
 
-    preview_bake: BoolProperty(
-        name="Preview Bake",
-        description="Show the selected live preview while baking; disabling this keeps bake as fast as possible",
-        default=False,
-    )
 
     bake_on_preview: BoolProperty(
         name="Bake on Preview",
@@ -1344,21 +1327,6 @@ class FumarisSettings(PropertyGroup):
         soft_max=20.0,
     )
 
-    ignition_temperature: FloatProperty(
-        name="Ignition Temperature",
-        description="How hot fuel must be before it catches fire; lower values ignite more easily. Uses simulation temperature from 0 to 1, not degrees or Kelvin",
-        default=0.05,
-        min=0.0,
-        max=1.0,
-    )
-
-    temperature_input_scale: FloatProperty(
-        name="Temperature Input Scale",
-        description="Converts emitter and point temperatures into Flow's normalized 0 to 1 simulation range; use 0.000125 for attributes reaching 8000",
-        default=1.0,
-        min=0.0,
-        soft_max=1.0,
-    )
 
     combustion_model: EnumProperty(
         name="Combustion Model",
@@ -1382,7 +1350,7 @@ class FumarisSettings(PropertyGroup):
 
     gas_expansion: FloatProperty(
         name="Gas Expansion",
-        description="Expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 keeps the older Expansion behaviour. Start around 0.05-0.2 for fuel values of 10-50",
+        description="Expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 = burning does not expand the gas. Start around 0.05-0.2 for fuel values of 10-50",
         default=0.0,
         min=0.0,
         soft_max=1.0,
@@ -1501,29 +1469,6 @@ class FumarisSettings(PropertyGroup):
         soft_max=1500.0,
     )
 
-    burn_per_temp: FloatProperty(
-        name="Burn Per Temperature",
-        description="How quickly hot fuel burns after ignition; higher values make combustion more intense and consume fuel faster",
-        default=1.0,
-        min=0.0,
-        soft_max=20.0,
-    )
-
-    fuel_per_burn: FloatProperty(
-        name="Fuel Per Burn",
-        description="How much fuel each burn uses; higher values make the available fuel run out sooner",
-        default=0.25,
-        min=0.0,
-        soft_max=5.0,
-    )
-
-    temp_per_burn: FloatProperty(
-        name="Temperature Per Burn",
-        description="How much heat burning fuel adds; higher values make fire hotter and can strengthen its upward motion",
-        default=1.0,
-        min=0.0,
-        soft_max=25.0,
-    )
 
     smoke_per_burn: FloatProperty(
         name="Smoke Per Burn",
@@ -1533,21 +1478,6 @@ class FumarisSettings(PropertyGroup):
         soft_max=25.0,
     )
 
-    divergence_per_burn: FloatProperty(
-        name="Expansion Per Burn",
-        description="Classic model only (legacy): how strongly burning fuel pushes the gas outward. Its strength depends on resolution; the Realistic model uses Gas Expansion instead",
-        default=2.0,
-        soft_min=-20.0,
-        soft_max=20.0,
-    )
-
-    cooling_rate: FloatProperty(
-        name="Cooling Rate",
-        description="How quickly the gas loses heat; higher values cool it faster, shortening flames and reducing heat-driven rise",
-        default=1.0,
-        min=0.0,
-        soft_max=10.0,
-    )
 
     wind: FloatVectorProperty(
         name="Wind",
@@ -2060,10 +1990,6 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    show_domain_simulation: BoolProperty(
-        name="Simulation",
-        default=False,
-    )
 
     show_panel_noise: BoolProperty(
         name="Noise",
@@ -2105,10 +2031,6 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    show_domain_output: BoolProperty(
-        name="VDB Channels",
-        default=False,
-    )
 
 def _migrate_temperature_mapping():
     for obj in bpy.data.objects:

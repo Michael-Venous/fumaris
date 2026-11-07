@@ -14,7 +14,6 @@ except ImportError:
     np = None
 
 PREVIEW_MARKER = "fumaris_preview"
-PREVIEW_NAME = "Fumaris Preview"
 _PREVIEWS = {}
 _IMAGE_DRAW_HANDLE = None
 _IMAGE_SHADER = None

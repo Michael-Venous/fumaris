@@ -1,152 +1,15 @@
-"""Auto Simulation Memory and what a Simulation Memory budget buys.
+"""Auto Simulation Memory: the amount Auto reserves and the panel's Auto line.
 
-The bridge sizes the sparse pool from Simulation Memory (src/memory_budget.cpp)
-and resolves Auto from the GPU's free memory when the simulation starts
-(src/vram_budget.cpp). This module mirrors both so the panel can show the
-voxel size and the region the budget covers before anything runs. It uses the
-estimate's raw-texel fallback; the bridge asks the driver for exact texture
-sizes, so its capacity differs by a few percent. Keep the constants in step
-with the C++ (tools/tests/memory_budget_test.cpp and test_memory_auto.py check
-the same values). Drawing never starts a subprocess.
+The bridge resolves Auto from the GPU's free memory when the simulation starts
+(src/vram_budget.cpp); auto_memory_bytes mirrors its rule (vram_budget_test.cpp
+and test_memory_auto.py check the same values). Drawing never starts a
+subprocess.
 """
-import functools
 import threading
 
 AUTO_FRACTION = 0.8
 AUTO_MINIMUM_BYTES = 512 << 20
 DEFAULT_FALLBACK_BYTES = 1 << 30
-
-# src/memory_budget.cpp
-_FIXED_OVERHEAD_BYTES = 96 << 20
-_PER_LOCATION_BUFFER_BYTES = 1536
-_VEC3_LEAF_BYTES = 6272
-_NANOVDB_NODE_SHARE = 0.03
-_PREVIEW_FIXED_BYTES = 80 << 20
-_RGBA16F, _RG16F, _R16F, _R8 = 8, 4, 2, 1
-
-# Flow density cell: 32 scene units / Resolution (src/simulation.cpp).
-_FLOW_UNITS_PER_RESOLUTION = 32.0
-
-
-# Border-free bricks (NvFlowSparsePool.h): 16^3 blocks packed edge to edge.
-# 1 would mirror Flow's 32x16x16 blocks with a one-cell border.
-_BORDER = 0
-
-
-def _density_bits(small_blocks):
-    if small_blocks:
-        return (4, 3, 3)
-    return (5, 4, 4) if _BORDER else (4, 4, 4)
-
-
-def _extent(slots, bits):
-    return slots * ((1 << bits) + 2 * _BORDER) + (0 if _BORDER else 2)
-
-
-def _coarser(bits):
-    return tuple(value - 1 for value in bits)
-
-
-def pool_dimensions(capacity, bits, max_texture_dimension=0):
-    """NvFlowSparsePool_dimensions: atlas blocks per axis for a capacity."""
-    device = max_texture_dimension or 2048
-    extent_x = min(device, 4096)
-    extent_yz = min(device, 2048)
-    spare = 0 if _BORDER else 2
-    limits = (
-        min(1024, (extent_x - spare) // ((1 << bits[0]) + 2 * _BORDER)),
-        min(1024, (extent_yz - spare) // ((1 << bits[1]) + 2 * _BORDER)),
-        min(1024, (extent_yz - spare) // ((1 << bits[2]) + 2 * _BORDER)),
-    )
-    if capacity >= limits[0] * limits[1] * limits[2]:
-        return limits
-    x = y = z = 1
-    while x * y * z < capacity:
-        can_x, can_y, can_z = x < limits[0], y < limits[1], z < limits[2]
-        if can_x and (x <= y or not can_y) and (x <= z or not can_z):
-            x += 1
-        elif can_y and (y <= z or not can_z):
-            y += 1
-        elif can_z:
-            z += 1
-        else:
-            break
-    return x, y, z
-
-
-def _atlas_inventory(small_blocks, effector_sources, preview, full_velocity=False):
-    density = _density_bits(small_blocks)
-    velocity = density if full_velocity else _coarser(density)
-    textures = [
-        (density, _RGBA16F, 3),
-        (density, _R8, 1),
-        (velocity, _RGBA16F, 5 if effector_sources else 4),
-        (velocity, _RG16F, 2),
-        (velocity, _R8, 1),
-    ]
-    if preview:
-        textures.append((velocity, _R16F, 1))
-    level = _coarser(velocity)
-    while True:
-        coarsest = level[1] <= 1 or level[2] <= 1
-        textures.append((level, _RG16F, 3 if coarsest else 2))
-        if coarsest:
-            return textures
-        level = _coarser(level)
-
-
-def _buffer_growth_size(size):
-    if size > 64 << 20:
-        granularity = 16 << 20
-        target = size + size // 4
-        return (target + granularity - 1) // granularity * granularity
-    result = 65536
-    while result < size:
-        result *= 2
-    return result
-
-
-def _leaves_per_block(bits):
-    result = 1
-    for value in bits:
-        result *= 1 << (value - 3) if value > 3 else 1
-    return result
-
-
-def estimate_bytes(capacity, *, small_blocks=False, effector_sources=True,
-                   preview=False, export_velocity=False, full_velocity=False):
-    """estimateSimulationBytes with the raw-texel fallback (no device query)."""
-    capacity = max(1, int(capacity))
-    density = _density_bits(small_blocks)
-    dims = pool_dimensions(capacity, density)
-    total = _FIXED_OVERHEAD_BYTES + _PER_LOCATION_BUFFER_BYTES * capacity
-    if preview:
-        total += _PREVIEW_FIXED_BYTES
-    for bits, texel_bytes, count in _atlas_inventory(small_blocks, effector_sources, preview, full_velocity):
-        raw = texel_bytes
-        for axis in range(3):
-            raw *= _extent(dims[axis], bits[axis])
-        total += (raw + raw // 10) * count
-    if export_velocity:
-        slots = dims[0] * dims[1] * dims[2]
-        leaves = slots * _leaves_per_block(density if full_velocity else _coarser(density)) * _VEC3_LEAF_BYTES
-        total += _buffer_growth_size(int(float(leaves) * (1.0 + _NANOVDB_NODE_SHARE)))
-    return total
-
-
-def capacity_for_budget(budget_bytes, **config):
-    """locationCapacityForBudget: largest capacity whose estimate fits."""
-    limits = pool_dimensions(1 << 62, _density_bits(config.get("small_blocks", False)))
-    low, high = 1, limits[0] * limits[1] * limits[2]
-    if estimate_bytes(low, **config) > budget_bytes:
-        return low
-    while low < high:
-        mid = low + (high - low + 1) // 2
-        if estimate_bytes(mid, **config) <= budget_bytes:
-            low = mid
-        else:
-            high = mid - 1
-    return low
 
 
 def auto_memory_bytes(free_bytes=None, device_local_bytes=None,
@@ -161,37 +24,6 @@ def auto_memory_bytes(free_bytes=None, device_local_bytes=None,
     else:
         result = int(fallback_bytes) if fallback_bytes else DEFAULT_FALLBACK_BYTES
     return max(result, AUTO_MINIMUM_BYTES)
-
-
-def voxel_size(resolution):
-    return _FLOW_UNITS_PER_RESOLUTION / max(1, int(resolution))
-
-
-def block_cells(small_blocks):
-    bits = _density_bits(small_blocks)
-    return (1 << bits[0]) * (1 << bits[1]) * (1 << bits[2])
-
-
-@functools.lru_cache(maxsize=64)
-def _cached_capacity(budget_bytes, small_blocks, effector_sources, preview, export_velocity,
-                     full_velocity=False):
-    return capacity_for_budget(
-        budget_bytes, small_blocks=small_blocks, effector_sources=effector_sources,
-        preview=preview, export_velocity=export_velocity, full_velocity=full_velocity)
-
-
-def region_for_budget(budget_bytes, resolution, *, small_blocks=False, effector_sources=True,
-                      preview=False, export_velocity=False, full_velocity=False):
-    """(voxel size, Flow locations, region volume) for a budget at a resolution.
-
-    Cached because the panel redraws often while the inputs rarely change.
-    """
-    config = {"small_blocks": bool(small_blocks)}
-    capacity = _cached_capacity(int(budget_bytes), bool(small_blocks), bool(effector_sources),
-                                bool(preview), bool(export_velocity), bool(full_velocity))
-    voxel = voxel_size(resolution)
-    cells = capacity * block_cells(config["small_blocks"])
-    return voxel, capacity, cells * voxel ** 3
 
 
 # Latest --list-devices memory per GPU UUID; written by device discovery
@@ -264,20 +96,6 @@ def _gpu_uuid():
     return getattr(get_addon_preferences(), "gpu_device_uuid", "") or ""
 
 
-def _format_length(value):
-    if value < 1.0:
-        return f"{value * 100.0:.3g} cm"
-    return f"{value:.3g} m"
-
-
-def _format_volume(value):
-    if value >= 1.0e6:
-        return f"{value / 1.0e6:.3g} million m³"
-    if value >= 1.0:
-        return f"{value:,.0f} m³" if value >= 100.0 else f"{value:.3g} m³"
-    return f"{value * 1.0e3:.3g} litres"
-
-
 def budget_bytes_for_display(props, state=None):
     """(bytes, note) behind Simulation Memory, or (None, note) if unknown."""
     explicit = int(float(props.simulation_memory) * (1 << 30))
@@ -297,7 +115,7 @@ def budget_bytes_for_display(props, state=None):
 
 
 def draw_budget_summary(layout, props, state=None):
-    """Read-only lines under Resolution / Memory: Auto amount, voxel, region."""
+    """Read-only line under Resolution / VRAM: the Auto amount."""
     budget, when = budget_bytes_for_display(props, state)
     column = layout.column(align=True)
     if getattr(props, "simulation_memory_auto", False):
@@ -305,25 +123,8 @@ def draw_budget_summary(layout, props, state=None):
             column.label(text=f"Auto: {AUTO_FRACTION:.0%} of free GPU memory at start", icon="MEMORY")
         else:
             column.label(text=f"Auto: {budget / (1 << 30):.1f} GB ({when})", icon="MEMORY")
-    if budget is None:
-        return
-    effectors = props.effector_collection is not None and len(props.effector_collection.all_objects) > 0
-    _voxel, _capacity, volume = region_for_budget(
-        budget, props.resolution,
-        full_velocity=bool(getattr(props, "full_resolution_velocity", False)),
-        effector_sources=effectors,
-        export_velocity=bool(getattr(props, "export_velocity_vdb", False)),
-    )
-    column.separator()
-
-
-def apply_new_domain_default(props):
-    """New domains start on Auto; domains with a memory setting keep it."""
-    if (props.smoke_object_type == "domain"
-            and props.get("simulation_memory_auto") is None
-            and props.get("simulation_memory") is None
-            and props.get("sparse_block_capacity") is None):
-        props.simulation_memory_auto = True
+    if budget is not None:
+        column.separator()
 
 
 def auto_toggled(props, _context):

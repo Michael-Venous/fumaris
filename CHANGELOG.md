@@ -169,8 +169,7 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
   one restores the whole saved state.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
-- Transport status (Live / Recorded frames) and **Scrub Recording**; Stop
-  Preview and Bake in one click.
+- Transport status (Live / Recorded frames) and **Scrub Recording**.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving
   domain, colliders and memory.
 - Linux: a failed bridge start says what to fix (missing library, old glibc,

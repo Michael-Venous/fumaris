@@ -123,6 +123,16 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - **Scatter Glow**, Glow Spread and Glow Shadowing (bakes add small glow
   grids; Glow Radius in Output). Fumaris shows a hint and a Use Biased button
   when Cycles' unbiased volumes would render the glow in square patches.
+- **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading. Gas
+  glows from a slightly blurred heat field through a golden colour ramp, mainly
+  where it is thin (bright rims and gaps between dark soot cells), and hot soot
+  turns dark. Bakes write two small half-resolution grids for it (heat and a
+  softened density, which keeps the glowing rims from aliasing into rings).
+  Thin Gas sets how dense gas may be and still glow fully; the glow window
+  follows Full Glow at bake time. Renders only for now; the live preview keeps
+  the Temperature look.
+- Blue Core is 0 for new domains (with Brightness raised it turned fuel-rich
+  scenes lilac).
 
 ### Live preview
 

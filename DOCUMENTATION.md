@@ -714,6 +714,15 @@ times farther, for Glow Spread) and `glow_depth` (the least smoke between a
 cell and the fire, for Glow Shadowing). `Glow Radius` (Output) sets how far the
 light reaches; 0 follows the size of the fire.
 
+`Look` chooses the fire shading. `Temperature` (the controls below) glows by
+each voxel's temperature and density. `Pyro` follows Houdini's Pyro shading:
+the baked `heat` grid (temperature mapped to a window around Full Glow at bake
+time, slightly blurred) drives a golden colour ramp times Brightness, shown
+where the softened density (`density_soft`) is below `Thin Gas` and only where
+gas exists, while hot soot turns dark. It gives bright rims and gaps between
+darker soot cells. For dense, smoky sources raise Thin Gas, and lower Full Glow
+(then re-bake) for cooler flames. Pyro needs a bake from Fumaris 1.4.0 or later.
+
 When `Volume Material` is unset, Fumaris creates a material driven by the
 domain's Appearance settings; changing them does not require a rebake.
 

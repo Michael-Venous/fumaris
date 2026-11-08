@@ -657,21 +657,32 @@ def _draw_domain(layout, scene, props):
         appearance.prop(props, "shader_flame_enabled")
         fire = appearance.column(align=True)
         fire.enabled = props.shader_flame_enabled
+        fire.prop(props, "shader_look")
+        pyro_look = props.shader_look == "PYRO"
         fire.prop(props, "shader_flame_brightness")
         fire.prop(props, "shader_glow_temperature")
-        fire.prop(props, "shader_flame_contrast")
-        fire.prop(props, "shader_color_spread")
-        fire.prop(props, "shader_temperature_multiplier")
+        if pyro_look:
+            # The Pyro look reads the baked heat grid; these are its own controls.
+            fire.prop(props, "shader_thin_gas")
+        temperature_only = fire.column(align=True)
+        temperature_only.active = not pyro_look
+        temperature_only.prop(props, "shader_flame_contrast")
+        temperature_only.prop(props, "shader_color_spread")
+        temperature_only.prop(props, "shader_temperature_multiplier")
         tint = fire.split(factor=0.4, align=True)
         tint.label(text="Flame Tint")
         tint.prop(props, "shader_flame_tint", text="")
-        fire.prop(props, "shader_flame_core")
-        fire.prop(props, "shader_scatter_glow")
+        temperature_only = fire.column(align=True)
+        temperature_only.active = not pyro_look
+        temperature_only.prop(props, "shader_flame_core")
+        temperature_only.prop(props, "shader_scatter_glow")
         glow_spread = fire.row(align=True)
         glow_spread.enabled = props.shader_scatter_glow > 0.0
+        glow_spread.active = not pyro_look
         glow_spread.prop(props, "shader_glow_spread", slider=True)
         glow_shadowing = fire.row(align=True)
         glow_shadowing.enabled = props.shader_scatter_glow > 0.0
+        glow_shadowing.active = not pyro_look
         glow_shadowing.prop(props, "shader_glow_shadowing")
         if (props.shader_scatter_glow > 0.0 and scene.render.engine == "CYCLES"
                 and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):

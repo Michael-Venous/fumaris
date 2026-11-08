@@ -36,7 +36,7 @@ from .participants import (
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
 from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
-from .utils import executable_path, output_directory_for_object, physical_buoyancy, simulation_frame_range
+from .utils import PYRO_WINDOW, executable_path, output_directory_for_object, physical_buoyancy, simulation_frame_range
 
 _FRAME_ZERO_VERSION = 1 << 40
 _SEQUENCE_NAME = re.compile(r"^(.*?)(-?)(\d+)(\.[^.]+)$")
@@ -417,6 +417,9 @@ def _domain_state(props, resolution_scale=1.0):
         "export_temperature_half_res": bool(getattr(props, "export_temperature_half_res", False)),
         "export_velocity_half_res": bool(getattr(props, "export_velocity_half_res", False)),
         "glow_radius": max(0.0, float(props.glow_radius)),
+        # Pyro look: the heat grid maps this window (around Full Glow) to 0..1.
+        "pyro_window_min": PYRO_WINDOW[0] * float(getattr(props, "shader_glow_temperature", 2000.0)),
+        "pyro_window_max": PYRO_WINDOW[1] * float(getattr(props, "shader_glow_temperature", 2000.0)),
     }
 
 

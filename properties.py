@@ -71,7 +71,9 @@ def _object_type_updated(self, _context):
         # Higher hid Scatter Glow in dense smoke (1 left 2-5% in a few
         # density-metres), so Scatter Glow and Glow Spread looked dead.
         self.shader_glow_shadowing = 0.3
-        self.shader_flame_core = 1.0
+        # Blue Core off (2026-11-08): with Brightness raised it turned fuel-rich
+        # scenes lilac.
+        self.shader_flame_core = 0.0
         self.shader_smoke_density = 1.0
         self.shader_smoke_color = (0.45, 0.45, 0.45)
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
@@ -1833,6 +1835,26 @@ class FumarisSettings(PropertyGroup):
         min=0.25,
         max=8.0,
         soft_max=4.0,
+        update=_appearance_updated,
+    )
+
+    shader_look: EnumProperty(
+        name="Look",
+        description="How fire is shaded in the generated material",
+        items=(
+            ("TEMPERATURE", "Temperature", "Gas glows by its own temperature and density (blackbody), with Scatter Glow from nearby fire"),
+            ("PYRO", "Pyro", "Houdini Pyro-style: glow from the baked, slightly blurred heat field through a golden ramp, shown where gas is thin (bright rims and gaps, dark soot cores), hot soot dark. Needs a bake from this version (heat and soft density grids); the glow window follows Full Glow at bake time"),
+        ),
+        default="TEMPERATURE",
+        update=_appearance_updated,
+    )
+
+    shader_thin_gas: FloatProperty(
+        name="Thin Gas",
+        description="Pyro look: smoke density below which gas glows fully; denser gas fades to dark soot. Raise it for dense, smoky sources so their flames still glow",
+        default=0.05,
+        min=0.001,
+        soft_max=2.0,
         update=_appearance_updated,
     )
 

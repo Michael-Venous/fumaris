@@ -36,7 +36,7 @@ NODE_WIEN_TERM = "Fumaris Wien Term"
 # emission closure, frames. 3: Colour Spread (colour shift is multiply-add).
 # 4: Density Remap (density read through a remap node, not the shader attribute).
 # Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 4
+GRAPH_VERSION = 5
 NODE_DENSITY_REMAP = "Fumaris Density Remap"
 NODE_DENSITY_GAIN = "Fumaris Density Gain"
 GRAPH_VERSION_KEY = "fumaris_graph_version"
@@ -56,6 +56,23 @@ NODE_SCATTER_GLOW_SPREAD = "Fumaris Scatter Glow Spread"
 NODE_SCATTER_GLOW_SHADOW = "Fumaris Scatter Glow Shadowing"
 # Flame Tint: multiplies the flame colour (not the scattered glow).
 NODE_FLAME_TINT = "Fumaris Flame Tint"
+# Pyro look (Houdini Pyro-Bake style, 2026-11-08): emission from the baked
+# "heat" grid (temperature mapped to the glow window and blurred) through a
+# golden ramp, shown where gas is thin ("density_soft" = blurred density, so
+# the rim does not alias into rings) and only where gas exists; hot soot dark.
+NODE_PYRO_MIX = "Fumaris Pyro Look"
+NODE_PYRO_GAIN = "Fumaris Pyro Gain"
+NODE_PYRO_THIN = "Fumaris Pyro Thin Gas"
+NODE_PYRO_GATE = "Fumaris Pyro Gas Gate"
+NODE_PYRO_TINT = "Fumaris Pyro Tint"
+NODE_PYRO_ALBEDO = "Fumaris Pyro Soot"
+NODE_PYRO_HOT = "Fumaris Pyro Hot Soot"
+PYRO_RAMP = ((0.0, (0.0, 0.0, 0.0)), (0.25, (1.0, 0.26, 0.0)), (0.5, (1.0, 0.52, 0.05)),
+             (0.75, (1.0, 0.78, 0.28)), (1.0, (1.0, 0.92, 0.6)))
+PYRO_STRETCH = 2.0          # heat x this into the ramp (the blurred window rarely reaches 1)
+PYRO_GAIN_PER_BRIGHTNESS = 400.0
+PYRO_FLOOR = 0.01           # emission share left in dense soot
+PYRO_HOT_SOOT = 0.06        # albedo of hot soot (dark); cool smoke keeps Smoke Color
 GLOW_REFERENCE_K = 1500.0
 SCATTER_GLOW_SCALE = 1.0
 PHYSICAL_SATURATION = 1.8
@@ -234,6 +251,9 @@ def apply_generated_material_settings(material, settings):
         settings, "shader_smoke_color", (0.6, 0.6, 0.6)))
     density = max(0.0, float(_appearance_value(settings, "shader_smoke_density", 2.0)))
     shader.inputs["Color"].default_value = (*smoke_color[:3], 1.0)
+    soot_mix = nodes.get(NODE_PYRO_ALBEDO)
+    if soot_mix is not None:
+        [socket for socket in soot_mix.inputs if socket.type == "RGBA"][0].default_value = (*smoke_color[:3], 1.0)
     shader.inputs["Density"].default_value = density
     gain_node = nodes.get(NODE_DENSITY_GAIN)
     if gain_node is not None:
@@ -276,6 +296,25 @@ def apply_generated_material_settings(material, settings):
         tint_color = _appearance_value(settings, "shader_flame_tint", (1.0, 1.0, 1.0))
         [socket for socket in flame_tint.inputs if socket.type == "RGBA"][1].default_value = (
             *[max(0.0, float(value)) for value in tuple(tint_color)[:3]], 1.0)
+    # Pyro look: switch, gain, tint, thin-gas mask and gas gate.
+    pyro_on = 1.0 if str(_appearance_value(settings, "shader_look", "TEMPERATURE")) == "PYRO" else 0.0
+    if nodes.get(NODE_PYRO_MIX) is not None:
+        nodes[NODE_PYRO_MIX].inputs["Factor"].default_value = pyro_on
+        nodes[NODE_PYRO_HOT].inputs[1].default_value = pyro_on
+        nodes[NODE_PYRO_GAIN].inputs[1].default_value = (
+            PYRO_GAIN_PER_BRIGHTNESS * brightness) if enabled else 0.0
+        tint_color = _appearance_value(settings, "shader_flame_tint", (1.0, 1.0, 1.0))
+        [socket for socket in nodes[NODE_PYRO_TINT].inputs if socket.type == "RGBA"][1].default_value = (
+            *[max(0.0, float(value)) for value in tuple(tint_color)[:3]], 1.0)
+        thin_gas = max(1e-4, float(_appearance_value(settings, "shader_thin_gas", 0.05)))
+        thin = nodes[NODE_PYRO_THIN]
+        thin.inputs["From Min"].default_value = 0.7 * thin_gas
+        thin.inputs["From Max"].default_value = 1.3 * thin_gas
+        thin.inputs["To Min"].default_value = 1.0
+        thin.inputs["To Max"].default_value = PYRO_FLOOR
+        gate = nodes[NODE_PYRO_GATE]
+        gate.inputs["From Min"].default_value = 0.06 * thin_gas
+        gate.inputs["From Max"].default_value = 0.4 * thin_gas
     glow_spread = nodes.get(NODE_SCATTER_GLOW_SPREAD)
     if glow_spread is not None:
         glow_spread.inputs["Factor"].default_value = max(
@@ -556,7 +595,97 @@ def _build_generated_material(material, blue_core=False):
     shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0
     shader.inputs["Emission Strength"].default_value = 1.0
-    links.new(total.outputs[0], shader.inputs["Emission Color"])
+    # Pyro look: ramp(heat) x gain x thin-gas mask x gas gate, mixed against
+    # the Temperature look by NODE_PYRO_MIX (0 / 1), so switching needs no rebuild.
+    pyro = frame("Pyro look", (-1100, -1000), (0.36, 0.18, 0.10))
+    heat = nodes.new("ShaderNodeAttribute")
+    heat.attribute_name = "heat"
+    heat.label = "Heat (baked)"
+    heat.location = (-1480, -920)
+    heat.parent = inputs
+    soft = nodes.new("ShaderNodeAttribute")
+    soft.attribute_name = "density_soft"
+    soft.label = "Soft density (baked)"
+    soft.location = (-1480, -1100)
+    soft.parent = inputs
+    stretch = math_node("MULTIPLY", (-1100, -960), "Stretch", pyro, clamp=True)
+    stretch.inputs[1].default_value = PYRO_STRETCH
+    ramp = nodes.new("ShaderNodeValToRGB")
+    ramp.location = (-920, -960)
+    ramp.parent = pyro
+    elements = ramp.color_ramp.elements
+    while len(elements) < len(PYRO_RAMP):
+        elements.new(0.5)
+    for element, (position, color) in zip(elements, PYRO_RAMP):
+        element.position = position
+        element.color = (*color, 1.0)
+    pyro_tint = nodes.new("ShaderNodeMix")
+    pyro_tint.data_type = "RGBA"
+    pyro_tint.blend_type = "MULTIPLY"
+    pyro_tint.name = NODE_PYRO_TINT
+    pyro_tint.location = (-640, -960)
+    pyro_tint.parent = pyro
+    pyro_tint.inputs["Factor"].default_value = 1.0
+    thin = nodes.new("ShaderNodeMapRange")
+    thin.interpolation_type = "SMOOTHSTEP"
+    thin.name = NODE_PYRO_THIN
+    thin.label = "Thin Gas"
+    thin.location = (-920, -1160)
+    thin.parent = pyro
+    gate = nodes.new("ShaderNodeMapRange")
+    gate.interpolation_type = "SMOOTHSTEP"
+    gate.name = NODE_PYRO_GATE
+    gate.label = "Gas Gate"
+    gate.location = (-920, -1360)
+    gate.parent = pyro
+    gate.inputs["To Min"].default_value = 0.0
+    gate.inputs["To Max"].default_value = 1.0
+    masked = math_node("MULTIPLY", (-640, -1200), "Thin x Gate", pyro)
+    pyro_gain = math_node("MULTIPLY", (-440, -1200), "x Brightness", pyro, NODE_PYRO_GAIN)
+    pyro_emission = vector_node("SCALE", (160, -200), "Pyro Emission")
+    look = nodes.new("ShaderNodeMix")
+    look.data_type = "RGBA"
+    look.name = NODE_PYRO_MIX
+    look.label = "Look: Temperature / Pyro"
+    look.location = (360, -40)
+    look.parent = combine
+    look.inputs["Factor"].default_value = 0.0
+    links.new(_socket(heat.outputs, "Factor", "Fac"), stretch.inputs[0])
+    links.new(stretch.outputs[0], ramp.inputs["Fac"])
+    pyro_tint_inputs = [socket for socket in pyro_tint.inputs if socket.type == "RGBA"]
+    links.new(ramp.outputs["Color"], pyro_tint_inputs[0])
+    links.new(_socket(soft.outputs, "Factor", "Fac"), thin.inputs["Value"])
+    links.new(_socket(soft.outputs, "Factor", "Fac"), gate.inputs["Value"])
+    links.new(_socket(thin.outputs, "Result"), masked.inputs[0])
+    links.new(_socket(gate.outputs, "Result"), masked.inputs[1])
+    links.new(masked.outputs[0], pyro_gain.inputs[0])
+    links.new([socket for socket in pyro_tint.outputs if socket.type == "RGBA"][0], pyro_emission.inputs[0])
+    links.new(pyro_gain.outputs[0], pyro_emission.inputs["Scale"])
+    look_inputs = [socket for socket in look.inputs if socket.type == "RGBA"]
+    links.new(total.outputs[0], look_inputs[0])
+    links.new(pyro_emission.outputs[0], look_inputs[1])
+    links.new([socket for socket in look.outputs if socket.type == "RGBA"][0], shader.inputs["Emission Color"])
+    # Soot colour: hot soot dark in the Pyro look (factor = look x hot).
+    hot = nodes.new("ShaderNodeMapRange")
+    hot.interpolation_type = "SMOOTHSTEP"
+    hot.inputs["From Min"].default_value = 500.0
+    hot.inputs["From Max"].default_value = 900.0
+    hot.location = (160, -420)
+    hot.parent = smoke
+    hot_look = math_node("MULTIPLY", (360, -420), "Hot x Pyro", smoke, NODE_PYRO_HOT)
+    hot_look.inputs[1].default_value = 0.0
+    soot = nodes.new("ShaderNodeMix")
+    soot.data_type = "RGBA"
+    soot.name = NODE_PYRO_ALBEDO
+    soot.label = "Soot Color"
+    soot.location = (440, -200)
+    soot.parent = smoke
+    soot_inputs = [socket for socket in soot.inputs if socket.type == "RGBA"]
+    soot_inputs[1].default_value = (PYRO_HOT_SOOT, PYRO_HOT_SOOT, PYRO_HOT_SOOT, 1.0)
+    links.new(volume_info.outputs["Temperature"], hot.inputs["Value"])
+    links.new(_socket(hot.outputs, "Result"), hot_look.inputs[0])
+    links.new(hot_look.outputs[0], soot.inputs["Factor"])
+    links.new([socket for socket in soot.outputs if socket.type == "RGBA"][0], shader.inputs["Color"])
     output = nodes.new("ShaderNodeOutputMaterial")
     output.location = (900, 200)
     output.parent = smoke

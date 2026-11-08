@@ -189,7 +189,8 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 
 Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Temperature Diffusion
 0.1, Soot Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
-up to 4 Sub-Steps with Cells per Step 8, Simulation Memory 4 GB; even burning
+up to 2 Sub-Steps with Trace Steps 16 and Cells per Step 8 (as close to a
+converged 12-step result as 4 plain steps, about 38% faster), Simulation Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
 Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.3, Blue Core 1,
 Smoke Density 1, smoke colour 0.45, Anisotropy 0.3.

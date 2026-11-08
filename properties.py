@@ -111,11 +111,13 @@ def _object_type_updated(self, _context):
         self.shader_smoke_density = 1.0
         self.shader_smoke_color = (0.45, 0.45, 0.45)
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
-        # New domains: up to 4 Sub-Steps, added when the smoke moves more than
-        # 8 voxels per step (8 was a safe speed-up; 16 lost half an Explosion's
-        # smoke, 2026-11-04).
-        self.num_sub_steps = 4
+        # New domains: up to 2 Sub-Steps, added when the smoke moves more than
+        # 8 voxels per step, with the back-trace following the flow in steps of
+        # 1.5 cells (Trace Steps 16): as close to the 12-step result as 4 plain
+        # steps and about 38% faster (user scene, 2026-11-08; output/trace_test).
+        self.num_sub_steps = 2
         self.adaptive_cfl = 8.0
+        self.trace_steps = 16
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
     if self.smoke_object_type == "domain" and self.fade_settings_version == 0:
         self.dissipation = 0.2

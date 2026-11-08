@@ -14,6 +14,7 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 from .memory_auto import auto_toggled
+from .utils import FLAME_VALUE_KEYS
 
 
 LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
@@ -118,9 +119,9 @@ def _object_type_updated(self, _context):
         self.shader_glow_temperature = 2000.0
         self.shader_flame_brightness = 2.0
         self.shader_scatter_glow = 2.0
-        # Higher hid Scatter Glow in dense smoke (1 left 2-5% in a few
-        # density-metres), so Scatter Glow and Glow Spread looked dead.
-        self.shader_glow_shadowing = 0.3
+        # 0.5 keeps sooty caps darker (user, 2026-11-08); 1 hid Scatter Glow in
+        # dense smoke (2-5% left in a few density-metres).
+        self.shader_glow_shadowing = 0.5
         # Blue Core off (2026-11-08): with Brightness raised it turned fuel-rich
         # scenes lilac.
         self.shader_flame_core = 0.0
@@ -1989,6 +1990,90 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
+    # Pyro look: its own flame controls, separate from the Temperature look's.
+    pyro_brightness: FloatProperty(
+        name="Brightness",
+        description="Pyro look: emission strength of the fire",
+        default=2.0,
+        min=0.0,
+        max=100.0,
+        soft_max=10.0,
+        update=_appearance_updated,
+    )
+    pyro_glow_temperature: FloatProperty(
+        name="Full Glow",
+        description="Pyro look: temperature (K) at which fire glows at full Brightness and takes the ramp's palest gold; cooler gas falls off by Contrast toward deep red",
+        default=2000.0,
+        min=300.0,
+        soft_min=800.0,
+        soft_max=3000.0,
+        update=_appearance_updated,
+    )
+    pyro_contrast: FloatProperty(
+        name="Contrast",
+        description="Pyro look: how fast glow falls off as gas cools below Full Glow. Lower values let cooler gas glow too (fuller fire)",
+        default=0.5,
+        min=0.05,
+        max=3.0,
+        soft_max=2.0,
+        update=_appearance_updated,
+    )
+    pyro_temperature_multiplier: FloatProperty(
+        name="Blackbody Scale",
+        description="Pyro look: multiplies temperature before the golden colour ramp: above 1 shifts fire toward pale gold, below 1 toward deep red. Brightness is not changed",
+        default=1.0,
+        min=0.01,
+        max=10.0,
+        soft_max=2.0,
+        update=_appearance_updated,
+    )
+    pyro_flame_core: FloatProperty(
+        name="Blue Core (Render Only)",
+        description="Pyro look: blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation, and the bake then also writes the fuel grid; the live preview does not show it. Zero turns it off",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_appearance_updated,
+    )
+    pyro_flame_tint: FloatVectorProperty(
+        name="Flame Tint",
+        description="Pyro look: multiplies the fire colour, for stylised or chemical flames. White keeps the golden ramp",
+        default=(1.0, 1.0, 1.0),
+        size=3,
+        min=0.0,
+        soft_max=1.0,
+        subtype="COLOR",
+        update=_appearance_updated,
+    )
+    pyro_scatter_glow: FloatProperty(
+        name="Scatter Glow",
+        description="Pyro look: fire light scattered into the surrounding smoke (the baked glow grid, see Glow Radius under Output)",
+        default=2.0,
+        min=0.0,
+        max=20.0,
+        soft_max=4.0,
+        update=_appearance_updated,
+    )
+    pyro_glow_spread: FloatProperty(
+        name="Glow Spread",
+        description="Pyro look: how far Scatter Glow reaches into the smoke; higher values blend in light spread four times farther",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_appearance_updated,
+    )
+    pyro_glow_shadowing: FloatProperty(
+        name="Glow Shadowing",
+        description="Pyro look: how much smoke between a spot and the fire blocks Scatter Glow. Lower this if Scatter Glow seems to do nothing in dense smoke",
+        default=0.5,
+        min=0.0,
+        soft_max=10.0,
+        max=100.0,
+        update=_appearance_updated,
+    )
+
     shader_thin_gas: FloatProperty(
         name="Thin Gas",
         description="Pyro look: smoke density at which fire glows as in the Temperature look. Thinner gas glows up to twice as bright, denser smoke turns to dark soot over the fire. Raise it for dense, smoky fire so more of it glows",
@@ -2219,6 +2304,13 @@ def _migrate_temperature_mapping():
             for key in ("shader_density_low", "shader_density_high"):
                 if key in props:
                     del props[key]
+        if (props is not None and props.smoke_object_type == "domain"
+                and props.shader_look == "PYRO" and "pyro_brightness" not in props):
+            # The Pyro look shared the Temperature look's flame values until
+            # 2026-11-08: keep a Pyro scene's look by copying them once.
+            for key, (temperature_key, pyro_key) in FLAME_VALUE_KEYS.items():
+                if pyro_key != temperature_key:
+                    setattr(props, pyro_key, getattr(props, temperature_key))
         if props is not None and props.smoke_object_type == "domain" and "low_memory_bake" in props:
             # Low Memory Bake became VDB Writers: Low Memory.
             if props["low_memory_bake"]:

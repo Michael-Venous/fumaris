@@ -11,7 +11,7 @@ except ImportError:
     openvdb = None
 
 from .diagnostics import console_log
-from .utils import WIEN_KELVIN, flame_temperature_range
+from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, is_pyro_look
 
 PREFIX = "fumaris_"
 _FRAME_DIGITS = re.compile(r"-?[0-9]+")
@@ -35,8 +35,9 @@ NODE_WIEN_TERM = "Fumaris Wien Term"
 # 2: Temperature look only (the Burn look and its burn grid removed), one
 # emission closure, frames. 3: Colour Spread (colour shift is multiply-add).
 # 4: Density Remap (density read through a remap node, not the shader attribute).
+# 5-6: Pyro look. 7: Pyro Blue Core (each look has its own flame values).
 # Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 6
+GRAPH_VERSION = 7
 NODE_DENSITY_REMAP = "Fumaris Density Remap"
 NODE_DENSITY_GAIN = "Fumaris Density Gain"
 GRAPH_VERSION_KEY = "fumaris_graph_version"
@@ -72,6 +73,7 @@ NODE_PYRO_COLOR_RANGE = "Fumaris Pyro Color Range"
 NODE_PYRO_TINT = "Fumaris Pyro Tint"
 NODE_PYRO_ALBEDO = "Fumaris Pyro Soot"
 NODE_PYRO_HOT = "Fumaris Pyro Hot Soot"
+NODE_PYRO_CORE = "Fumaris Pyro Blue Core"
 PYRO_RAMP = ((0.0, (1.0, 0.1, 0.0)), (0.35, (1.0, 0.32, 0.02)), (0.65, (1.0, 0.58, 0.14)),
              (1.0, (1.0, 0.86, 0.52)))
 PYRO_COLOR_RANGE = (0.45, 1.0)  # x Full Glow: deep red to pale gold
@@ -229,14 +231,18 @@ def _appearance_value(settings, name, default):
     return getattr(settings, name, default) if settings is not None else default
 
 
+def _wants_core(settings):
+    """Blue Core (either look) needs the fuel grid and the core nodes."""
+    return any(float(flame_value(settings, "flame_core", 0.0, pyro)) > 0.0 for pyro in (False, True))
+
+
 def _graph_needs_rebuild(material, settings):
     """Older graphs (with the removed Burn look) and a Blue Core switched on or
     off since the graph was built are rebuilt in place."""
     nodes = material.node_tree.nodes
     if material.get(GRAPH_VERSION_KEY, 0) < GRAPH_VERSION:
         return True
-    wants_core = float(_appearance_value(settings, "shader_flame_core", 0.0)) > 0.0
-    return wants_core != (nodes.get(NODE_FLAME_CORE) is not None)
+    return _wants_core(settings) != (nodes.get(NODE_FLAME_CORE) is not None)
 
 
 def apply_generated_material_settings(material, settings):
@@ -244,7 +250,7 @@ def apply_generated_material_settings(material, settings):
         return False
     if _graph_needs_rebuild(material, settings):
         _build_generated_material(
-            material, blue_core=float(_appearance_value(settings, "shader_flame_core", 0.0)) > 0.0)
+            material, blue_core=_wants_core(settings))
     nodes = material.node_tree.nodes
     shader = nodes.get(NODE_VOLUME_SHADER)
     if shader is None:
@@ -270,68 +276,84 @@ def apply_generated_material_settings(material, settings):
         -0.95, min(0.95, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
 
     enabled = bool(_appearance_value(settings, "shader_flame_enabled", True))
-    brightness = max(0.0, float(_appearance_value(settings, "shader_flame_brightness", 1.0)))
-    reference = max(1.0, float(_appearance_value(settings, "shader_glow_temperature", 1600.0)))
-    contrast = max(0.05, float(_appearance_value(settings, "shader_flame_contrast", 0.5)))
-    multiplier = max(0.01, float(_appearance_value(settings, "shader_temperature_multiplier", 1.0)))
-    spread = max(0.05, float(_appearance_value(settings, "shader_color_spread", 1.0)))
-    scatter = max(0.0, float(_appearance_value(settings, "shader_scatter_glow", 1.0)))
+    pyro_look = is_pyro_look(settings)
 
-    # Flame: density x Brightness x Density x exp(-c * 26160 * (1/T - 1/Tg)),
-    # with X = 26160 / T: exp(X * -c + c * 26160 / Tg).
+    def look_values(pyro):
+        """One look's flame controls (the looks keep separate values)."""
+        return {
+            "brightness": max(0.0, float(flame_value(settings, "brightness", 1.0, pyro))),
+            "reference": max(1.0, float(flame_value(settings, "glow_temperature", 1600.0, pyro))),
+            "contrast": max(0.05, float(flame_value(settings, "contrast", 0.5, pyro))),
+            "multiplier": max(0.01, float(flame_value(settings, "temperature_multiplier", 1.0, pyro))),
+            "core": max(0.0, min(1.0, float(flame_value(settings, "flame_core", 0.0, pyro)))),
+            "tint": (*[max(0.0, float(value)) for value in tuple(
+                flame_value(settings, "flame_tint", (1.0, 1.0, 1.0), pyro))[:3]], 1.0),
+            "scatter": max(0.0, float(flame_value(settings, "scatter_glow", 1.0, pyro))),
+            "glow_spread": max(0.0, min(1.0, float(flame_value(settings, "glow_spread", 0.0, pyro)))),
+            "glow_shadowing": max(0.0, float(flame_value(settings, "glow_shadowing", 0.0, pyro))),
+        }
+
+    temperature_look = look_values(False)
+    pyro_values = look_values(True)
+    active = pyro_values if pyro_look else temperature_look
+    spread = max(0.05, float(_appearance_value(settings, "shader_color_spread", 1.0)))
+
+    # Temperature look. Flame: density x Brightness x Density x
+    # exp(-c * 26160 * (1/T - 1/Tg)), with X = 26160 / T: exp(X * -c + c * 26160 / Tg).
+    look = temperature_look
     wien = nodes[NODE_PHYSICAL_CONTRAST]
-    wien.inputs[1].default_value = -contrast
-    wien.inputs[2].default_value = contrast * WIEN_KELVIN / reference
-    nodes[NODE_PHYSICAL_GAIN].inputs[1].default_value = (brightness * density) if enabled else 0.0
+    wien.inputs[1].default_value = -look["contrast"]
+    wien.inputs[2].default_value = look["contrast"] * WIEN_KELVIN / look["reference"]
+    nodes[NODE_PHYSICAL_GAIN].inputs[1].default_value = (look["brightness"] * density) if enabled else 0.0
     # Colour temperature = shift x multiplier x (Full Glow + Colour Spread x (T - Full Glow)).
     color_scale = nodes[NODE_PHYSICAL_COLOR_SCALE]
-    color_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT * multiplier * spread
-    color_scale.inputs[2].default_value = PHYSICAL_COLOR_SHIFT * multiplier * reference * (1.0 - spread)
-
-    # Scatter glow, on the flame's radiance scale at Contrast 1.
-    to_full_glow = math.exp(WIEN_KELVIN * (1.0 / reference - 1.0 / GLOW_REFERENCE_K))
-    nodes[NODE_SCATTER_GLOW_GAIN].inputs[1].default_value = (
-        SCATTER_GLOW_SCALE * scatter * brightness * density * to_full_glow) if enabled else 0.0
-    nodes[NODE_SCATTER_GLOW_COLOR].inputs["Temperature"].default_value = (
-        reference * PHYSICAL_COLOR_SHIFT * multiplier)
+    color_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT * look["multiplier"] * spread
+    color_scale.inputs[2].default_value = PHYSICAL_COLOR_SHIFT * look["multiplier"] * look["reference"] * (1.0 - spread)
     flame_tint = nodes.get(NODE_FLAME_TINT)
     if flame_tint is not None:
-        tint_color = _appearance_value(settings, "shader_flame_tint", (1.0, 1.0, 1.0))
-        [socket for socket in flame_tint.inputs if socket.type == "RGBA"][1].default_value = (
-            *[max(0.0, float(value)) for value in tuple(tint_color)[:3]], 1.0)
+        [socket for socket in flame_tint.inputs if socket.type == "RGBA"][1].default_value = look["tint"]
+    core = nodes.get(NODE_FLAME_CORE)
+    if core is not None:
+        core.inputs[1].default_value = look["core"]
+
     # Pyro look: switch, the same brightness law on the baked heat, colour
-    # range, tint and Thin Gas.
-    pyro_on = 1.0 if str(_appearance_value(settings, "shader_look", "TEMPERATURE")) == "PYRO" else 0.0
+    # range (Blackbody Scale shifts it), tint, Blue Core and Thin Gas.
     if nodes.get(NODE_PYRO_MIX) is not None:
-        nodes[NODE_PYRO_MIX].inputs["Factor"].default_value = pyro_on
-        nodes[NODE_PYRO_HOT].inputs[1].default_value = pyro_on
+        look = pyro_values
+        nodes[NODE_PYRO_MIX].inputs["Factor"].default_value = 1.0 if pyro_look else 0.0
+        nodes[NODE_PYRO_HOT].inputs[1].default_value = 1.0 if pyro_look else 0.0
         pyro_contrast = nodes[NODE_PYRO_CONTRAST]
-        pyro_contrast.inputs[1].default_value = -contrast
-        pyro_contrast.inputs[2].default_value = contrast * WIEN_KELVIN / reference
-        nodes[NODE_PYRO_GAIN].inputs[1].default_value = (brightness * density) if enabled else 0.0
+        pyro_contrast.inputs[1].default_value = -look["contrast"]
+        pyro_contrast.inputs[2].default_value = look["contrast"] * WIEN_KELVIN / look["reference"]
+        nodes[NODE_PYRO_GAIN].inputs[1].default_value = (look["brightness"] * density) if enabled else 0.0
         color_range = nodes[NODE_PYRO_COLOR_RANGE]
-        color_range.inputs["From Min"].default_value = PYRO_COLOR_RANGE[0] * reference
-        color_range.inputs["From Max"].default_value = PYRO_COLOR_RANGE[1] * reference
-        tint_color = _appearance_value(settings, "shader_flame_tint", (1.0, 1.0, 1.0))
-        [socket for socket in nodes[NODE_PYRO_TINT].inputs if socket.type == "RGBA"][1].default_value = (
-            *[max(0.0, float(value)) for value in tuple(tint_color)[:3]], 1.0)
+        color_range.inputs["From Min"].default_value = PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"]
+        color_range.inputs["From Max"].default_value = PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"]
+        [socket for socket in nodes[NODE_PYRO_TINT].inputs if socket.type == "RGBA"][1].default_value = look["tint"]
         thin_gas = max(1e-4, float(_appearance_value(settings, "shader_thin_gas", 1.0)))
         nodes[NODE_PYRO_THIN].inputs[1].default_value = 1.0 / thin_gas
+        pyro_core = nodes.get(NODE_PYRO_CORE)
+        if pyro_core is not None:
+            pyro_core.inputs[1].default_value = look["core"]
+
+    # Scatter Glow (shared nodes, the active look's values), on the flame's
+    # radiance scale at Contrast 1.
+    look = active
+    to_full_glow = math.exp(WIEN_KELVIN * (1.0 / look["reference"] - 1.0 / GLOW_REFERENCE_K))
+    nodes[NODE_SCATTER_GLOW_GAIN].inputs[1].default_value = (
+        SCATTER_GLOW_SCALE * look["scatter"] * look["brightness"] * density * to_full_glow) if enabled else 0.0
+    nodes[NODE_SCATTER_GLOW_COLOR].inputs["Temperature"].default_value = (
+        look["reference"] * PHYSICAL_COLOR_SHIFT * look["multiplier"])
     glow_spread = nodes.get(NODE_SCATTER_GLOW_SPREAD)
     if glow_spread is not None:
-        glow_spread.inputs["Factor"].default_value = max(
-            0.0, min(1.0, float(_appearance_value(settings, "shader_glow_spread", 0.0))))
+        glow_spread.inputs["Factor"].default_value = look["glow_spread"]
     glow_shadow = nodes.get(NODE_SCATTER_GLOW_SHADOW)
     if glow_shadow is not None:
-        glow_shadow.inputs[1].default_value = -max(
-            0.0, float(_appearance_value(settings, "shader_glow_shadowing", 0.0)))
+        glow_shadow.inputs[1].default_value = -look["glow_shadowing"]
     albedo = nodes[NODE_SCATTER_GLOW_ALBEDO]
     [socket for socket in albedo.inputs if socket.type == "RGBA"][1].default_value = (*smoke_color[:3], 1.0)
 
-    core = nodes.get(NODE_FLAME_CORE)
     if core is not None:
-        core.inputs[1].default_value = max(
-            0.0, min(1.0, float(_appearance_value(settings, "shader_flame_core", 0.0))))
         start_temperature, full_temperature = flame_temperature_range(
             float(_appearance_value(settings, "flame_temperature_min", 800.0)),
             float(_appearance_value(settings, "flame_temperature_max", 3000.0)))
@@ -348,8 +370,7 @@ def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
     material = bpy.data.materials.new("Fumaris Material")
     material.use_nodes = True
     material[GENERATED_MATERIAL_MARKER] = True
-    _build_generated_material(
-        material, blue_core=float(_appearance_value(settings, "shader_flame_core", 0.0)) > 0.0)
+    _build_generated_material(material, blue_core=_wants_core(settings))
     apply_generated_material_settings(material, settings)
     volume_object.data.materials.append(material)
 
@@ -452,6 +473,7 @@ def _build_generated_material(material, blue_core=False):
     links.new(fire_blackbody.outputs["Color"], fire_saturation.inputs["Color"])
     fire_color = fire_saturation.outputs["Color"]
 
+    fresh = None
     if blue_core:
         # Blue where fuel is still burning near ignition: fresh flame.
         fuel = nodes.new("ShaderNodeAttribute")
@@ -690,7 +712,22 @@ def _build_generated_material(material, blue_core=False):
     links.new(pyro_temperature.outputs[0], color_range.inputs["Value"])
     links.new(_socket(color_range.outputs, "Result"), ramp.inputs["Fac"])
     pyro_tint_inputs = [socket for socket in pyro_tint.inputs if socket.type == "RGBA"]
-    links.new(ramp.outputs["Color"], pyro_tint_inputs[0])
+    pyro_color = ramp.outputs["Color"]
+    if fresh is not None:
+        # Pyro Blue Core: the same fresh-flame mask, with its own strength.
+        pyro_core = math_node("MULTIPLY", (-560, -1560), "Blue Core", pyro, NODE_PYRO_CORE, clamp=True)
+        pyro_core_mix = nodes.new("ShaderNodeMix")
+        pyro_core_mix.data_type = "RGBA"
+        pyro_core_mix.label = "Core Color"
+        pyro_core_mix.location = (-560, -1700)
+        pyro_core_mix.parent = pyro
+        core_inputs = [socket for socket in pyro_core_mix.inputs if socket.type == "RGBA"]
+        core_inputs[1].default_value = (0.12, 0.3, 1.0, 1.0)
+        links.new(fresh.outputs[0], pyro_core.inputs[0])
+        links.new(pyro_core.outputs[0], pyro_core_mix.inputs["Factor"])
+        links.new(pyro_color, core_inputs[0])
+        pyro_color = [socket for socket in pyro_core_mix.outputs if socket.type == "RGBA"][0]
+    links.new(pyro_color, pyro_tint_inputs[0])
     links.new([socket for socket in pyro_tint.outputs if socket.type == "RGBA"][0], pyro_fire.inputs[0])
     links.new(ramp.outputs["Color"], ramp_luminance.inputs["Color"])
     links.new(ramp_luminance.outputs["Val"], luminance_floor.inputs[0])

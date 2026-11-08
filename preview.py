@@ -6,7 +6,7 @@ import gpu
 from mathutils import Matrix
 from . import diagnostics, display_lut, scene_lighting
 from .protocol import DISPLAY_LUT_KEY, SCENE_DEPTH_KEY
-from .utils import WIEN_KELVIN, flame_temperature_range
+from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, is_pyro_look
 
 try:
     import numpy as np
@@ -56,7 +56,9 @@ def capture_volume_preview(context, domain, target=None):
     fps = float(context.scene.render.fps) / fps_base
     simulation_speed = max(1e-6, float(props.simulation_speed))
     flame_rate_scale = fps * float(props.num_sub_steps) / simulation_speed
-    glow_temperature = max(1.0, float(props.shader_glow_temperature))
+    # The active Look's flame controls (Temperature and Pyro keep separate values).
+    pyro_look = is_pyro_look(props)
+    glow_temperature = max(1.0, float(flame_value(props, "glow_temperature", 1600.0)))
     flame_start, flame_full = flame_temperature_range(
         float(props.flame_temperature_min), float(props.flame_temperature_max))
     return {
@@ -71,24 +73,24 @@ def capture_volume_preview(context, domain, target=None):
         "smoke_density": float(props.shader_smoke_density),
         "smoke_color": [float(value) for value in props.shader_smoke_color],
         "flame_enabled": bool(props.shader_flame_enabled),
-        "flame_brightness": float(props.shader_flame_brightness),
+        "flame_brightness": float(flame_value(props, "brightness", 1.0)),
         "flame_temperature_min": flame_start,
         "flame_temperature_max": flame_full,
         "flame_rate_scale": flame_rate_scale,
         "flame_sharpness": float(props.shader_flame_sharpness),
-        # Temperature look, as the generated material (importers.py)
+        # The fire look, as the generated material (importers.py)
         "glow_temperature": glow_temperature,
-        "glow_contrast": WIEN_KELVIN * max(0.05, float(props.shader_flame_contrast)) / glow_temperature,
-        "temperature_multiplier": float(props.shader_temperature_multiplier),
-        "color_spread": float(props.shader_color_spread),
-        "pyro_look": str(getattr(props, "shader_look", "TEMPERATURE")) == "PYRO",
+        "glow_contrast": WIEN_KELVIN * max(0.05, float(flame_value(props, "contrast", 0.5))) / glow_temperature,
+        "temperature_multiplier": float(flame_value(props, "temperature_multiplier", 1.0)),
+        "color_spread": 1.0 if pyro_look else float(props.shader_color_spread),
+        "pyro_look": pyro_look,
         "thin_gas": float(getattr(props, "shader_thin_gas", 1.0)),
-        "flame_tint": [float(value) for value in getattr(props, "shader_flame_tint", (1.0, 1.0, 1.0))],
+        "flame_tint": [float(value) for value in flame_value(props, "flame_tint", (1.0, 1.0, 1.0))],
         "gas_expansion": float(props.gas_expansion),
-        "scatter_glow": float(props.shader_scatter_glow),
+        "scatter_glow": float(flame_value(props, "scatter_glow", 0.0)),
         "glow_radius": max(0.0, float(props.glow_radius)),
-        "glow_spread": float(getattr(props, "shader_glow_spread", 0.0)),
-        "glow_shadowing": float(getattr(props, "shader_glow_shadowing", 0.0)),
+        "glow_spread": float(flame_value(props, "glow_spread", 0.0)),
+        "glow_shadowing": float(flame_value(props, "glow_shadowing", 0.0)),
         "shadows": bool(props.preview_shadows),
         "shadow_min_light": float(props.preview_shadow_min_light),
         "light_scattering": float(props.preview_light_scattering),

@@ -720,10 +720,13 @@ times farther, for Glow Spread) and `glow_depth` (the least smoke between a
 cell and the fire, for Glow Shadowing). `Glow Radius` (Output) sets how far the
 light reaches; 0 follows the size of the fire.
 
-`Look` chooses the fire shading. `Temperature` (the controls below) glows by
-each voxel's temperature and density. `Pyro` follows Houdini's Pyro shading
-with the same Brightness, Full Glow and Contrast, so switching keeps the
-exposure: fire takes a golden colour, glows from the hotter of the gas and its
+`Look` chooses the fire shading, and each look keeps its own flame controls
+(Brightness, Full Glow, Contrast, Blackbody Scale, Blue Core, Flame Tint and
+the Scatter Glow settings), so switching looks does not change the other's
+values. `Temperature` glows by each voxel's temperature and density.
+`Pyro` follows Houdini's Pyro shading with the same brightness law, so equal
+values give equal exposure; Blackbody Scale shifts its golden ramp (above 1
+toward pale gold) and Blue Core works as in Temperature: fire takes a golden colour, glows from the hotter of the gas and its
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
 smoke picks up their light, and hot soot turns dark. `Thin Gas` is the smoke
 density at which Pyro glows as brightly as Temperature; thinner gas glows up to

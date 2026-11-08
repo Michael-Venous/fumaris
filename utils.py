@@ -32,6 +32,33 @@ def flame_temperature_range(start, full):
 
 AMBIENT_AIR_KELVIN = 293.15
 
+# Flame controls per Look: (Temperature look property, Pyro look property).
+# The looks keep separate values; Colour Spread is Temperature-only and Thin
+# Gas Pyro-only.
+FLAME_VALUE_KEYS = {
+    "brightness": ("shader_flame_brightness", "pyro_brightness"),
+    "glow_temperature": ("shader_glow_temperature", "pyro_glow_temperature"),
+    "contrast": ("shader_flame_contrast", "pyro_contrast"),
+    "temperature_multiplier": ("shader_temperature_multiplier", "pyro_temperature_multiplier"),
+    "flame_core": ("shader_flame_core", "pyro_flame_core"),
+    "flame_tint": ("shader_flame_tint", "pyro_flame_tint"),
+    "scatter_glow": ("shader_scatter_glow", "pyro_scatter_glow"),
+    "glow_spread": ("shader_glow_spread", "pyro_glow_spread"),
+    "glow_shadowing": ("shader_glow_shadowing", "pyro_glow_shadowing"),
+}
+
+
+def is_pyro_look(settings):
+    return settings is not None and str(getattr(settings, "shader_look", "TEMPERATURE")) == "PYRO"
+
+
+def flame_value(settings, key, default, pyro=None):
+    """A flame control of the active Look (or of the given one: pyro True/False)."""
+    if settings is None:
+        return default
+    use_pyro = is_pyro_look(settings) if pyro is None else pyro
+    return getattr(settings, FLAME_VALUE_KEYS[key][1 if use_pyro else 0], default)
+
 
 def physical_buoyancy(props):
     """Temperature Buoyancy (in g, at Flame Temperature) from the gas law:

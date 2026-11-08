@@ -7,7 +7,7 @@ from . import diagnostics
 from .exporters import simulation_memory_mb
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
-from .utils import peek_output_directory_for_object, get_addon_preferences, physical_buoyancy
+from .utils import FLAME_VALUE_KEYS, flame_value, get_addon_preferences, peek_output_directory_for_object, physical_buoyancy
 
 
 def _foldout(layout, props, property_name, label):
@@ -512,30 +512,27 @@ def _draw_capacity_warning(layout, domain):
 
 
 def _draw_fire_look(fire, props):
-    """The chosen Look's own controls (each look lists only what it uses)."""
+    """The chosen Look's own controls: Temperature and Pyro keep separate values."""
+    pyro = props.shader_look == "PYRO"
+    key = {name: keys[1 if pyro else 0] for name, keys in FLAME_VALUE_KEYS.items()}
     exposure = fire.row(align=True)
-    exposure.prop(props, "shader_flame_brightness")
-    exposure.prop(props, "shader_glow_temperature")
-    if props.shader_look == "PYRO":
-        shape = fire.row(align=True)
-        shape.prop(props, "shader_flame_contrast")
-        shape.prop(props, "shader_thin_gas")
-    else:
-        shape = fire.row(align=True)
-        shape.prop(props, "shader_flame_contrast")
-        shape.prop(props, "shader_color_spread")
-        color = fire.row(align=True)
-        color.prop(props, "shader_temperature_multiplier")
-        color.prop(props, "shader_flame_core", text="Blue Core")
+    exposure.prop(props, key["brightness"])
+    exposure.prop(props, key["glow_temperature"])
+    shape = fire.row(align=True)
+    shape.prop(props, key["contrast"])
+    shape.prop(props, "shader_thin_gas" if pyro else "shader_color_spread")
+    color = fire.row(align=True)
+    color.prop(props, key["temperature_multiplier"])
+    color.prop(props, key["flame_core"], text="Blue Core")
     tint = fire.split(factor=0.25, align=True)
     tint.label(text="Flame Tint")
-    tint.prop(props, "shader_flame_tint", text="")
+    tint.prop(props, key["flame_tint"], text="")
     fire.separator(factor=0.5)
-    fire.prop(props, "shader_scatter_glow")
+    fire.prop(props, key["scatter_glow"])
     glow = fire.row(align=True)
-    glow.enabled = props.shader_scatter_glow > 0.0
-    glow.prop(props, "shader_glow_spread", slider=True)
-    glow.prop(props, "shader_glow_shadowing", text="Shadowing")
+    glow.enabled = getattr(props, key["scatter_glow"]) > 0.0
+    glow.prop(props, key["glow_spread"], slider=True)
+    glow.prop(props, key["glow_shadowing"], text="Shadowing")
 
 
 def _draw_domain(layout, scene, props):
@@ -690,7 +687,7 @@ def _draw_domain(layout, scene, props):
         if props.shader_flame_enabled:
             flame_header.prop(props, "shader_look", text="")
             _draw_fire_look(appearance.column(align=True), props)
-        if (props.shader_scatter_glow > 0.0 and scene.render.engine == "CYCLES"
+        if (flame_value(props, "scatter_glow", 0.0) > 0.0 and scene.render.engine == "CYCLES"
                 and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
             # Cycles' unbiased volumes drop the glow in square patches
             # (2026-11-06); Biased renders it correctly and faster.

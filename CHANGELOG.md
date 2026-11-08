@@ -123,8 +123,10 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - **Scatter Glow**, Glow Spread and Glow Shadowing (bakes add small glow
   grids; Glow Radius in Output). Fumaris shows a hint and a Use Biased button
   when Cycles' unbiased volumes would render the glow in square patches.
-- **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with the
-  same Brightness, Full Glow and Contrast as the Temperature look: golden fire,
+- **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with its
+  own flame controls (Brightness, Full Glow, Contrast, Blackbody Scale, Blue
+  Core, Flame Tint, Scatter Glow; separate from the Temperature look's, using
+  the same brightness law so equal values give equal exposure): golden fire,
   softly glowing cells (a blurred heat field), dark hot soot. Thin Gas sets
   the smoke density where both looks glow alike; thinner gas glows brighter,
   denser smoke darker. Works at any scene size, and Full Glow applies without
@@ -206,7 +208,7 @@ Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
 up to 2 Sub-Steps with Trace Steps 16 and Cells per Step 8 (as close to a
 converged 12-step result as 4 plain steps, about 38% faster), Simulation Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
-Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.3, Blue Core 0,
+Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.5, Blue Core 0,
 Smoke Density 1, smoke colour 0.45, Anisotropy 0.3.
 
 ### Removed

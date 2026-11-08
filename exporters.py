@@ -36,7 +36,13 @@ from .participants import (
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
 from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
-from .utils import executable_path, output_directory_for_object, physical_buoyancy, simulation_frame_range
+from .utils import (
+    executable_path,
+    flame_value,
+    output_directory_for_object,
+    physical_buoyancy,
+    simulation_frame_range,
+)
 
 _FRAME_ZERO_VERSION = 1 << 40
 _SEQUENCE_NAME = re.compile(r"^(.*?)(-?)(\d+)(\.[^.]+)$")
@@ -436,7 +442,8 @@ def _domain_state(props, resolution_scale=1.0):
         "smoke_per_burn": props.smoke_per_burn,
         "export_temperature_vdb": props.export_temperature_vdb or generated_material,
         "export_fuel_vdb": props.export_fuel_vdb
-        or (generated_material and props.shader_flame_enabled and props.shader_flame_core > 0.0),
+        or (generated_material and props.shader_flame_enabled
+            and float(flame_value(props, "flame_core", 0.0)) > 0.0),
         # The generated material no longer reads burn (Burn look removed).
         "export_burn_vdb": props.export_burn_vdb,
         "export_velocity_vdb": props.export_velocity_vdb,

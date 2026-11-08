@@ -71,6 +71,19 @@ def _ramp_values(label):
     )
 
 
+_EXPORT_RESOLUTION_ITEMS = (
+    ("FULL", "Full", "The simulation's resolution", 0),
+    ("HALF", "Half", "Half resolution (2x2x2 averages): about 8 times fewer voxels", 1),
+    ("QUARTER", "Quarter", "A quarter of the resolution (4x4x4 averages): about 64 times fewer voxels", 2),
+)
+_VELOCITY_RESOLUTION_ITEMS = _EXPORT_RESOLUTION_ITEMS[1:]
+
+
+def _velocity_resolution_items(self, _context):
+    # Full only when motion is simulated at full resolution.
+    return _EXPORT_RESOLUTION_ITEMS if getattr(self, "full_resolution_velocity", False) else _VELOCITY_RESOLUTION_ITEMS
+
+
 def _object_type_updated(self, _context):
     # A new domain follows the timeline, so its range matches the scene
     # without editing (customer request). Domains whose Start/End were
@@ -95,6 +108,9 @@ def _object_type_updated(self, _context):
         self.fuel_threshold = 0.0
         self.soot_radiation = 1.0
         self.edge_sharpness = 0.5
+        # Less smoke per burn (2026-11-08): at 3 a dense dark cloud buried the
+        # fire within a second (user explosion: smoke -79%, fire visible to the end).
+        self.smoke_per_burn = 1.0
         # Smooths fire speckle (Axiom's default is the same 0.1), 2026-11-07.
         self.temperature_diffusion = 0.1
         # Look: Full Glow at the default Flame Temperature, so Brightness reads
@@ -591,7 +607,7 @@ class FumarisSettings(PropertyGroup):
         description="What the live preview shows",
         items=[
             ("look", "Look", "Smoke and fire as the Appearance settings render them"),
-            ("speed", "Speed", "How fast the air moves, drawn as fire: slow air is dark, about 5 m/s glows at Full Glow"),
+            ("speed", "Speed", "How fast the air moves, drawn as fire: still air is dark, about 10 m/s dim red, 20 m/s red, 50 m/s and faster orange (never white)"),
             ("expansion", "Expansion", "Where burning gas expands (Gas Expansion), drawn as fire: about 4 per second glows at Full Glow"),
             ("fuel", "Fuel", "Unburnt fuel, drawn as fire on a log scale: 1 glows at Full Glow, 0.1 dimly, 8 brightly. Shows where fuel waits for heat or air"),
             ("blocks", "Active Blocks", "The smoke as it looks, with the outlines of the simulated blocks: shows where the solver spends memory and time"),
@@ -629,7 +645,7 @@ class FumarisSettings(PropertyGroup):
         description="What lights the preview smoke",
         items=(
             ("SCENE", "Scene", "The scene's lights and world, as Cycles renders them: the strongest light (or the sun in an HDRI) casts shadows, the world lights the smoke where it sees the sky"),
-            ("CUSTOM", "Custom", "One preview light with its own direction and strength, plus the scene's world. Preview only"),
+            ("CUSTOM", "Custom", "One preview light with its own direction and strength instead of the scene's lights and world. Preview only"),
         ),
         default="SCENE",
     )
@@ -691,6 +707,12 @@ class FumarisSettings(PropertyGroup):
         options=set(),
     )
 
+
+    preview_bake: BoolProperty(
+        name="Preview While Baking",
+        description="Show the live preview while baking, to watch the bake as it runs. Off keeps the bake as fast as possible",
+        default=False,
+    )
 
     bake_on_preview: BoolProperty(
         name="Bake on Preview",
@@ -876,10 +898,18 @@ class FumarisSettings(PropertyGroup):
         default="half",
     )
 
-    low_memory_bake: BoolProperty(
-        name="Low Memory Bake",
-        description="Hold fewer VDB frames in system memory while writing: about a fifth less RAM in large bakes (11.9 to 9.6 GB for a 1024 Explosion using 11 GB of GPU memory), at about three times the bake time. Use when a bake would otherwise run out of RAM or swap",
-        default=False,
+    # Measured on a 1024 Explosion at 10 GB of GPU memory, 20-thread CPU
+    # (output/perf_pass, 2026-11-08): bridge RAM 4.0 GB with 10 writers.
+    vdb_writers: EnumProperty(
+        name="VDB Writers",
+        description="How many frames are converted and written to VDB at once while baking. Fewer use less system RAM; use them when a bake would otherwise run out of RAM or swap. Results are the same",
+        items=(
+            ("FASTEST", "Fastest", "One writer per two CPU cores, up to 12: the fastest bakes, the most RAM", 0),
+            ("BALANCED", "Balanced", "Up to 6 writers: about as fast, somewhat less RAM", 1),
+            ("LOW", "Low Memory", "Up to 4 writers: about 40% less RAM in large bakes (4.0 to 2.4 GB) for about 5% more time", 2),
+            ("ULTRA", "Ultra Low Memory", "1 writer, one frame at a time: the least RAM (about half), for several times the bake time", 3),
+        ),
+        default="FASTEST",
     )
 
     # Object References
@@ -1735,17 +1765,42 @@ class FumarisSettings(PropertyGroup):
         subtype="FACTOR",
     )
 
-    # VDB export controls
-    export_temperature_half_res: BoolProperty(
-        name="Temperature at Half Resolution",
-        description="Write temperature at half resolution: about a third smaller files, fire very slightly softer",
-        default=False,
+    # VDB export controls. Resolution: grids can be written at half or a
+    # quarter of the simulation's (2x2x2 or 4x4x4 averages) for smaller files.
+    export_density_vdb: BoolProperty(
+        name="Export Density VDB",
+        description="Write the smoke density grid. The generated material always includes it",
+        default=True,
     )
-
-    export_velocity_half_res: BoolProperty(
-        name="Velocity at Half Resolution",
-        description="Halve the stored velocity grid, which is already half the density resolution (a quarter of it in all): much smaller velocity grids, motion blur from coarser motion",
-        default=False,
+    export_density_resolution: EnumProperty(
+        name="Density Resolution",
+        description="Resolution density is written at: Half is about 8 times smaller and visibly softer",
+        items=_EXPORT_RESOLUTION_ITEMS,
+        default="FULL",
+    )
+    export_temperature_resolution: EnumProperty(
+        name="Temperature Resolution",
+        description="Resolution temperature is written at: Half gives about a third smaller files with fire very slightly softer",
+        items=_EXPORT_RESOLUTION_ITEMS,
+        default="FULL",
+    )
+    export_fuel_resolution: EnumProperty(
+        name="Fuel Resolution",
+        description="Resolution fuel is written at",
+        items=_EXPORT_RESOLUTION_ITEMS,
+        default="FULL",
+    )
+    export_burn_resolution: EnumProperty(
+        name="Burn Resolution",
+        description="Resolution burn is written at",
+        items=_EXPORT_RESOLUTION_ITEMS,
+        default="FULL",
+    )
+    export_velocity_resolution: EnumProperty(
+        name="Velocity Resolution",
+        description="Resolution velocity is written at, relative to density. Motion is simulated at half resolution unless Full-Resolution Velocity (Advanced) is on, which also offers Full",
+        items=_velocity_resolution_items,
+        default=1,
     )
 
     export_glow_vdb: BoolProperty(
@@ -1928,7 +1983,7 @@ class FumarisSettings(PropertyGroup):
         description="How fire is shaded in the generated material",
         items=(
             ("TEMPERATURE", "Temperature", "Gas glows by its own temperature and density (blackbody), with Scatter Glow from nearby fire"),
-            ("PYRO", "Pyro", "Houdini Pyro-style: glow from the baked, slightly blurred heat field through a golden ramp, shown where gas is thin (bright rims and gaps, dark soot cores), hot soot dark. Needs a bake from this version (heat and soft density grids); the glow window follows Full Glow at bake time"),
+            ("PYRO", "Pyro", "Houdini Pyro-style: golden fire with soft glowing cells and dark soot in dense smoke; thin gas glows brighter, dense smoke darker (Thin Gas). Same Brightness, Full Glow and Contrast as Temperature. Needs a bake from Fumaris 1.4 (heat and soft density grids)"),
         ),
         default="TEMPERATURE",
         update=_appearance_updated,
@@ -1936,8 +1991,8 @@ class FumarisSettings(PropertyGroup):
 
     shader_thin_gas: FloatProperty(
         name="Thin Gas",
-        description="Pyro look: smoke density below which gas glows fully; denser gas fades to dark soot. Raise it for dense, smoky sources so their flames still glow",
-        default=0.05,
+        description="Pyro look: smoke density at which fire glows as in the Temperature look. Thinner gas glows up to twice as bright, denser smoke turns to dark soot over the fire. Raise it for dense, smoky fire so more of it glows",
+        default=1.0,
         min=0.001,
         soft_max=2.0,
         update=_appearance_updated,
@@ -2164,6 +2219,26 @@ def _migrate_temperature_mapping():
             for key in ("shader_density_low", "shader_density_high"):
                 if key in props:
                     del props[key]
+        if props is not None and props.smoke_object_type == "domain" and "low_memory_bake" in props:
+            # Low Memory Bake became VDB Writers: Low Memory.
+            if props["low_memory_bake"]:
+                props.vdb_writers = "LOW"
+            del props["low_memory_bake"]
+        if props is not None and props.smoke_object_type == "domain":
+            # 1.4: the Half Res toggles became resolution menus. Velocity Half
+            # Res halved the stored velocity, itself at half resolution unless
+            # Full-Resolution Velocity was on.
+            if "export_temperature_half_res" in props:
+                if props["export_temperature_half_res"]:
+                    props.export_temperature_resolution = "HALF"
+                del props["export_temperature_half_res"]
+            if "export_velocity_half_res" in props:
+                halved = bool(props["export_velocity_half_res"])
+                if props.full_resolution_velocity:
+                    props.export_velocity_resolution = "HALF" if halved else "FULL"
+                elif halved:
+                    props.export_velocity_resolution = "QUARTER"
+                del props["export_velocity_half_res"]
         if (props is not None and props.smoke_object_type == "domain"
                 and props.substep_settings_version < SUBSTEP_SETTINGS_VERSION):
             # The Adaptive toggle became Cells per Step 0.

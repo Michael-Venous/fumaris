@@ -32,10 +32,6 @@ def flame_temperature_range(start, full):
 
 AMBIENT_AIR_KELVIN = 293.15
 
-# Pyro look: the baked heat grid maps temperature over this window, as
-# fractions of Full Glow (2000 K: 1480-2180 K, tuned on the fire wall).
-PYRO_WINDOW = (0.74, 1.09)
-
 
 def physical_buoyancy(props):
     """Temperature Buoyancy (in g, at Flame Temperature) from the gas law:

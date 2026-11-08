@@ -123,14 +123,13 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - **Scatter Glow**, Glow Spread and Glow Shadowing (bakes add small glow
   grids; Glow Radius in Output). Fumaris shows a hint and a Use Biased button
   when Cycles' unbiased volumes would render the glow in square patches.
-- **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading. Gas
-  glows from a slightly blurred heat field through a golden colour ramp, mainly
-  where it is thin (bright rims and gaps between dark soot cells), and hot soot
-  turns dark. Bakes write two small half-resolution grids for it (heat and a
-  softened density, which keeps the glowing rims from aliasing into rings).
-  Thin Gas sets how dense gas may be and still glow fully; the glow window
-  follows Full Glow at bake time. Renders only for now; the live preview keeps
-  the Temperature look.
+- **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with the
+  same Brightness, Full Glow and Contrast as the Temperature look: golden fire,
+  softly glowing cells (a blurred heat field), dark hot soot. Thin Gas sets
+  the smoke density where both looks glow alike; thinner gas glows brighter,
+  denser smoke darker. Works at any scene size, and Full Glow applies without
+  a re-bake. Bakes write two small half-resolution grids for it (heat and a
+  softened density). The live preview shows it too (without the blur).
 - Blue Core is 0 for new domains (with Brightness raised it turned fuel-rich
   scenes lilac).
 
@@ -142,12 +141,17 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - Dense smoke as opaque as in Cycles and flame colours matching the material;
   Scatter Glow, Glow Spread and Glow Shadowing drawn in the preview (Glow
   Spread mixes two blur widths as the material does, so it changes smoothly).
-- **Show** views: Speed, Expansion, Fuel and Active Blocks.
+- **Show** views: Speed, Expansion, Fuel and Active Blocks. Field views ignore
+  the look's Brightness; Speed runs from dark (still) through red (10-20 m/s)
+  to orange (fast) and never clips to white; Active Blocks outlines are
+  thinner; Lighting settings hide while a field view is shown.
 - **Preview Step Size** replaces Ray Steps; the preview is faster (no velocity
   reads for ordinary looks, rays stop once nothing behind can show).
 - Stays in the window it was started from; View > Show Fumaris Preview Here
   and All Viewports choose where it appears.
 - The self-shadow and flame light volumes are counted in Simulation Memory.
+- Lighting: Custom replaces the scene's lights and world with its one light
+  (Strength 0 shows only the fire); it used to add the world's light.
 
 ### Baking and files
 
@@ -156,9 +160,13 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
   glow time 8.4 s to 1.9 s, worst frame 234 to 95 ms, same grids).
 - **Faster, smaller VDB bakes**: only cells holding smoke are read back,
   VDB files are written by more threads (FUMARIS_VDB_WORKERS limits them),
-  bakes use far less RAM, and **Low Memory Bake** trades speed for even less.
+  bakes use far less RAM, and **VDB Writers** (Output) trades speed for even
+  less: Balanced (6), Low Memory (4 writers, ~40% less RAM for ~5% more time)
+  or Ultra Low Memory (1 writer, about half the RAM, several times slower).
 - **Smaller files**: VDB Precision (Half by default), temperature below 500 K
-  not stored, Half Res toggles for Temperature and Velocity, optional Glow.
+  not stored, a Full / Half / Quarter resolution menu for each grid (Density,
+  Temperature, Fuel, Burn, Velocity; velocity Half by default, Full only with
+  Full-Resolution Velocity), Density can be left out, optional Glow.
 - **Takes**: every bake stores its settings in its cache slot; Restore
   Settings from Slot puts them back. **Make Lighter Copy** writes a half-
   resolution copy about 7x smaller.
@@ -180,19 +188,25 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
 - Transport status (Live / Recorded frames) and **Scrub Recording**.
+- **Preview While Baking** (next to Bake on Preview): watch the live preview
+  while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving
-  domain, colliders and memory.
+  domain, colliders and memory (Simulation Speed and Trace Steps first, then
+  block allocation). Appearance shows only the chosen Look's controls, side by
+  side, and hides them all when Flame is off. Emitters keep Influence Only and
+  Burning under Advanced.
 - Linux: a failed bridge start says what to fix (missing library, old glibc,
   no Vulkan driver).
 
 ### New-domain defaults
 
-Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Temperature Diffusion
-0.1, Soot Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
+Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Smoke Per Burn 1 (3 buried
+the fire in dark smoke within a second), Temperature Diffusion 0.1, Soot
+Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
 up to 2 Sub-Steps with Trace Steps 16 and Cells per Step 8 (as close to a
 converged 12-step result as 4 plain steps, about 38% faster), Simulation Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
-Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.3, Blue Core 1,
+Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.3, Blue Core 0,
 Smoke Density 1, smoke colour 0.45, Anisotropy 0.3.
 
 ### Removed
@@ -203,6 +217,9 @@ changed), the Adaptive toggle (Cells per Step 0), Shadow Min Light and Light
 Scattering, and recognition of pre-1.0 beta data.
 
 ### Fixes
+
+- OpenVDB sources read temperature grids in Kelvin: re-emitting a Fumaris bake
+  made its gas millions of degrees hot (infinite in Half precision files).
 
 - Simulation Speed now applies to emitter motion measured by the add-on:
   moving or deforming mesh emitters, collection meshes and points, velocity

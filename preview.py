@@ -25,6 +25,8 @@ _SCENE_DEPTHS = {}
 _SCENE_DEPTH_SERIAL = 0
 _SCENE_DEPTH_QUIET_UNTIL = 0.0
 _SCENE_DEPTH_FAILED = False
+# A draw skipped its depth readback during the quiet period; take it once after.
+_SCENE_DEPTH_DEFERRED = False
 
 
 def capture_volume_preview(context, domain, target=None):
@@ -79,6 +81,8 @@ def capture_volume_preview(context, domain, target=None):
         "glow_contrast": WIEN_KELVIN * max(0.05, float(props.shader_flame_contrast)) / glow_temperature,
         "temperature_multiplier": float(props.shader_temperature_multiplier),
         "color_spread": float(props.shader_color_spread),
+        "pyro_look": str(getattr(props, "shader_look", "TEMPERATURE")) == "PYRO",
+        "thin_gas": float(getattr(props, "shader_thin_gas", 1.0)),
         "flame_tint": [float(value) for value in getattr(props, "shader_flame_tint", (1.0, 1.0, 1.0))],
         "gas_expansion": float(props.gas_expansion),
         "scatter_glow": float(props.shader_scatter_glow),
@@ -134,9 +138,14 @@ def _preview_tone_mapping(context, props):
 
 
 def _scene_depth_request(props, view_id, width, height):
-    global _SCENE_DEPTH_SERIAL
+    global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_DEFERRED
     if not getattr(props, "preview_occlusion", False):
         return {}
+    if _SCENE_DEPTH_DEFERRED and time.monotonic() >= _SCENE_DEPTH_QUIET_UNTIL:
+        # Draws skipped the readback while images streamed in: one redraw
+        # now captures the final depth (published by a later request).
+        _SCENE_DEPTH_DEFERRED = False
+        _tag_viewports()
     depth = _SCENE_DEPTHS.get(view_id)
     if depth is None or depth["size"] != (width, height):
         # The draw handler has not seen this size yet; it triggers a rerender.
@@ -196,6 +205,8 @@ def volume_preview_signature(preview):
         round(float(preview.get("phase_g", 0.0)), 7),
         int(preview.get("volume_bounces", 0)),
         round(float(preview.get("color_spread", 1.0)), 7),
+        bool(preview.get("pyro_look", False)),
+        round(float(preview.get("thin_gas", 1.0)), 7),
         # the Expansion view is scaled by Gas Expansion
         round(float(preview.get("gas_expansion", 0.0)), 7),
         preview.get("depth_serial"),
@@ -318,6 +329,7 @@ def _visible_preview_domain(preview):
 
 
 def _draw_volume_previews():
+    global _SCENE_DEPTH_DEFERRED
     region = bpy.context.region
     if region is None:
         return
@@ -336,7 +348,15 @@ def _draw_volume_previews():
     for preview in previews:
         settings = getattr(preview.get("domain"), "fumaris", None)
         if getattr(settings, "preview_occlusion", False) and preview.get("width"):
-            _capture_scene_depth(view_id, preview["width"], preview["height"])
+            size = (preview["width"], preview["height"])
+            known = _SCENE_DEPTHS.get(view_id)
+            if known is not None and known["size"] == size and time.monotonic() < _SCENE_DEPTH_QUIET_UNTIL:
+                # Images are streaming in (orbiting or playing): a changed depth
+                # would only wait for the quiet period, so skip the readback
+                # (1-5 ms and a GPU sync per draw) until it ends.
+                _SCENE_DEPTH_DEFERRED = True
+            else:
+                _capture_scene_depth(view_id, *size)
             break
 
     shader = _image_shader()
@@ -426,9 +446,12 @@ def _volume_texture(preview):
             buffer = gpu.types.Buffer(
                 "FLOAT", (preview["height"], preview["width"], 4), normalized,
             )
+        # RGBA32F takes the float staging data as is; RGBA8 made Blender
+        # convert it on the CPU (960x540: 2.7 ms vs 0.5 ms). Values are the
+        # same k / 255, so the image is identical.
         texture = gpu.types.GPUTexture(
             (preview["width"], preview["height"]),
-            format="RGBA8",
+            format="RGBA32F",
             data=buffer,
         )
     except Exception as error:

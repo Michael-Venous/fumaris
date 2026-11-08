@@ -71,6 +71,11 @@ from .runtime import (
     release_job,
 )
 
+# How often a paused or playing preview looks for a changed view or setting.
+# A request is cheap (~0.05 ms) and only one is in flight, so the bridge sets
+# the pace; 30 Hz here capped orbiting at 30 fps at any preview size.
+PREVIEW_CAPTURE_INTERVAL = 1.0 / 250.0
+
 
 class FUMARIS_OT_bake(FrameRangeJob, Operator):
     bl_idname = "fumaris.bake"
@@ -130,7 +135,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 domain,
                 clear_cache=True,
                 write_vdb=True,
-                preview_enabled=False,
+                preview_enabled=bool(domain.fumaris.preview_bake),
                 show_progress=True,
             )
         except Exception as error:
@@ -400,6 +405,11 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if deadline:
             domain = bpy.data.objects.get(self._domain_name)
             if time.monotonic() < deadline and preview_image_pending(domain):
+                # Paused: render the next view while Blender draws this one
+                # (a request costs the main thread ~0.05 ms; no frame is built).
+                if (getattr(self, "_pause_requested", False)
+                        and not getattr(self, "_recording_enabled", False)):
+                    self._submit_changed_volume_preview(context)
                 return False
             self._preview_display_deadline = 0.0
         if getattr(self, "_recording_enabled", False):
@@ -445,7 +455,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         now = time.monotonic()
         if now < getattr(self, "_next_preview_capture_at", 0.0):
             return False
-        self._next_preview_capture_at = now + (1.0 / 30.0)
+        self._next_preview_capture_at = now + PREVIEW_CAPTURE_INTERVAL
 
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
@@ -660,13 +670,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             )
             if (data.get("preview") or {}).get("type") == "volume_rgba8":
                 self._preview_display_deadline = time.monotonic() + 0.1
+        # Timings stay in Diagnostics; a console line per rerender spammed
+        # (and on Windows slowed) orbiting at display rate.
         self._preview_render_count = getattr(self, "_preview_render_count", 0) + 1
-        console_log(
-            "Fumaris viewport rerender: "
-            f"total={float(data.get('preview_render_ms', 0.0)):.3f}ms "
-            f"submit={float(data.get('flow_submit_ms', 0.0)):.3f}ms "
-            f"wait={float(data.get('flow_wait_ms', 0.0)):.3f}ms"
-        )
 
     def _complete(self, context):
         domain = bpy.data.objects.get(self._domain_name)

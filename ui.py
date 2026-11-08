@@ -224,10 +224,6 @@ def _draw_emitter(layout, obj, props):
 
     box = layout.box()
     box.label(text="Emitted Channels", icon="MOD_FLUID")
-    box.prop(props, "emitter_influence")
-    box.prop(props, "emitter_burning")
-    if props.emitter_burning:
-        box.prop(props, "emitter_burn_rate")
     smoke_row = box.row()
     smoke_row.active = not props.emitter_influence
     smoke_row.prop(props, "emitter_smoke")
@@ -273,6 +269,11 @@ def _draw_emitter(layout, obj, props):
     box = layout.box()
     column, opened = _nested_foldout(box, props, "show_emitter_advanced", "Advanced")
     if opened:
+        column.prop(props, "emitter_influence")
+        column.prop(props, "emitter_burning")
+        if props.emitter_burning:
+            column.prop(props, "emitter_burn_rate")
+        column.separator()
         if not (
             props.participant_type in {"box", "openvdb"}
             or (
@@ -510,6 +511,33 @@ def _draw_capacity_warning(layout, domain):
         box.label(text="Last run", icon="INFO")
 
 
+def _draw_fire_look(fire, props):
+    """The chosen Look's own controls (each look lists only what it uses)."""
+    exposure = fire.row(align=True)
+    exposure.prop(props, "shader_flame_brightness")
+    exposure.prop(props, "shader_glow_temperature")
+    if props.shader_look == "PYRO":
+        shape = fire.row(align=True)
+        shape.prop(props, "shader_flame_contrast")
+        shape.prop(props, "shader_thin_gas")
+    else:
+        shape = fire.row(align=True)
+        shape.prop(props, "shader_flame_contrast")
+        shape.prop(props, "shader_color_spread")
+        color = fire.row(align=True)
+        color.prop(props, "shader_temperature_multiplier")
+        color.prop(props, "shader_flame_core", text="Blue Core")
+    tint = fire.split(factor=0.25, align=True)
+    tint.label(text="Flame Tint")
+    tint.prop(props, "shader_flame_tint", text="")
+    fire.separator(factor=0.5)
+    fire.prop(props, "shader_scatter_glow")
+    glow = fire.row(align=True)
+    glow.enabled = props.shader_scatter_glow > 0.0
+    glow.prop(props, "shader_glow_spread", slider=True)
+    glow.prop(props, "shader_glow_shadowing", text="Shadowing")
+
+
 def _draw_domain(layout, scene, props):
     job = active_job()
     mode = active_mode()
@@ -568,6 +596,7 @@ def _draw_domain(layout, scene, props):
     record = options.row(align=True)
     record.enabled = mode is None
     record.prop(props, "bake_on_preview")
+    record.prop(props, "preview_bake")
     controls.separator(factor=0.5)
     # Keep transport rows together; all status text lives below their options.
     status = controls.column(align=True)
@@ -648,42 +677,19 @@ def _draw_domain(layout, scene, props):
     )
     if appearance_open:
         appearance.label(text="Smoke")
-        appearance.prop(props, "shader_smoke_density")
-        color = appearance.split(factor=0.2, align=True)
+        smoke = appearance.column(align=True)
+        smoke_row = smoke.row(align=True)
+        smoke_row.prop(props, "shader_smoke_density")
+        smoke_row.prop(props, "shader_anisotropy")
+        color = smoke.split(factor=0.2, align=True)
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")
-        appearance.prop(props, "shader_anisotropy")
         appearance.separator()
-        appearance.prop(props, "shader_flame_enabled")
-        fire = appearance.column(align=True)
-        fire.enabled = props.shader_flame_enabled
-        fire.prop(props, "shader_look")
-        pyro_look = props.shader_look == "PYRO"
-        fire.prop(props, "shader_flame_brightness")
-        fire.prop(props, "shader_glow_temperature")
-        if pyro_look:
-            # The Pyro look reads the baked heat grid; these are its own controls.
-            fire.prop(props, "shader_thin_gas")
-        temperature_only = fire.column(align=True)
-        temperature_only.active = not pyro_look
-        temperature_only.prop(props, "shader_flame_contrast")
-        temperature_only.prop(props, "shader_color_spread")
-        temperature_only.prop(props, "shader_temperature_multiplier")
-        tint = fire.split(factor=0.4, align=True)
-        tint.label(text="Flame Tint")
-        tint.prop(props, "shader_flame_tint", text="")
-        temperature_only = fire.column(align=True)
-        temperature_only.active = not pyro_look
-        temperature_only.prop(props, "shader_flame_core")
-        temperature_only.prop(props, "shader_scatter_glow")
-        glow_spread = fire.row(align=True)
-        glow_spread.enabled = props.shader_scatter_glow > 0.0
-        glow_spread.active = not pyro_look
-        glow_spread.prop(props, "shader_glow_spread", slider=True)
-        glow_shadowing = fire.row(align=True)
-        glow_shadowing.enabled = props.shader_scatter_glow > 0.0
-        glow_shadowing.active = not pyro_look
-        glow_shadowing.prop(props, "shader_glow_shadowing")
+        flame_header = appearance.row(align=True)
+        flame_header.prop(props, "shader_flame_enabled")
+        if props.shader_flame_enabled:
+            flame_header.prop(props, "shader_look", text="")
+            _draw_fire_look(appearance.column(align=True), props)
         if (props.shader_scatter_glow > 0.0 and scene.render.engine == "CYCLES"
                 and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
             # Cycles' unbiased volumes drop the glow in square patches
@@ -726,28 +732,24 @@ def _draw_domain(layout, scene, props):
         vdb.prop(props, "vdb_precision", text="")
         labels.label(text="Material")
         fields.prop(props, "volume_material", text="")
-        output.prop(props, "low_memory_bake")
+        output.prop(props, "vdb_writers")
         output.separator()
         output.prop(props, "volume_selectable")
         output.separator()
-        temperature = output.row(align=True)
-        temperature.prop(props, "export_temperature_vdb")
-        half = temperature.row(align=True)
-        half.active = props.export_temperature_vdb
-        half.prop(props, "export_temperature_half_res", text="Half Res", toggle=True)
-        output.prop(props, "export_fuel_vdb")
-        output.prop(props, "export_burn_vdb")
-        velocity = output.row(align=True)
-        velocity.prop(props, "export_velocity_vdb")
-        half = velocity.row(align=True)
-        half.active = props.export_velocity_vdb
-        half.prop(props, "export_velocity_half_res", text="Half Res", toggle=True)
+        # Each grid: write it, and at which resolution.
+        channels = output.column(align=True)
+        for name in ("density", "temperature", "fuel", "burn", "velocity"):
+            row = channels.split(factor=0.6, align=True)
+            row.prop(props, f"export_{name}_vdb", text=name.title())
+            resolution = row.row(align=True)
+            resolution.active = getattr(props, f"export_{name}_vdb")
+            resolution.prop(props, f"export_{name}_resolution", text="")
         output.prop(props, "export_glow_vdb")
         if props.export_glow_vdb:
             output.prop(props, "glow_radius")
         if props.volume_material is None:
             output.label(
-                text="Generated material always includes temperature",
+                text="Generated material always includes density and temperature",
                 icon="INFO",
             )
 
@@ -764,20 +766,22 @@ def _draw_domain(layout, scene, props):
         steps.prop(props, "preview_step_size")
         steps.prop(props, "preview_all_viewports", toggle=True)
 
-        preview.label(text="Lighting")
-        lighting = preview.column(align=True)
-        lighting.row(align=True).prop(props, "preview_lighting", expand=True)
-        if props.preview_lighting == "CUSTOM":
-            direction = lighting.row(align=True)
-            direction.prop(props, "preview_light_azimuth")
-            direction.prop(props, "preview_light_elevation")
-            lighting.prop(props, "preview_light_strength")
-        toggles = lighting.row(align=True)
-        toggles.prop(props, "preview_shadows", toggle=True)
-        toggles.prop(props, "preview_occlusion", toggle=True)
-        fire = lighting.row(align=True)
-        fire.enabled = props.shader_flame_enabled
-        fire.prop(props, "preview_fire_lighting", slider=True)
+        # Speed, Expansion and Fuel draw a field as fire: lighting does not apply.
+        if props.preview_field_view in {"look", "blocks"}:
+            preview.label(text="Lighting")
+            lighting = preview.column(align=True)
+            lighting.row(align=True).prop(props, "preview_lighting", expand=True)
+            if props.preview_lighting == "CUSTOM":
+                direction = lighting.row(align=True)
+                direction.prop(props, "preview_light_azimuth")
+                direction.prop(props, "preview_light_elevation")
+                lighting.prop(props, "preview_light_strength")
+            toggles = lighting.row(align=True)
+            toggles.prop(props, "preview_shadows", toggle=True)
+            toggles.prop(props, "preview_occlusion", toggle=True)
+            fire = lighting.row(align=True)
+            fire.enabled = props.shader_flame_enabled
+            fire.prop(props, "preview_fire_lighting", slider=True)
 
         preview.label(text="Color")
         color = preview.row(align=True)
@@ -886,8 +890,9 @@ def _draw_domain(layout, scene, props):
         combustion.prop(props, "fuel_energy")
         combustion.prop(props, "ignition_temperature_k")
         combustion.separator()
-        combustion.prop(props, "burn_time")
-        combustion.prop(props, "cooling_time")
+        times = combustion.row(align=True)
+        times.prop(props, "burn_time")
+        times.prop(props, "cooling_time")
         combustion.prop(props, "temperature_diffusion")
         combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
         combustion.separator()
@@ -917,11 +922,18 @@ def _draw_domain(layout, scene, props):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
         advanced.prop(props, "simulation_speed")
+        advanced.prop(props, "trace_steps")
+        advanced.separator()
+        advanced.prop(props, "auto_cell_size")
+        advanced.prop(props, "sparse_block_min_lifetime")
+        allocation = advanced.row(align=True)
+        allocation.prop(props, "allocation_smoke_threshold")
+        allocation.prop(props, "allocation_speed_threshold")
+        advanced.separator()
         detail = advanced.row(align=True)
         detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
         advanced.prop(props, "projection_filter", slider=True)
-        advanced.prop(props, "trace_steps")
         advanced.separator()
         # The on/off switches, two by two.
         grid = advanced.grid_flow(row_major=True, columns=2, even_columns=True, even_rows=True, align=True)
@@ -936,11 +948,6 @@ def _draw_domain(layout, scene, props):
         walls.prop(props, "open_collider_wall")
         walls.prop(props, "closed_collider_margin")
         advanced.prop(props, "collider_face_flux")
-        advanced.prop(props, "auto_cell_size")
-        advanced.prop(props, "sparse_block_min_lifetime")
-        allocation = advanced.row(align=True)
-        allocation.prop(props, "allocation_smoke_threshold")
-        allocation.prop(props, "allocation_speed_threshold")
 
     _draw_diagnostics(layout, props)
 

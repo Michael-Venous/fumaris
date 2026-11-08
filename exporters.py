@@ -36,7 +36,7 @@ from .participants import (
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
 from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
-from .utils import PYRO_WINDOW, executable_path, output_directory_for_object, physical_buoyancy, simulation_frame_range
+from .utils import executable_path, output_directory_for_object, physical_buoyancy, simulation_frame_range
 
 _FRAME_ZERO_VERSION = 1 << 40
 _SEQUENCE_NAME = re.compile(r"^(.*?)(-?)(\d+)(\.[^.]+)$")
@@ -50,6 +50,19 @@ _REPLACE_COUPLE_RATE = 1.0e6
 class FramePacket:
     header: dict
     payload: bytes | bytearray
+
+
+_VDB_WRITERS = {"FASTEST": (0, 0), "BALANCED": (6, 0), "LOW": (4, 0), "ULTRA": (1, 1)}
+# Export Resolution menus -> the writer's averaging factor.
+_EXPORT_DOWNSAMPLE = {"FULL": 1, "HALF": 2, "QUARTER": 4}
+
+
+def _velocity_downsample(props):
+    """Factor on the stored velocity grid, which is at half resolution unless
+    Full-Resolution Velocity is on; Half and Quarter are relative to density."""
+    target = _EXPORT_DOWNSAMPLE.get(getattr(props, "export_velocity_resolution", "HALF") or "HALF", 2)
+    native = 1 if getattr(props, "full_resolution_velocity", False) else 2
+    return max(1, target // native)
 
 
 def bridge_executable():
@@ -98,7 +111,9 @@ def build_session(
         "output_prefix": domain.fumaris.output_prefix or "fumaris_",
         "vdb_compression": getattr(domain.fumaris, "vdb_compression", "active_mask"),
         "vdb_precision": getattr(domain.fumaris, "vdb_precision", "half"),
-        "low_memory_bake": bool(getattr(domain.fumaris, "low_memory_bake", False)),
+        # VDB Writers: (most writers, frames converted at once; 0 = no limit).
+        **dict(zip(("vdb_writer_limit", "vdb_writer_frames"),
+                   _VDB_WRITERS.get(getattr(domain.fumaris, "vdb_writers", "FASTEST"), (0, 0)))),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
         "flow_profile_enabled": os.environ.get("FUMARIS_FLOW_PROFILE", "").strip().lower()
@@ -426,12 +441,11 @@ def _domain_state(props, resolution_scale=1.0):
         "export_burn_vdb": props.export_burn_vdb,
         "export_velocity_vdb": props.export_velocity_vdb,
         "export_glow_vdb": bool(getattr(props, "export_glow_vdb", True)),
-        "export_temperature_half_res": bool(getattr(props, "export_temperature_half_res", False)),
-        "export_velocity_half_res": bool(getattr(props, "export_velocity_half_res", False)),
+        "export_density_vdb": bool(getattr(props, "export_density_vdb", True)) or generated_material,
+        **{f"export_{name}_downsample": _EXPORT_DOWNSAMPLE.get(getattr(props, f"export_{name}_resolution", "FULL"), 1)
+           for name in ("density", "temperature", "fuel", "burn")},
+        "export_velocity_downsample": _velocity_downsample(props),
         "glow_radius": max(0.0, float(props.glow_radius)),
-        # Pyro look: the heat grid maps this window (around Full Glow) to 0..1.
-        "pyro_window_min": PYRO_WINDOW[0] * float(getattr(props, "shader_glow_temperature", 2000.0)),
-        "pyro_window_max": PYRO_WINDOW[1] * float(getattr(props, "shader_glow_temperature", 2000.0)),
     }
 
 
@@ -484,7 +498,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
         reuse_geometry = False
     else:
         track_deformation = (
-            _static_mesh_cache_key(obj, depsgraph, props) is None
+            _static_mesh_cache_key(
+                obj, depsgraph, props, participant.get("closed_surface") is not None) is None
             and not uses_velocity_attribute(props)
         )
         matrix = obj.evaluated_get(depsgraph).matrix_world.copy()

@@ -135,7 +135,9 @@ def preview_lighting(context, props, domain):
     direction = None
     ambient = Vector((0.0, 0.0, 0.0))
 
-    color, strength, environment = _world_background(scene.world)
+    custom_light = props.preview_lighting == "CUSTOM"
+    # Custom replaces the scene's lighting (lights and world) with one light.
+    color, strength, environment = (None, 0.0, None) if custom_light else _world_background(scene.world)
     hdri_sun = None
     if environment is not None:
         sun_rgb, sun_direction, rest = _hdri_stats(environment)
@@ -146,7 +148,7 @@ def preview_lighting(context, props, domain):
         ambient = Vector(color) * strength
 
     candidates = []
-    if props.preview_lighting == "CUSTOM":
+    if custom_light:
         custom = Vector(props.preview_light_direction)
         if custom.length > 0.0:
             candidates.append((Vector((1.0, 1.0, 1.0)) * float(props.preview_light_strength),

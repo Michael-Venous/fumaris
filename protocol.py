@@ -33,10 +33,15 @@ DISPLAY_LUT_KEY = "_display_lut"
 # Table last packed for the running bridge; the bridge keeps it by key, so it
 # is sent once. BridgeWorker.start() resets it for a new bridge process.
 _PACKED_DISPLAY_LUT = [None]
+# Scene depth last packed, by (view, size, depth serial): the bridge's renderer
+# keeps it, so an unchanged depth (e.g. while orbiting) is not sent again.
+_PACKED_SCENE_DEPTH = [None]
 
 
 def reset_packed_display_lut():
+    """A new bridge process holds no table or depth yet."""
     _PACKED_DISPLAY_LUT[0] = None
+    _PACKED_SCENE_DEPTH[0] = None
 
 
 def pack_preview_payload(preview, payload):
@@ -47,9 +52,18 @@ def pack_preview_payload(preview, payload):
     table = preview.get(DISPLAY_LUT_KEY)
     if table is not None:
         preview = {key: value for key, value in preview.items() if key != DISPLAY_LUT_KEY}
-    if depth is not None:
+    depth_key = None
+    if depth is not None and preview.get("depth_serial") is not None:
+        depth_key = (preview.get("view_id"), preview.get("width"), preview.get("height"),
+                     preview["depth_serial"])
+    if depth_key is not None and depth_key == _PACKED_SCENE_DEPTH[0]:
+        preview["scene_depth"] = {"reuse": True}
+    elif depth is not None:
         preview["scene_depth"] = {"offset": len(payload), "count": int(depth.size)}
         payload.extend(depth.tobytes())
+    # A request without depth leaves the bridge unoccluded (far), so the next
+    # depth must be sent again.
+    _PACKED_SCENE_DEPTH[0] = depth_key
     key = preview.get("display_lut_key")
     if table is not None and key and key != _PACKED_DISPLAY_LUT[0]:
         preview["display_lut"] = {"offset": len(payload), "count": int(table.size)}

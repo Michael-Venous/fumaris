@@ -159,8 +159,9 @@ Useful preview controls:
 - `Lighting: Scene` lights the preview with the scene's lights and world in
   Cycles units: the strongest light (or the sun in an HDRI world) with the
   material's anisotropy, the world's light where the smoke sees the sky, and
-  multiple scattering when Cycles has volume bounces. `Custom` keeps one
-  preview-only light (Strength, Azimuth, Elevation) plus the world.
+  multiple scattering when Cycles has volume bounces. `Custom` replaces them
+  with one preview-only light (Strength, Azimuth, Elevation): no scene lights or
+  world, so Strength 0 shows only the fire.
 - `Self Shadows` shadows the smoke from that light and from the sky, at some GPU
   cost; off lights every voxel fully. Changing Appearance Density rebuilds the
   shadow field so light and camera attenuation stay consistent.
@@ -497,7 +498,9 @@ always blend. Colliders and outflows are unaffected.
 
 An OpenVDB emitter reads `density`, `temperature`, `fuel`, `burn` and
 `velocity` grids. `Grid Names` maps differently named grids from other tools;
-leave a name empty for the default. Fuel and Burn grids are read only when the
+leave a name empty for the default. Temperature grids are read in Kelvin, as
+Fumaris writes them (Temperature 1 re-emits a bake at its own heat); scale
+grids in other units with the emitter's Temperature. Fuel and Burn grids are read only when the
 emitter's Fuel or Burn value and coupling are above zero. Grids may each have
 their own transform and voxel size, as Fumaris bakes do for velocity; they are
 resampled onto the smoke grid.
@@ -701,9 +704,12 @@ Density is the standard smoke grid. Additional outputs are:
 
 - `temperature`: Kelvin-like values in a fixed `0-5000` range, suitable for a
   Blackbody node or a custom remap. Gas below 500 K, which cannot glow, is not
-  stored. Temperature and Velocity can be written at half resolution (Output >
-  Grids) for smaller files, and VDB Precision Half (default) stores 16-bit
-  values.
+  stored. Each grid (Density, Temperature, Fuel, Burn, Velocity) can be
+  written at Full, Half or Quarter resolution (Output) for smaller files;
+  Density, Fuel and Burn keep their amount (empty space counts as zero),
+  Temperature and Velocity average the gas only. Velocity is simulated at half
+  resolution and written at Half by default; Full appears with Full-Resolution
+  Velocity. VDB Precision Half (default) stores 16-bit values.
 - `burn`: raw timestep-dependent combustion activity for advanced control.
 - `fuel`: remaining unburned fuel.
 - `velocity`: world-space motion used for volume motion blur and compositing.
@@ -715,13 +721,16 @@ cell and the fire, for Glow Shadowing). `Glow Radius` (Output) sets how far the
 light reaches; 0 follows the size of the fire.
 
 `Look` chooses the fire shading. `Temperature` (the controls below) glows by
-each voxel's temperature and density. `Pyro` follows Houdini's Pyro shading:
-the baked `heat` grid (temperature mapped to a window around Full Glow at bake
-time, slightly blurred) drives a golden colour ramp times Brightness, shown
-where the softened density (`density_soft`) is below `Thin Gas` and only where
-gas exists, while hot soot turns dark. It gives bright rims and gaps between
-darker soot cells. For dense, smoky sources raise Thin Gas, and lower Full Glow
-(then re-bake) for cooler flames. Pyro needs a bake from Fumaris 1.4.0 or later.
+each voxel's temperature and density. `Pyro` follows Houdini's Pyro shading
+with the same Brightness, Full Glow and Contrast, so switching keeps the
+exposure: fire takes a golden colour, glows from the hotter of the gas and its
+blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
+smoke picks up their light, and hot soot turns dark. `Thin Gas` is the smoke
+density at which Pyro glows as brightly as Temperature; thinner gas glows up to
+twice as bright, denser smoke shows as dark soot over the fire. It holds at any
+scene size, and Full Glow changes need no re-bake. Pyro needs a bake from
+Fumaris 1.4.0 or later (heat and soft density grids, written with the glow
+grids).
 
 When `Volume Material` is unset, Fumaris creates a material driven by the
 domain's Appearance settings; changing them does not require a rebake.
@@ -763,7 +772,7 @@ convert NanoVDB to OpenVDB, and write them to disk.
 For a faster or more memory-efficient simulation:
 
 1. Disable VDB channels not used by the final material.
-2. Use Half Res for Temperature or Velocity grids when file size matters.
+2. Write Temperature, Velocity or other grids at Half or Quarter resolution when file size matters.
 3. Lower Preview Resolution or Viewport Scale, or raise Step Size, for viewport work.
 4. Increase resolution and sparse capacity in measured steps.
 5. Use the lowest Sub-Step count that gives a converged result.

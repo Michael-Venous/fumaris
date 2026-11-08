@@ -140,7 +140,8 @@ def _evaluated_mesh(obj, depsgraph, props, matrix, surface_out=None):
 
 
 def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame):
-    key = _static_mesh_cache_key(obj, depsgraph, props)
+    key = _static_mesh_cache_key(
+        obj, depsgraph, props, participant.get("closed_surface") is not None)
     if key is not None and participant.get("static_mesh_key") == key:
         cached = participant.get("static_mesh")
         if cached is not None:
@@ -159,6 +160,9 @@ def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame)
     # Local closed-surface measures for this geometry (also kept with the
     # static-mesh cache: the transform may still scale it).
     participant["closed_surface"] = surface_out.get("surface")
+    # Whether this geometry can be reused depends on it being closed.
+    key = _static_mesh_cache_key(
+        obj, depsgraph, props, participant["closed_surface"] is not None)
     if key is not None:
         participant["static_mesh_key"] = key
         participant["static_mesh"] = (positions, indices)
@@ -217,10 +221,14 @@ def _shared_mesh_arrays(obj, depsgraph, props, matrix, shared, used):
     return positions, indices, velocities, emission_weights
 
 
-def _static_mesh_cache_key(obj, depsgraph, props):
+def _static_mesh_cache_key(obj, depsgraph, props, closed=False):
+    """closed: the last evaluation of this mesh was a closed surface. Its
+    Normal Velocity is then a volume source (emitter settings 1+), so the
+    per-frame arrays do not depend on it and the geometry can be reused."""
     if obj.type != "MESH" or obj.modifiers or obj.data.shape_keys:
         return None
-    if abs(float(props.normal_velocity)) > 1e-6:
+    if abs(float(props.normal_velocity)) > 1e-6 and not (
+            closed and getattr(props, "emitter_settings_version", 0) >= 1):
         return None
     if str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip():
         return None

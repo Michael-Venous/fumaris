@@ -204,6 +204,12 @@ Scattering, and recognition of pre-1.0 beta data.
 
 ### Fixes
 
+- Simulation Speed now applies to emitter motion measured by the add-on:
+  moving or deforming mesh emitters, collection meshes and points, velocity
+  attributes and closed meshes that grow. At Speed 4 they pushed the air four
+  times too hard (a growing source rose far too high); Speed 4 with 4
+  Sub-Steps now tracks Speed 1 with 1 Sub-Step.
+
 - A VDB bake could stop with "No density readback" when the last smoke
   vanished while warm air still moved.
 - Frames with fewer Adaptive Sub-Steps no longer flash brighter.

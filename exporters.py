@@ -233,7 +233,11 @@ def build_frame(
     effectors = []
     volumes = []
 
+    # Motion measured per frame is in scene time; at Simulation Speed s a frame
+    # spans s frames of simulated time, so it is divided by s.
+    speed = max(1e-4, float(getattr(getattr(owner, "fumaris", None), "simulation_speed", 1.0) or 1.0))
     for participant in participants:
+        participant["simulation_speed"] = speed
         kind = participant["kind"]
         if kind == "mesh":
             meshes.append(_mesh_state(participant, depsgraph, payload, frame))
@@ -453,7 +457,7 @@ def _mesh_state(participant, depsgraph, payload, frame):
         matrix = Matrix.Identity(4)
         positions, indices, velocities, emission_weights = collection_mesh_arrays(
             participant, depsgraph, frame,
-            bpy.context.scene.render.fps / bpy.context.scene.render.fps_base,
+            bpy.context.scene.render.fps / bpy.context.scene.render.fps_base / participant.get("simulation_speed", 1.0),
         )
         initial_velocity = _world_vector(obj.evaluated_get(depsgraph).matrix_world, props.velocity)
         position_version = topology_version = frame
@@ -506,11 +510,16 @@ def _mesh_state(participant, depsgraph, payload, frame):
                 participant.get("previous_positions"),
                 matrix,
                 props.motion_velocity_scale,
-                context_fps=bpy.context.scene.render.fps / bpy.context.scene.render.fps_base,
+                context_fps=bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+                / participant.get("simulation_speed", 1.0),
             )
             participant["previous_positions"] = array("f", positions)
         else:
             participant.pop("previous_positions", None)
+        if velocities and uses_velocity_attribute(props) and participant.get("simulation_speed", 1.0) != 1.0:
+            # A velocity attribute is per second of scene time (copy: the array may be cached).
+            inverse = 1.0 / participant["simulation_speed"]
+            velocities = array("f", (value * inverse for value in velocities))
         _add_mesh_initial_velocity(velocities, positions, matrix, initial_velocity)
     if velocities and len(velocities) != len(positions):
         raise RuntimeError(
@@ -858,6 +867,18 @@ def _effector_z_direction_id(name):
     return {"positive": 1, "negative": -1}.get(name, 0)
 
 
+class _MotionTimeScaled:
+    """An emitter's settings with motion velocity rescaled to simulated time
+    (point velocity attributes are per second of scene time)."""
+
+    def __init__(self, props, factor):
+        object.__setattr__(self, "_props", props)
+        object.__setattr__(self, "motion_velocity_scale", float(props.motion_velocity_scale) * factor)
+
+    def __getattr__(self, name):
+        return getattr(self._props, name)
+
+
 def _sphere_cloud_state(participant, depsgraph, payload, frame):
     obj = participant["object"]
     props = obj.fumaris
@@ -865,10 +886,11 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
     if props.participant_type == "collection_points":
         positions, radii, velocities, values = collection_point_arrays(
             participant, depsgraph, frame,
-            bpy.context.scene.render.fps / bpy.context.scene.render.fps_base,
+            bpy.context.scene.render.fps / bpy.context.scene.render.fps_base / participant.get("simulation_speed", 1.0),
         )
     elif enabled:
-        positions, radii, velocities, values = _point_arrays(obj, props, depsgraph)
+        positions, radii, velocities, values = _point_arrays(
+            obj, _MotionTimeScaled(props, 1.0 / participant.get("simulation_speed", 1.0)), depsgraph)
     else:
         positions, radii, velocities, values = _empty_point_arrays()
 
@@ -1092,7 +1114,7 @@ def _closed_surface_source(participant, props, matrix):
     area, volume = world_surface(surface, matrix)
     if area <= 0.0:
         return {}
-    fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+    fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base / participant.get("simulation_speed", 1.0)
     previous = participant.get("previous_volume")
     participant["previous_volume"] = volume
     volume_rate = 0.0 if previous is None else (volume - previous) * fps * props.motion_velocity_scale

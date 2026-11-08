@@ -867,6 +867,19 @@ def _draw_domain(layout, scene, props):
         turbulence.separator()
         turbulence.prop(props, "shred")
 
+    ramps, ramps_open = _nested_foldout(behavior, props, "show_domain_control_ramps", "Control Ramps")
+    if ramps_open:
+        # One row per force or rate: what scales it, over which range, by how much.
+        for name, label in (("vorticity", "Vorticity"), ("disturb", "Disturb"), ("grain", "Grain"),
+                            ("dissipation", "Dissipation"), ("cooling", "Cooling")):
+            split = ramps.split(factor=0.3, align=True)
+            split.label(text=label)
+            right = split.row(align=True)
+            right.prop(props, f"{name}_scale_by", text="")
+            if getattr(props, f"{name}_scale_by") != "uniform":
+                right.prop(props, f"{name}_scale_range", text="")
+                right.prop(props, f"{name}_scale_values", text="")
+
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
         combustion.prop(props, "flame_temperature")
@@ -885,6 +898,11 @@ def _draw_domain(layout, scene, props):
         air = combustion.row(align=True)
         air.prop(props, "oxygen_limit")
         air.prop(props, "soot_radiation")
+        burnoff = combustion.row(align=True)
+        burnoff.prop(props, "soot_burn_off")
+        needs_air = burnoff.row(align=True)
+        needs_air.active = props.soot_burn_off > 0.0
+        needs_air.prop(props, "soot_burn_needs_air", toggle=True)
         oxygen = combustion.row(align=True)
         oxygen.active = props.oxygen_limit > 0.0
         oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
@@ -903,6 +921,7 @@ def _draw_domain(layout, scene, props):
         detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
         advanced.prop(props, "projection_filter", slider=True)
+        advanced.prop(props, "trace_steps")
         advanced.separator()
         # The on/off switches, two by two.
         grid = advanced.grid_flow(row_major=True, columns=2, even_columns=True, even_rows=True, align=True)
@@ -916,6 +935,7 @@ def _draw_domain(layout, scene, props):
         walls = advanced.row(align=True)
         walls.prop(props, "open_collider_wall")
         walls.prop(props, "closed_collider_margin")
+        advanced.prop(props, "collider_face_flux")
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "sparse_block_min_lifetime")
         allocation = advanced.row(align=True)

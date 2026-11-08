@@ -37,6 +37,40 @@ EMITTER_SETTINGS_VERSION = 2
 DEFAULT_EMITTER_EXPANSION = 0.2
 
 
+def _ramp_field(label):
+    return EnumProperty(
+        name=f"{label} Scale By",
+        description=f"Scale {label} per voxel by this field: from the first value at the low end of the range to the second at the high end. Temperature is relative to Flame Temperature (1 = Flame Temperature), Speed in m/s, Smoke in smoke amount",
+        items=(
+            ("uniform", "None", "Uniform"),
+            ("temperature", "Temperature", "Relative to Flame Temperature (0-1)"),
+            ("speed", "Speed", "Gas speed, m/s"),
+            ("smoke", "Smoke", "Smoke amount"),
+        ),
+        default="uniform",
+    )
+
+
+def _ramp_range():
+    return FloatVectorProperty(
+        name="Range",
+        description="Field values where the ramp starts and ends",
+        size=2,
+        default=(0.0, 1.0),
+    )
+
+
+def _ramp_values(label):
+    return FloatVectorProperty(
+        name="Scale",
+        description=f"{label} multiplier at the low and the high end of the range",
+        size=2,
+        default=(1.0, 1.0),
+        min=0.0,
+        soft_max=4.0,
+    )
+
+
 def _object_type_updated(self, _context):
     # A new domain follows the timeline, so its range matches the scene
     # without editing (customer request). Domains whose Start/End were
@@ -1576,6 +1610,55 @@ class FumarisSettings(PropertyGroup):
         unit="VELOCITY",
     )
 
+    # "Scale by" control ramps (Smoke Behavior > Control Ramps): each scales a
+    # force or rate per voxel by temperature (relative to Flame Temperature),
+    # speed or smoke, linearly from the value at the range's low end to the
+    # value at its high end. None keeps the setting uniform.
+    vorticity_scale_by: _ramp_field("Vorticity")
+    vorticity_scale_range: _ramp_range()
+    vorticity_scale_values: _ramp_values("Vorticity")
+    disturb_scale_by: _ramp_field("Disturb")
+    disturb_scale_range: _ramp_range()
+    disturb_scale_values: _ramp_values("Disturb")
+    grain_scale_by: _ramp_field("Grain")
+    grain_scale_range: _ramp_range()
+    grain_scale_values: _ramp_values("Grain")
+    dissipation_scale_by: _ramp_field("Dissipation")
+    dissipation_scale_range: _ramp_range()
+    dissipation_scale_values: _ramp_values("Dissipation")
+    cooling_scale_by: _ramp_field("Cooling")
+    cooling_scale_range: _ramp_range()
+    cooling_scale_values: _ramp_values("Cooling")
+
+    soot_burn_off: FloatProperty(
+        name="Soot Burn-off",
+        description="Smoke thins where gas is hot (from 0.65 to 0.9 of Flame Temperature), per second, so hot layers between soot puffs clear and show the fire. Forms nothing: no heat, no expansion. 0 = off; try 2-6",
+        default=0.0,
+        min=0.0,
+        soft_max=10.0,
+        max=1000.0,
+    )
+
+    soot_burn_needs_air: BoolProperty(
+        name="Needs Air",
+        description="Soot Burn-off only as far as the gas still holds air (the Oxygen Field when on, otherwise less in the hottest gas), so it clears the mixing layers where hot gas meets air",
+        default=False,
+    )
+
+    trace_steps: IntProperty(
+        name="Trace Steps",
+        description="Follow the flow back over each step in sub-steps of at most 1.5 cells, up to this many, so fast curved motion stays accurate with fewer Sub-Steps (fewer interpolations keep more fine detail). 0 = one straight step",
+        default=0,
+        min=0,
+        max=16,
+    )
+
+    collider_face_flux: BoolProperty(
+        name="Collider Face Flux",
+        description="Colliders pass their own velocity to the air at their faces in the pressure solve, instead of half of it averaged with the neighbouring air: moving colliders push and drag the gas more fully",
+        default=False,
+    )
+
     # Advanced solver and collider options.
     projection_filter: FloatProperty(
         name="Projection Filter",
@@ -2045,6 +2128,11 @@ class FumarisSettings(PropertyGroup):
 
     show_domain_turbulence: BoolProperty(
         name="Turbulence Detail",
+        default=False,
+    )
+
+    show_domain_control_ramps: BoolProperty(
+        name="Control Ramps",
         default=False,
     )
 

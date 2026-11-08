@@ -515,6 +515,8 @@ def _draw_fire_look(fire, props):
     """The chosen Look's own controls: Temperature and Pyro keep separate values."""
     pyro = props.shader_look == "PYRO"
     key = {name: keys[1 if pyro else 0] for name, keys in FLAME_VALUE_KEYS.items()}
+    if pyro:
+        fire.row(align=True).prop(props, "pyro_color", expand=True)
     exposure = fire.row(align=True)
     exposure.prop(props, key["brightness"])
     exposure.prop(props, key["glow_temperature"])
@@ -772,7 +774,9 @@ def _draw_domain(layout, scene, props):
                 direction = lighting.row(align=True)
                 direction.prop(props, "preview_light_azimuth")
                 direction.prop(props, "preview_light_elevation")
-                lighting.prop(props, "preview_light_strength")
+                custom = lighting.row(align=True)
+                custom.prop(props, "preview_light_strength")
+                custom.prop(props, "preview_custom_sky")
             toggles = lighting.row(align=True)
             toggles.prop(props, "preview_shadows", toggle=True)
             toggles.prop(props, "preview_occlusion", toggle=True)

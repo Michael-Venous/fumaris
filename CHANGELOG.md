@@ -126,7 +126,8 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with its
   own flame controls (Brightness, Full Glow, Contrast, Blackbody Scale, Blue
   Core, Flame Tint, Scatter Glow; separate from the Temperature look's, using
-  the same brightness law so equal values give equal exposure): golden fire,
+  the same brightness law so equal values give equal exposure) and a Colour
+  choice (Golden ramp or real Blackbody): golden fire,
   softly glowing cells (a blurred heat field), dark hot soot. Thin Gas sets
   the smoke density where both looks glow alike; thinner gas glows brighter,
   denser smoke darker. Works at any scene size, and Full Glow applies without
@@ -153,7 +154,8 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
   and All Viewports choose where it appears.
 - The self-shadow and flame light volumes are counted in Simulation Memory.
 - Lighting: Custom replaces the scene's lights and world with its one light
-  (Strength 0 shows only the fire); it used to add the world's light.
+  and its own grey Sky (shadowed by the smoke, for soft ambient depth), the
+  same in every scene; it used to add the world's light.
 
 ### Baking and files
 

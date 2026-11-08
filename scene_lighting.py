@@ -136,8 +136,11 @@ def preview_lighting(context, props, domain):
     ambient = Vector((0.0, 0.0, 0.0))
 
     custom_light = props.preview_lighting == "CUSTOM"
-    # Custom replaces the scene's lighting (lights and world) with one light.
-    color, strength, environment = (None, 0.0, None) if custom_light else _world_background(scene.world)
+    # Custom replaces the scene's lighting (lights and world) with one light
+    # and a uniform grey sky of its own (Sky), shadowed by the smoke.
+    color, strength, environment = (
+        ((1.0, 1.0, 1.0), float(getattr(props, "preview_custom_sky", 0.0)), None)
+        if custom_light else _world_background(scene.world))
     hdri_sun = None
     if environment is not None:
         sun_rgb, sun_direction, rest = _hdri_stats(environment)

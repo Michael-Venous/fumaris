@@ -646,7 +646,7 @@ class FumarisSettings(PropertyGroup):
         description="What lights the preview smoke",
         items=(
             ("SCENE", "Scene", "The scene's lights and world, as Cycles renders them: the strongest light (or the sun in an HDRI) casts shadows, the world lights the smoke where it sees the sky"),
-            ("CUSTOM", "Custom", "One preview light with its own direction and strength instead of the scene's lights and world. Preview only"),
+            ("CUSTOM", "Custom", "One preview light with its own direction and strength, and a neutral sky (Sky), instead of the scene's lights and world: the same lighting in every scene. Preview only"),
         ),
         default="SCENE",
     )
@@ -655,6 +655,12 @@ class FumarisSettings(PropertyGroup):
         name="Strength",
         description="Strength of the custom preview light, like a Sun light's Strength (W/m²). Preview only",
         default=3.0, min=0.0, soft_max=20.0,
+    )
+
+    preview_custom_sky: FloatProperty(
+        name="Sky",
+        description="Custom lighting: a uniform grey sky around the smoke, like a world colour of this value. The smoke shadows it (with Self Shadows), which gives crevices and undersides their soft ambient darkening. 0 lights the smoke with the custom light only. Preview only",
+        default=0.3, min=0.0, soft_max=2.0,
     )
 
     preview_fire_lighting: FloatProperty(
@@ -1991,6 +1997,16 @@ class FumarisSettings(PropertyGroup):
     )
 
     # Pyro look: its own flame controls, separate from the Temperature look's.
+    pyro_color: EnumProperty(
+        name="Colour",
+        description="Pyro look: how fire is coloured",
+        items=(
+            ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold, as Houdini's Pyro shading", 0),
+            ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature, as the Temperature look (Blackbody Scale shifts it)", 1),
+        ),
+        default="GOLDEN",
+        update=_appearance_updated,
+    )
     pyro_brightness: FloatProperty(
         name="Brightness",
         description="Pyro look: emission strength of the fire",

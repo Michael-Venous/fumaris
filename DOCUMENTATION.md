@@ -160,8 +160,9 @@ Useful preview controls:
   Cycles units: the strongest light (or the sun in an HDRI world) with the
   material's anisotropy, the world's light where the smoke sees the sky, and
   multiple scattering when Cycles has volume bounces. `Custom` replaces them
-  with one preview-only light (Strength, Azimuth, Elevation): no scene lights or
-  world, so Strength 0 shows only the fire.
+  with one preview-only light (Strength, Azimuth, Elevation) and a uniform grey
+  `Sky` of its own, which the smoke shadows (soft ambient darkening in crevices):
+  the same lighting in every scene. Strength 0 and Sky 0 show only the fire.
 - `Self Shadows` shadows the smoke from that light and from the sky, at some GPU
   cost; off lights every voxel fully. Changing Appearance Density rebuilds the
   shadow field so light and camera attenuation stay consistent.
@@ -726,7 +727,9 @@ the Scatter Glow settings), so switching looks does not change the other's
 values. `Temperature` glows by each voxel's temperature and density.
 `Pyro` follows Houdini's Pyro shading with the same brightness law, so equal
 values give equal exposure; Blackbody Scale shifts its golden ramp (above 1
-toward pale gold) and Blue Core works as in Temperature: fire takes a golden colour, glows from the hotter of the gas and its
+toward pale gold) and Blue Core works as in Temperature. `Colour` picks the
+golden ramp or real blackbody colour (as Temperature, with Pyro's soft glow,
+Thin Gas and dark soot): fire takes a golden colour, glows from the hotter of the gas and its
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
 smoke picks up their light, and hot soot turns dark. `Thin Gas` is the smoke
 density at which Pyro glows as brightly as Temperature; thinner gas glows up to

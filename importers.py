@@ -36,8 +36,9 @@ NODE_WIEN_TERM = "Fumaris Wien Term"
 # emission closure, frames. 3: Colour Spread (colour shift is multiply-add).
 # 4: Density Remap (density read through a remap node, not the shader attribute).
 # 5-6: Pyro look. 7: Pyro Blue Core (each look has its own flame values).
+# 8: Pyro Colour (golden ramp or blackbody).
 # Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 7
+GRAPH_VERSION = 8
 NODE_DENSITY_REMAP = "Fumaris Density Remap"
 NODE_DENSITY_GAIN = "Fumaris Density Gain"
 GRAPH_VERSION_KEY = "fumaris_graph_version"
@@ -74,6 +75,10 @@ NODE_PYRO_TINT = "Fumaris Pyro Tint"
 NODE_PYRO_ALBEDO = "Fumaris Pyro Soot"
 NODE_PYRO_HOT = "Fumaris Pyro Hot Soot"
 NODE_PYRO_CORE = "Fumaris Pyro Blue Core"
+# Pyro Colour: golden ramp (0) or real blackbody colour (1), and the blackbody's
+# colour temperature scale (camera shift x Blackbody Scale).
+NODE_PYRO_COLOR = "Fumaris Pyro Colour"
+NODE_PYRO_BLACKBODY_SCALE = "Fumaris Pyro Blackbody Scale"
 PYRO_RAMP = ((0.0, (1.0, 0.1, 0.0)), (0.35, (1.0, 0.32, 0.02)), (0.65, (1.0, 0.58, 0.14)),
              (1.0, (1.0, 0.86, 0.52)))
 PYRO_COLOR_RANGE = (0.45, 1.0)  # x Full Glow: deep red to pale gold
@@ -276,7 +281,8 @@ def apply_generated_material_settings(material, settings):
         -0.95, min(0.95, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
 
     enabled = bool(_appearance_value(settings, "shader_flame_enabled", True))
-    pyro_look = is_pyro_look(settings)
+    # With Flame off the (hidden) Look must not change the smoke: no dark hot soot.
+    pyro_look = is_pyro_look(settings) and enabled
 
     def look_values(pyro):
         """One look's flame controls (the looks keep separate values)."""
@@ -335,6 +341,9 @@ def apply_generated_material_settings(material, settings):
         pyro_core = nodes.get(NODE_PYRO_CORE)
         if pyro_core is not None:
             pyro_core.inputs[1].default_value = look["core"]
+        blackbody = str(_appearance_value(settings, "pyro_color", "GOLDEN")) == "BLACKBODY"
+        nodes[NODE_PYRO_COLOR].inputs["Factor"].default_value = 1.0 if blackbody else 0.0
+        nodes[NODE_PYRO_BLACKBODY_SCALE].inputs[1].default_value = PHYSICAL_COLOR_SHIFT * look["multiplier"]
 
     # Scatter Glow (shared nodes, the active look's values), on the flame's
     # radiance scale at Contrast 1.
@@ -683,7 +692,28 @@ def _build_generated_material(material, blue_core=False):
     luminance_floor.inputs[1].default_value = 0.01
     unit_luminance = math_node("DIVIDE", (-100, -1520), "1 / Luminance", pyro)
     unit_luminance.inputs[0].default_value = 1.0
-    pyro_strength = math_node("MULTIPLY", (-100, -1160), "Strength", pyro)
+    unit_ramp = nodes.new("ShaderNodeVectorMath")
+    unit_ramp.operation = "SCALE"
+    unit_ramp.label = "Ramp at Unit Luminance"
+    unit_ramp.location = (-100, -1360)
+    unit_ramp.parent = pyro
+    # Blackbody colour, as the Temperature look (camera shift, saturation 1.8).
+    blackbody_scale = math_node("MULTIPLY", (-920, -1760), "Colour Temperature", pyro, NODE_PYRO_BLACKBODY_SCALE)
+    blackbody_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT
+    pyro_blackbody = nodes.new("ShaderNodeBlackbody")
+    pyro_blackbody.location = (-740, -1760)
+    pyro_blackbody.parent = pyro
+    blackbody_saturation = nodes.new("ShaderNodeHueSaturation")
+    blackbody_saturation.location = (-560, -1760)
+    blackbody_saturation.parent = pyro
+    blackbody_saturation.inputs["Saturation"].default_value = PHYSICAL_SATURATION
+    color_choice = nodes.new("ShaderNodeMix")
+    color_choice.data_type = "RGBA"
+    color_choice.name = NODE_PYRO_COLOR
+    color_choice.label = "Colour: Golden / Blackbody"
+    color_choice.location = (80, -1560)
+    color_choice.parent = pyro
+    color_choice.inputs["Factor"].default_value = 0.0
     pyro_fire = vector_node("SCALE", (160, -200), "Pyro Fire")
     pyro_total = vector_node("ADD", (160, -380), "Pyro Fire + Glow")
     look = nodes.new("ShaderNodeMix")
@@ -712,7 +742,15 @@ def _build_generated_material(material, blue_core=False):
     links.new(pyro_temperature.outputs[0], color_range.inputs["Value"])
     links.new(_socket(color_range.outputs, "Result"), ramp.inputs["Fac"])
     pyro_tint_inputs = [socket for socket in pyro_tint.inputs if socket.type == "RGBA"]
-    pyro_color = ramp.outputs["Color"]
+    links.new(ramp.outputs["Color"], unit_ramp.inputs[0])
+    links.new(unit_luminance.outputs[0], unit_ramp.inputs["Scale"])
+    links.new(pyro_temperature.outputs[0], blackbody_scale.inputs[0])
+    links.new(blackbody_scale.outputs[0], pyro_blackbody.inputs["Temperature"])
+    links.new(pyro_blackbody.outputs["Color"], blackbody_saturation.inputs["Color"])
+    choice_inputs = [socket for socket in color_choice.inputs if socket.type == "RGBA"]
+    links.new(unit_ramp.outputs[0], choice_inputs[0])
+    links.new(blackbody_saturation.outputs["Color"], choice_inputs[1])
+    pyro_color = [socket for socket in color_choice.outputs if socket.type == "RGBA"][0]
     if fresh is not None:
         # Pyro Blue Core: the same fresh-flame mask, with its own strength.
         pyro_core = math_node("MULTIPLY", (-560, -1560), "Blue Core", pyro, NODE_PYRO_CORE, clamp=True)
@@ -732,9 +770,7 @@ def _build_generated_material(material, blue_core=False):
     links.new(ramp.outputs["Color"], ramp_luminance.inputs["Color"])
     links.new(ramp_luminance.outputs["Val"], luminance_floor.inputs[0])
     links.new(luminance_floor.outputs[0], unit_luminance.inputs[1])
-    links.new(pyro_gain.outputs[0], pyro_strength.inputs[0])
-    links.new(unit_luminance.outputs[0], pyro_strength.inputs[1])
-    links.new(pyro_strength.outputs[0], pyro_fire.inputs["Scale"])
+    links.new(pyro_gain.outputs[0], pyro_fire.inputs["Scale"])
     links.new(pyro_fire.outputs[0], pyro_total.inputs[0])
     links.new(glow_part.outputs[0], pyro_total.inputs[1])
     look_inputs = [socket for socket in look.inputs if socket.type == "RGBA"]

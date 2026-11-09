@@ -1240,12 +1240,10 @@ OPEN_SURFACE_FAN_COUPLING = 40.0
 
 
 def _effective_divergence_coupling(props, divergence):
+    # Coupling 0 turns Expansion off, as it does for every other channel.
     if props is None:
         return 0.0
-    coupling = props.couple_rate_divergence
-    if coupling == 0.0 and abs(divergence) > 1e-6:
-        return max(2.0, props.couple_rate_smoke)
-    return coupling
+    return max(0.0, float(props.couple_rate_divergence))
 
 
 def _mesh_distances(props, role):

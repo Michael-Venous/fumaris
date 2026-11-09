@@ -29,10 +29,8 @@ def _attribute_scalar(value, default):
 
 
 def _effective_divergence_coupling(props, divergence):
-    explicit = float(props.couple_rate_divergence)
-    if explicit > 0.0:
-        return explicit
-    return max(0.0, float(props.couple_rate_smoke)) if abs(divergence) > 1e-6 else 0.0
+    # Divergence coupling 0 turns Expansion off, as coupling 0 does for every channel.
+    return max(0.0, float(props.couple_rate_divergence))
 
 
 def _point_arrays(obj, props, depsgraph):
@@ -196,12 +194,7 @@ def _bulk_point_values(attrs, props, count):
         "couple_rate_smokes": _bulk_scalar_attribute(attrs, props.attr_smoke_coupling, ("smoke_coupling", "density_coupling"), count, props.couple_rate_smoke),
     }
     if np is not None:
-        explicit = float(props.couple_rate_divergence)
-        coupling = np.full(count, max(0.0, explicit), dtype=np.float32)
-        if explicit <= 0.0:
-            coupling[np.abs(np.frombuffer(divergences, dtype=np.float32)) > 1e-6] = max(
-                0.0, float(props.couple_rate_smoke)
-            )
+        coupling = np.full(count, max(0.0, float(props.couple_rate_divergence)), dtype=np.float32)
         values["couple_rate_divergences"] = _float_array(coupling)
     else:
         values["couple_rate_divergences"] = array(

@@ -572,7 +572,7 @@ def _draw_domain(layout, scene, props):
     is_initializing = job is not None and not getattr(job, "_accepted", False)
 
     compare_box = layout.box()
-    if _section(compare_box, props, "show_panel_compare", "Compare", "SEQ_SPLITVIEW"):
+    if _section(compare_box, props, "show_panel_compare", "Presets & Compare", "SEQ_SPLITVIEW"):
         from .compare import draw_compare
         draw_compare(compare_box, props.id_data, props)
 
@@ -854,6 +854,15 @@ def _draw_domain(layout, scene, props):
         # One split for both rows so their X / Y / Z columns line up; the Gravity
         # from Scene button sits just left of the fields (a blank slot for Wind).
         for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
+            if _NARROW:
+                # Three fields with units need the full width; the label and
+                # the scene button go on the row above.
+                header = behavior.row(align=True)
+                header.label(text=label)
+                if button:
+                    header.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
+                behavior.row(align=True).prop(props, name, text="")
+                continue
             split = _label_split(behavior, 0.12, 0.22)
             split.label(text=label)
             right = split.row(align=True)
@@ -988,7 +997,8 @@ class FUMARIS_PT_main(Panel):
             header.enabled = active_mode() != "baking"
         header.label(text=obj.name, icon="OBJECT_DATA")
         header.prop(props, "smoke_object_type", text="Role")
-        if props.smoke_object_type != "none":
+        # A domain's presets live in Presets & Compare (A/B swap, save, delete).
+        if props.smoke_object_type not in {"none", "domain"}:
             presets = header.row(align=True)
             presets.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")
             presets.operator("fumaris.preset_save", text="", icon="ADD")

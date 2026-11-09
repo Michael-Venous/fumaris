@@ -14,9 +14,10 @@ from .runtime import active_job
 # Presets start from the domain defaults (properties.py)
 # and change only what makes each effect what it is (2.0 preset pass,
 # 2026-11-07): the look, combustion and fade settings stay the defaults.
-# 2 GB of VRAM: the presets use at most ~2,000 blocks (2 GB holds 14,000+), and
-# every frame stays under 25 ms at 1 Sub-Step on an RTX 4060 Ti, so preview
-# playback keeps 24 fps (output/qs_pass, 2026-11-08).
+# 2 GB of VRAM: the presets use at most ~8,300 blocks (the Explosion with its
+# stem at frame 120; 2 GB holds 14,000+), and frames stay under ~32 ms (95th
+# percentile) at 1 Sub-Step on an RTX 4060 Ti, so preview playback keeps 24 fps
+# (output/qs_pass 2026-11-08, output/perf4 2026-11-09).
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
     "simulation_memory": 2.0,
@@ -73,6 +74,11 @@ PRESETS = {
                     "emitter_fuel": 16.0, "normal_velocity": 1.0, "emitter_divergence": 14.0,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 8,
+        # Then a stem: the source vents warm soot for 80 frames, fading over the
+        # last 30, so the cloud stands on a column instead of floating off the
+        # ground (2026-11-09, output/qs_review/exp1-2).
+        "stem": {"frames": 80, "smoke": 3.0, "temperature": 0.4, "normal_velocity": 1.0,
+                 "expansion": 1.0, "fade": 30},
         "duration": 120,
     },
     "FOG": {
@@ -283,11 +289,32 @@ def _configure_source(obj, preset, start_frame, current_frame):
                 animation.action_slot = animation.action.slots[slot_identifier]
         # Boolean channels use discrete interpolation. Animate only the new
         # Fumaris enable channel, leaving transforms and other animation intact.
+        burst_end = start_frame + duration - 1
+        stem = preset.get("stem")
+        end = burst_end
+        if stem:
+            # After the blast the source keeps venting warm, sooty gas (no fuel,
+            # no expansion) that fades out: the column the rising fireball
+            # draws up under itself, so the cloud stands on a stem.
+            stem_values = {"emitter_fuel": 0.0, "emitter_divergence": stem.get("expansion", 0.0),
+                           "emitter_smoke": stem["smoke"], "emitter_temperature": stem["temperature"],
+                           "normal_velocity": stem.get("normal_velocity", 0.0)}
+            end = burst_end + stem["frames"]
+            for name, value in stem_values.items():
+                burst = getattr(props, name)
+                props.keyframe_insert(name, frame=burst_end)
+                setattr(props, name, value)
+                props.keyframe_insert(name, frame=burst_end + 1)
+                if name in ("emitter_smoke", "emitter_temperature"):
+                    props.keyframe_insert(name, frame=end - stem.get("fade", 0))
+                    setattr(props, name, 0.0)
+                    props.keyframe_insert(name, frame=end)
+                setattr(props, name, burst)
         props.participant_enabled = True
-        props.keyframe_insert("participant_enabled", frame=start_frame + duration - 1)
+        props.keyframe_insert("participant_enabled", frame=end)
         props.participant_enabled = False
-        props.keyframe_insert("participant_enabled", frame=start_frame + duration)
-        props.participant_enabled = current_frame < start_frame + duration
+        props.keyframe_insert("participant_enabled", frame=end + 1)
+        props.participant_enabled = current_frame <= end
 
 
 class FUMARIS_OT_quick_setup(bpy.types.Operator):

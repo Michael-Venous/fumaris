@@ -210,9 +210,11 @@ Removed). This is a beta: please report scenes that look wrong.
 
 - **Quick Setup**: Rising Smoke, Steady Fire, Explosion (optional Debris
   Trails), Ground Fog and Chimney Smoke, starting from the new defaults, at
-  2 GB of VRAM with every frame under 25 ms on an RTX 4060 Ti (24 fps
-  playback). The Explosion is grander (a longer, stronger burst and more soot:
-  a large mushroom cloud) and Chimney Smoke breaks up into turbulent smoke.
+  2 GB of VRAM with 24 fps preview playback on an RTX 4060 Ti. The Explosion
+  is grander (a longer, stronger burst and more soot) and stands on a stem:
+  after the blast its source vents warm soot that fades out, so the mushroom
+  cloud rises on a column instead of floating off the ground. Chimney Smoke
+  breaks up into turbulent smoke.
 - **Emitter operations**: new emitters Add what they emit (Smoke, Temperature,
   Fuel, Burn); Velocity gets the operation menu too (Blend by default). The
   coupling tooltips say what each rate means per operation.
@@ -225,7 +227,8 @@ Removed). This is a beta: please report scenes that look wrong.
   throughout; the object's Fumaris role is labelled **Role**.
 - **Ground Fog** rolls into billows (a light Disturb layer) instead of
   spreading in regular rings.
-- **Compare** (top of the domain panel): every cache slot is a version, listed
+- **Presets & Compare** (top of the domain panel; a domain's presets live
+  here, sources keep their Presets menu): every cache slot is a version, listed
   with its frames, size and a note; click one to make it current. Show another
   slot as B beside the current bake (or instead of it), swap them, list the
   settings that differ, or take B's settings. Keep a preview recording or a

@@ -1309,7 +1309,11 @@ class FUMARIS_OT_preset_delete(Operator):
 
     def execute(self, context):
         from .presets import delete_preset
-        delete_preset(context.object.fumaris, self.name)
+        props = context.object.fumaris
+        delete_preset(props, self.name)
+        for side in ("a", "b"):
+            if getattr(props, f"compare_preset_{side}", None) == self.name:
+                setattr(props, f"compare_preset_{side}", "")
         return {"FINISHED"}
 
 

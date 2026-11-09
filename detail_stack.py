@@ -411,19 +411,31 @@ class FUMARIS_OT_field_mask_move(Operator):
 # ------------------------------------------------------------------ interface
 
 
+# Compact list rows for a narrow Properties editor (see ui._NARROW).
+_BLEND_SHORT = {"MULTIPLY": "×", "MINIMUM": "Min", "MAXIMUM": "Max", "ADD": "+", "SUBTRACT": "−", "REPLACE": "="}
+_FIELD_SHORT = {"TEMPERATURE": "Temp", "AIR": "Air"}
+
+
+def _narrow():
+    from . import ui
+    return ui._NARROW
+
+
 class FUMARIS_UL_detail_layers(UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_property, _index):
         row = layout.row(align=True)
         row.prop(item, "enabled", text="")
         sub = row.row(align=True)
         sub.active = item.enabled
+        narrow = _narrow()
+        gap = " · " if narrow else "  ·  "
         text = label(item)
         if item.layer_type not in SCALE_TYPES:
-            text += f"  {item.strength:g}"
+            text += f" {item.strength:g}" if narrow else f"  {item.strength:g}"
         if item.layer_type in {"DISTURB", "GRAIN"}:
-            text += f"  ·  {item.size:g} m"
-        if len(item.masks):
-            text += f"  ·  {len(item.masks)} mask" + ("s" if len(item.masks) > 1 else "")
+            text += f"{gap}{item.size:g} m"
+        if len(item.masks) and not narrow:  # the mask list sits right below
+            text += f"{gap}{len(item.masks)} mask" + ("s" if len(item.masks) > 1 else "")
         sub.label(text=text, icon=_LAYER[item.layer_type][3])
 
 
@@ -434,6 +446,12 @@ class FUMARIS_UL_field_masks(UIList):
         sub = row.row(align=True)
         sub.active = item.enabled
         units = FIELD_UNITS.get(item.field, "")
+        if _narrow():
+            blend = _BLEND_SHORT.get(item.blend, _BLEND[item.blend][1])
+            field = _FIELD_SHORT.get(item.field, _FIELD[item.field][1])
+            sub.label(text=f"{blend} {field} {item.range[0]:g}-{item.range[1]:g}{units}"
+                           f" → {item.values[0]:g}-{item.values[1]:g}")
+            return
         sub.label(text=f"{_BLEND[item.blend][1]} {_FIELD[item.field][1]}  "
                        f"{item.range[0]:g}-{item.range[1]:g}{units} → {item.values[0]:g}-{item.values[1]:g}")
 

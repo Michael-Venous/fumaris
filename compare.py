@@ -1058,11 +1058,13 @@ class _ComparePresetMenu:
             layout.operator("fumaris.compare_preset_pick", text="Current").side = "A"
         names = list_presets("domain")
         if not names:
-            layout.label(text="No saved domain presets: save one with + next to Presets")
+            layout.label(text="No saved domain presets: save one with + above")
         for name in names:
-            op = layout.operator("fumaris.compare_preset_pick", text=name)
+            row = layout.row(align=True)
+            op = row.operator("fumaris.compare_preset_pick", text=name)
             op.side = self.side
             op.name = name
+            row.operator("fumaris.preset_delete", text="", icon="X").name = name
 
 
 class FUMARIS_MT_compare_preset_a(_ComparePresetMenu, Menu):

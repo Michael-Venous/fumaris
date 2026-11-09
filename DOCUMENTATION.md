@@ -239,12 +239,16 @@ solver state cannot currently be serialized, so a stopped bake cannot resume;
 the next Bake starts from the beginning. `Delete` removes the selected cache
 slot and its imported volume. It is unavailable while a job is active.
 
-## Compare
+## Presets & Compare
 
-The `Compare` section at the top of the domain panel works with the domain's
-cache slots as versions of the shot.
+The `Presets & Compare` section at the top of the domain panel holds the
+domain's presets and works with its cache slots as versions of the shot.
+Emitters, colliders, effectors and outflows keep a `Presets` menu at the top
+of their panel (apply, `+` to save, `X` to delete).
 
-- **Presets**: pick a saved domain preset for A and for B and apply either, or
+- **Presets**: `+` saves the domain's settings as a preset, available in every
+  file; the A and B menus list the saved presets (`X` deletes one). Pick a
+  preset for A and for B and apply either, or
   press `Swap` to flip between them. A left as `Current` stands for the
   settings you had before first switching to B, so a preset can be tried and
   undone with one click.

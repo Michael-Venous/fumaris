@@ -47,7 +47,7 @@ LAYER_TYPES = (
      "FREEZE", "cooling", 0.0),
     ("SOOT_BURN", "Soot Burn-off",
      "Smoke thins (burns off) at this rate per second where the masks allow: by default where "
-     "gas is hot, optionally only where air is left. Forms nothing, adds no heat",
+     "gas is hot and air is left, as soot oxidises. Forms nothing, adds no heat",
      "FORCE_FORCE", "soot_burn", 1.0),
 )
 _LAYER = {item[0]: item for item in LAYER_TYPES}
@@ -177,8 +177,11 @@ def default_masks(layer_type, flame_kelvin):
     """The masks a new layer starts with, editable like any other."""
     if layer_type in {"DISTURB", "GRAIN"}:
         return gate_masks()
-    if layer_type == "SOOT_BURN":   # hot gas, 0.65 to 0.9 of Flame Temperature
-        return [{"field": "TEMPERATURE", "range": [0.65 * flame_kelvin, 0.9 * flame_kelvin], "values": [0.0, 1.0]}]
+    if layer_type == "SOOT_BURN":
+        # Soot oxidises where gas is hot (0.65 to 0.9 of Flame Temperature)
+        # and still holds air (the Oxygen Field, or estimated from temperature).
+        return [{"field": "TEMPERATURE", "range": [0.65 * flame_kelvin, 0.9 * flame_kelvin], "values": [0.0, 1.0]},
+                {"field": "AIR", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]}]
     if layer_type == "VORTICITY":   # stronger swirls in hot gas
         return [{"field": "TEMPERATURE", "range": [0.0, flame_kelvin], "values": [0.5, 2.0]}]
     if layer_type == "DISSIPATION":  # cold smoke fades faster than hot

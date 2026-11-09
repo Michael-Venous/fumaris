@@ -109,7 +109,7 @@ class FumarisSettings(PropertyGroup):
 
     smoke_object_type: EnumProperty(
         name="Type",
-        description="Fumaris smoke role for this object",
+        description="What this object is in a Fumaris simulation: the Domain that simulates, or an emitter, collider, effector or outflow",
         items=[
             ("domain", "Domain", "Bake an isolated simulation domain"),
             ("emitter", "Emitter", "Emit smoke into a domain that references this object"),
@@ -152,6 +152,7 @@ class FumarisSettings(PropertyGroup):
 
     collection_point_center: EnumProperty(
         name="Point Center",
+        description="Where each source object of the collection emits from",
         items=[
             ("bounds", "Bounds Center", "Place each point at the evaluated mesh bounds center"),
             ("origin", "Object Origin", "Place each point at its evaluated object origin"),
@@ -161,6 +162,7 @@ class FumarisSettings(PropertyGroup):
 
     collection_radius_mode: EnumProperty(
         name="Radius From",
+        description="How the emitting radius of each source object is chosen",
         items=[
             ("bounds", "Object Size", "Use half the largest scaled local bounding-box dimension; approximates each mesh as a sphere"),
             ("fixed", "Fixed Radius", "Use the same world-space radius for all source objects"),
@@ -204,10 +206,10 @@ class FumarisSettings(PropertyGroup):
 
     collider_type: EnumProperty(
         name="Collider Type",
-        description="Flow collider primitive used for this participant",
+        description="Shape the collider blocks smoke with",
         items=[
-            ("mesh", "Mesh", "Use the evaluated mesh as a true Flow collision object"),
-            ("box", "Box", "Use this object's transform as a true Flow box collision object"),
+            ("mesh", "Mesh", "The evaluated mesh, as it deforms"),
+            ("box", "Box", "A box from this object's transform (fastest)"),
             ("sphere", "Sphere", "Use a spherical velocity/pressure influence collider"),
         ],
         default="mesh",
@@ -254,7 +256,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_burning: BoolProperty(
         name="Burning",
-        description="The emitter burns where it sits, like a gas jet or a burning surface, without emitting fuel: it heats gas toward Flame Temperature, adds smoke at the domain's Smoke Amount and expands it by Gas Expansion, all at Burn Rate. Realistic combustion only",
+        description="The emitter burns where it sits, like a gas jet or a burning surface, without emitting fuel: it heats gas toward Flame Temperature, adds smoke by the domain's Smoke Amount and expands it by Gas Expansion, all at Burn Rate",
         default=False,
     )
 
@@ -413,7 +415,7 @@ class FumarisSettings(PropertyGroup):
     # Simulation Settings
     velocity: FloatVectorProperty(
         name="Initial Velocity",
-        description="Initial velocity added by the emitter itself",
+        description="Velocity the emitter blows its smoke with (in addition to its own motion), at the Velocity coupling rate",
         default=(0.0, 0.0, 0.0),
         size=3,
         subtype="VELOCITY",
@@ -836,7 +838,7 @@ class FumarisSettings(PropertyGroup):
 
     vdb_compression: EnumProperty(
         name="VDB Compression",
-        description="Compression mode used for written OpenVDB files; Active Mask was fastest in local testing and imports in Blender",
+        description="Compression of the written VDB files. Active Mask writes fastest and imports in Blender; ZIP and Blosc make smaller files that take longer to write",
         items=[
             ("active_mask", "Active Mask", "Fast Fumaris default; stores active masks without value compression"),
             ("none", "None", "No OpenVDB compression"),
@@ -875,7 +877,7 @@ class FumarisSettings(PropertyGroup):
     # Object References
     emitter_collection: PointerProperty(
         name="Emitters Collection",
-        description="Domain-scoped collection of emitter participant objects",
+        description="Collection of the objects that emit into this simulation",
         type=bpy.types.Collection,
     )
 
@@ -914,7 +916,7 @@ class FumarisSettings(PropertyGroup):
 
     effector_collection: PointerProperty(
         name="Effector Collection",
-        description="Collection of Fumaris Smoke effector objects for this simulation",
+        description="Collection of the effector objects (forces) acting on this simulation",
         type=bpy.types.Collection,
     )
 
@@ -1274,7 +1276,7 @@ class FumarisSettings(PropertyGroup):
 
     effector_coupling: FloatProperty(
         name="Coupling",
-        description="How strongly the force velocity couples into the Flow grid",
+        description="How quickly the smoke takes on the effector's velocity: higher values make the force act harder and sooner",
         default=8.0,
         min=0.0,
         soft_max=500.0,
@@ -1335,7 +1337,7 @@ class FumarisSettings(PropertyGroup):
 
     buoyancy_per_temp: FloatProperty(
         name="Temperature Buoyancy",
-        description="Upward force applied per unit of smoke temperature",
+        description="How strongly hot gas rises (against Gravity), per unit of temperature",
         default=2.0,
         min=0.0,
         soft_max=20.0,
@@ -1492,7 +1494,7 @@ class FumarisSettings(PropertyGroup):
 
     # 1 (2026-11-08): at 3 a dense dark cloud buried the fire within a second.
     smoke_per_burn: FloatProperty(
-        name="Smoke Per Burn",
+        name="Smoke Amount",
         description="How much smoke burning fuel produces; increase for smokier fire or lower for cleaner flames",
         default=1.0,
         min=0.0,
@@ -1688,19 +1690,19 @@ class FumarisSettings(PropertyGroup):
 
     export_fuel_vdb: BoolProperty(
         name="Export Fuel VDB",
-        description="Export fuel field alongside density",
+        description="Write the fuel grid (unburnt fuel), for custom shading. Blue Core adds it automatically",
         default=False,
     )
 
     export_burn_vdb: BoolProperty(
         name="Export Burn VDB",
-        description="Export Flow's raw timestep-dependent combustion amount for custom shading. The generated material does not need it",
+        description="Write how much fuel burns in each voxel (it depends on Sub-Steps), for custom shading. The generated material does not need it",
         default=False,
     )
 
     flame_temperature_min: FloatProperty(
         name="Start Temperature",
-        description="Kelvin-like temperature where generated fire emission begins",
+        description="Temperature (K) where generated fire emission begins",
         default=800.0,
         min=0.0,
         soft_max=5000.0,
@@ -1709,7 +1711,7 @@ class FumarisSettings(PropertyGroup):
 
     flame_temperature_max: FloatProperty(
         name="Full Temperature",
-        description="Kelvin-like temperature where generated fire emission reaches full strength",
+        description="Temperature (K) where generated fire emission reaches full strength",
         default=3000.0,
         min=1.0,
         soft_max=5000.0,
@@ -1984,7 +1986,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_temperature_multiplier: FloatProperty(
         name="Blackbody Scale",
-        description="Multiplier applied to Kelvin-like temperature before Blackbody color; 1.0 preserves the baked temperature",
+        description="Multiplies temperature before the blackbody colour: above 1 shifts fire toward yellow-white, below 1 toward deep red. 1 keeps the simulated temperature",
         default=1.0,
         min=0.01,
         max=10.0,
@@ -2017,7 +2019,7 @@ class FumarisSettings(PropertyGroup):
     # 2 steps and close to a converged result (output/trace_final).
     num_sub_steps: IntProperty(
         name="Sub-Steps",
-        description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation",
+        description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation. With Cells per Step above 0 it is the most allowed, and steps are added only where motion needs them",
         default=1,
         min=1,
         max=40,

@@ -222,6 +222,8 @@ Removed). This is a beta: please report scenes that look wrong.
   sources.
 - **User presets** for domains and sources, shared between files; applying
   one restores the whole saved state.
+- **Ground Fog** rolls into billows (a light Disturb layer) instead of
+  spreading in regular rings.
 - **Compare** (top of the domain panel): every cache slot is a version, listed
   with its frames, size and a note; click one to make it current. Show another
   slot as B beside the current bake (or instead of it), swap them, list the
@@ -244,7 +246,7 @@ Removed). This is a beta: please report scenes that look wrong.
 
 ### New defaults
 
-Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Smoke Per Burn 1 (3 buried
+Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Smoke Amount 1 (3 buried
 the fire in dark smoke within a second), Temperature Diffusion 0.1, Soot
 Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
 1 Sub-Step with Trace Steps 16 (Cells per Step 8 applies once Max Sub-Steps is

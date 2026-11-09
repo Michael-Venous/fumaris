@@ -55,7 +55,7 @@ PRESETS = {
         # it into cauliflower billows; the fire burns out in about a second,
         # leaving glowing cracks in the smoke (output/presets1.4).
         # Grander (2026-11-08): a longer, stronger burst (8 frames, Fuel 16,
-        # Expansion 14) and more soot (Smoke Per Burn 2.5) leave a large
+        # Expansion 14) and more soot (Smoke Amount 2.5) leave a large
         # mushroom cloud instead of a fireball that fades within a second.
         "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0, "smoke_per_burn": 2.5},
         # A Disturb layer; its largest swirls relative to the sources' largest dimension.
@@ -81,6 +81,10 @@ PRESETS = {
         # Cold smoke heavier than air sinks and spreads along the ground.
         "domain": {"shader_flame_enabled": False, "buoyancy_per_smoke": -0.4,
                    "shader_smoke_color": (0.8,) * 3},
+        # Disturb rolls the spreading fog into billows; without it the heavy
+        # sheet sloshed outward in regular concentric rings (2026-11-09,
+        # output/qs_review/fog1-2).
+        "disturb": {"strength": 25.0, "detail": 1, "size_per_size": 0.5},
         "emitter": {"emitter_smoke": 2.0, "emitter_temperature": 0.0,
                     "source_op_temperature": "add", "couple_rate_temperature": 2.0,
                     "emitter_fuel": 0.0, "normal_velocity": 0.5, "emitter_divergence": 0.3},

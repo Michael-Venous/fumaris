@@ -110,8 +110,6 @@ class FumarisFieldMask(PropertyGroup):
                         description="Field this mask reads in each cell")
     blend: EnumProperty(name="Blend", items=_blend_items(), default="MULTIPLY",
                         description="How this mask combines with the masks above it (the first mask starts from 1)")
-    invert: BoolProperty(name="Invert", default=False, options={"HIDDEN"},
-                         description="Flip the ramp (kept for older files; swap To Min and To Max instead)")
     range: FloatVectorProperty(name="From", size=2, default=(500.0, 1500.0),
                                description="Field values mapped from: From Min to From Max")
     values: FloatVectorProperty(name="To", size=2, default=(0.0, 1.0), min=0.0, soft_max=4.0,
@@ -122,7 +120,8 @@ class FumarisFieldMask(PropertyGroup):
 
 class FumarisDetailLayer(PropertyGroup):
     enabled: BoolProperty(name="Enabled", default=True, description="Use this layer")
-    layer_type: EnumProperty(name="Type", items=_type_items(), default="DISTURB")
+    layer_type: EnumProperty(name="Type", items=_type_items(), default="DISTURB",
+                             description="What this layer does to the smoke")
     strength: FloatProperty(name="Strength", default=100.0, min=0.0, soft_max=1000.0,
                             description="Disturb and Grain: push in scene units per second squared (about 50 "
                                         "is subtle, 300 strong on a fireball a few metres across). Shred and "
@@ -214,7 +213,6 @@ def export_layers(props):
         masks = [{
             "field": _FIELD[mask.field][3],
             "blend": _BLEND[mask.blend][3],
-            "invert": bool(mask.invert),
             "range": [float(mask.range[0]), float(mask.range[1])],
             "values": [float(mask.values[0]), float(mask.values[1])],
             "noise_size": float(mask.noise_size),
@@ -230,7 +228,7 @@ def export_layers(props):
 
 
 _LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail")
-_MASK_KEYS = ("enabled", "field", "blend", "invert", "range", "values", "noise_size")
+_MASK_KEYS = ("enabled", "field", "blend", "range", "values", "noise_size")
 
 
 def _plain(value):
@@ -436,8 +434,7 @@ class FUMARIS_UL_field_masks(UIList):
         sub = row.row(align=True)
         sub.active = item.enabled
         units = FIELD_UNITS.get(item.field, "")
-        invert = " (inverted)" if item.invert else ""
-        sub.label(text=f"{_BLEND[item.blend][1]} {_FIELD[item.field][1]}{invert}  "
+        sub.label(text=f"{_BLEND[item.blend][1]} {_FIELD[item.field][1]}  "
                        f"{item.range[0]:g}-{item.range[1]:g}{units} → {item.values[0]:g}-{item.values[1]:g}")
 
 

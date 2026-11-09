@@ -964,7 +964,7 @@ class FUMARIS_PT_main(Panel):
         if props.smoke_object_type != "domain":
             header.enabled = active_mode() != "baking"
         header.label(text=obj.name, icon="OBJECT_DATA")
-        header.prop(props, "smoke_object_type", text="Flow Object")
+        header.prop(props, "smoke_object_type", text="Role")
         if props.smoke_object_type != "none":
             presets = header.row(align=True)
             presets.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")

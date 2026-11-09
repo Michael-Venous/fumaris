@@ -73,9 +73,9 @@ simulation participants. Unlike Mantaflow, the domain object's dimensions do
 not form a hard simulation box; Flow allocates a sparse grid around active
 smoke.
 
-1. Select any convenient object and set `Flow Object` to `Domain`.
+1. Select any convenient object and set `Role` to `Domain`.
 2. Create an emitter collection and assign it under `Participants`.
-3. Put source objects in that collection. Set each one's `Flow Object` to
+3. Put source objects in that collection. Set each one's `Role` to
    `Emitter` and choose its source shape.
 4. Select the domain and press `Play` to see an interactive volume preview.
    `Pause` freezes simulation but keeps camera and Appearance rerenders active;
@@ -84,7 +84,7 @@ smoke.
 6. Press `Stop`, configure `Output`, and press `Bake` for final OpenVDB files.
 
 Participant collections are searched recursively, so organized child
-collections are supported. An object is only used when its `Flow Object` role
+collections are supported. An object is only used when its `Role`
 matches the collection role. Turn off a participant's `Enabled` setting to
 exclude it without removing it from the collection.
 
@@ -581,7 +581,7 @@ multiply emitter work inside each domain Sub-Step.
 ### Collection Points
 
 For many separately animated mesh objects, use one controller object with
-`Flow Object: Emitter` and `Shape: Collection Points`. Put this controller in
+`Role: Emitter` and `Shape: Collection Points`. Put this controller in
 the domain's Emitters Collection and choose the meshes' collection as its
 `Source Collection`. Child collections are included. Source meshes do not need
 their own Fumaris role. Remove their old emitter roles or keep them outside the
@@ -900,7 +900,7 @@ do not replace Blender's normal Spacebar behavior.
 
 ### Quick Setup
 
-With Flow Object set to **None**, click **Quick Setup…** in Physics → Fumaris, or choose it from the 3D Viewport's
+With Role set to **None**, click **Quick Setup…** in Physics → Fumaris, or choose it from the 3D Viewport's
 Add menu. **Rising Smoke**, **Steady Fire**, **Explosion**, **Ground Fog** and
 **Chimney Smoke** create a complete starting setup. Choose **Selected Objects** for unassigned mesh sources, or
 **New Source** to create an icosphere at the 3D cursor. Existing participants are

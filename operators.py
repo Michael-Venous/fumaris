@@ -84,7 +84,7 @@ PREVIEW_RERENDER_DEFAULT_SECONDS = 0.005
 class FUMARIS_OT_bake(FrameRangeJob, Operator):
     bl_idname = "fumaris.bake"
     bl_label = "Bake"
-    bl_description = "Bake the Fumaris simulation range to an imported VDB sequence"
+    bl_description = "Simulate the whole frame range and write it to VDB files, imported as a volume object for rendering"
 
     _timer = None
     _worker = None
@@ -221,7 +221,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     bl_idname = "fumaris.preview_play"
     bl_label = "Play"
-    bl_description = "Play a live Flow preview, optionally recording VDB frames with Bake on Preview"
+    bl_description = "Simulate and show the smoke live in the viewport; with Bake on Preview, also record VDB frames"
 
     _timer = None
     _worker = None
@@ -789,8 +789,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
 class FUMARIS_OT_preview_stop(Operator):
     bl_idname = "fumaris.preview_stop"
-    bl_label = "Preview Stop"
-    bl_description = "Stop the active Fumaris live preview and close its bridge process"
+    bl_label = "Stop Preview"
+    bl_description = "Stop the live preview; the next Play starts again from the first frame"
 
     @classmethod
     def description(cls, context, _properties):
@@ -922,7 +922,7 @@ def _draw_view_menu(self, _context):
 class FUMARIS_OT_preview_pause(Operator):
     bl_idname = "fumaris.preview_pause"
     bl_label = "Pause or Resume Preview"
-    bl_description = "Freeze or resume simulation while keeping the Flow volume available for viewport rerenders"
+    bl_description = "Pause or resume the live preview. While paused the smoke stays on screen and redraws as you move the view or change its look"
 
     @classmethod
     def description(cls, context, _properties):
@@ -1244,7 +1244,7 @@ class FUMARIS_OT_use_biased_volumes(Operator):
 class FUMARIS_OT_preset_save(Operator):
     bl_idname = "fumaris.preset_save"
     bl_label = "Save Preset"
-    bl_description = "Save this object's Fumaris settings that differ from the defaults as a preset (domain or source), available in every file"
+    bl_description = "Save this object's Fumaris settings as a preset (domain or source), available in every file"
 
     name: bpy.props.StringProperty(name="Name", default="My Preset")
 

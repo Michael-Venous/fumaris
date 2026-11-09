@@ -217,7 +217,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     bl_idname = "fumaris.preview_play"
     bl_label = "Play"
-    bl_description = "Simulate and show the smoke live in the viewport; with Bake on Preview, also record VDB frames"
+    bl_description = "Simulate and show the smoke live in the viewport; its frames are cached for scrubbing and export while paused"
 
     _timer = None
     _worker = None

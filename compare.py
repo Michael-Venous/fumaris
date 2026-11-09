@@ -3,9 +3,9 @@
 Every cache slot of a domain is a version: a folder of VDB frames and the
 settings they were baked with. The current slot is A. One other slot, B, can
 be shown in the viewport next to it (or instead of it), its settings listed
-against A's, or swapped in. Preview recordings (Bake on Preview) and single
-frames can be kept as versions of their own, so they import and compare like
-any bake. Snapshots are images of the viewport, kept in a slot's folder, for
+against A's, or swapped in. A paused preview's cache (Export Cache to VDB)
+and single frames can be kept as versions of their own, so they import and
+compare like any bake. Snapshots are images of the viewport, kept in a slot's folder, for
 side-by-side stills. Two presets can be swapped in place to try a look.
 """
 import json

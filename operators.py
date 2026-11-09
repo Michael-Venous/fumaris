@@ -675,7 +675,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
                 getattr(self, "_last_submitted_volume_preview", None)
             )
         started = getattr(self, "_last_frame_submit_started", time.monotonic())
-        self._next_submit_at = started + _scene_frame_duration(context.scene)
+        self._next_submit_at = started + _preview_frame_duration(
+            context.scene, domain.fumaris if domain else None)
 
     def _after_preview_complete(self, _context, domain, data, payload):
         sent = getattr(self, "_preview_sent_at", None)
@@ -1596,6 +1597,16 @@ def _scene_frame_duration(scene):
     if fps <= 0.0 or fps_base <= 0.0:
         return 1.0 / 24.0
     return fps_base / fps
+
+
+def _preview_frame_duration(scene, props):
+    """Seconds between live preview frames (Preview Settings > Frame Rate)."""
+    mode = getattr(props, "preview_frame_rate", "SCENE") if props is not None else "SCENE"
+    if mode == "UNCAPPED":
+        return 0.0
+    if mode == "CUSTOM":
+        return 1.0 / max(1.0, float(getattr(props, "preview_custom_fps", 30.0)))
+    return _scene_frame_duration(scene)
 
 
 def _preview_resolution_scale(domain):

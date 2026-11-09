@@ -153,6 +153,12 @@ replaced (see Removed). This is a beta: please report scenes that look wrong.
   thinner; Lighting settings hide while a field view is shown.
 - **Preview Step Size** replaces Ray Steps; the preview is faster (no velocity
   reads for ordinary looks, rays stop once nothing behind can show).
+- Dragging a mesh emitter while previewing costs much less (fast drags: the
+  emitter pass ~2.4x cheaper, frames back within 24 fps): the live preview
+  stamps a moving source at half its emission band instead of every 2 voxels.
+  Bakes and recordings keep the finer stamping.
+- **Frame Rate** (Preview Settings): Scene (default, real speed), Uncapped (as
+  fast as the GPU simulates) or a Custom frame rate.
 - Stays in the window it was started from; View > Show Fumaris Preview Here
   and All Viewports choose where it appears.
 - The self-shadow and flame light volumes are counted in Simulation Memory.

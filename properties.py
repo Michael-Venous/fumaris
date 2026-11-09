@@ -629,6 +629,23 @@ class FumarisSettings(PropertyGroup):
         default="look",
     )
 
+    preview_frame_rate: EnumProperty(
+        name="Frame Rate",
+        description="How fast the live preview plays simulation frames. Preview only; bakes are not paced",
+        items=(
+            ("SCENE", "Scene", "The scene's frame rate (Output Properties > Frame Rate), so motion plays at real speed"),
+            ("UNCAPPED", "Uncapped", "As fast as the GPU simulates: a frame starts as soon as the last one is done"),
+            ("CUSTOM", "Custom", "A frame rate of your own (Custom FPS)"),
+        ),
+        default="SCENE",
+    )
+
+    preview_custom_fps: FloatProperty(
+        name="FPS",
+        description="Live preview frame rate when Frame Rate is Custom",
+        default=30.0, min=1.0, soft_max=240.0, max=1000.0,
+    )
+
     preview_all_viewports: BoolProperty(
         name="All Viewports",
         description="Show the live preview in every 3D viewport that shows the domain instead of one (the one picked with View > Show Fumaris Preview Here, else the largest in the preview's window). Adds overhead: each extra viewport renders the volume again every frame",

@@ -147,6 +147,9 @@ Useful preview controls:
   (default 1, like Cycles' Step Rate 1). Preview cost is about proportional to
   the number of samples: smaller is smoother and slower, larger is faster and
   starts to show bands.
+- `Frame Rate` paces preview playback: `Scene` plays at the scene's frame rate
+  (real speed), `Uncapped` as fast as the GPU simulates, `Custom` at your own
+  FPS. Bakes are not paced.
 - `Tone Mapping` uses Blender's own colour management: `Scene` follows the
   scene's view transform, look and display; `AgX`, `Filmic` and `Standard` use
   those view transforms. The 8-bit preview image is dithered so dark smoke does

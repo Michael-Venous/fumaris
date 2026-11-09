@@ -769,6 +769,10 @@ def _draw_domain(layout, scene, props):
         steps = quality.row(align=True)
         steps.prop(props, "preview_step_size")
         steps.prop(props, "preview_all_viewports", toggle=True)
+        rate = quality.row(align=True)
+        rate.prop(props, "preview_frame_rate")
+        if props.preview_frame_rate == "CUSTOM":
+            rate.prop(props, "preview_custom_fps")
 
         # Speed, Expansion and Fuel draw a field as fire: lighting does not apply.
         if props.preview_field_view in {"look", "blocks"}:

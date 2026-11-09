@@ -2,11 +2,14 @@
 
 All notable customer-facing changes are recorded here.
 
-## 1.4.0 — Unreleased
+## 2.0.0 beta 1 — Unreleased
 
-A new solver core, physical fire and a live preview lit like Cycles.
-**Saved scenes keep their settings, but simulate somewhat differently**: the
-sparse grid, pressure solve and rounding changed (see Compatibility).
+Fumaris 2.0: a new solver core, physical fire, a live preview lit like Cycles,
+two fire looks (Temperature and Pyro) and a reworked panel. A major version
+because results change: **saved scenes keep their settings, but simulate and
+look differently** (the sparse grid, pressure solve, rounding, combustion and
+emitters changed; see Compatibility), and several features were removed or
+replaced (see Removed). This is a beta: please report scenes that look wrong.
 
 ### Highlights
 
@@ -255,10 +258,18 @@ Scattering, and recognition of pre-1.0 beta data.
 ### Compatibility
 
 Saved scenes keep their settings; emitters and point emitters keep their
-old Expansion behaviour. Because the solver core changed, saved scenes
-simulate somewhat differently (denser, livelier smoke, longer-lasting heat at
-high Sub-Steps). Fire scenes follow the new heat law and may look hotter or
-cooler; existing bakes need a new bake for Glow Spread and Glow Shadowing.
+old Expansion behaviour and channel operations. Because the solver core
+changed, saved scenes simulate differently:
+
+- The pressure solve now converges with colliders: plumes next to the ground
+  rise less (an expanding emitter on a ground plane about half as high at
+  Resolution 80) and spread wider, and look the same at any resolution.
+- Heat and smoke no longer drift with the Sub-Steps count (unbiased rounding).
+- Fire scenes follow the new heat law and may look hotter or cooler.
+- Existing bakes need a new bake for Glow Spread, Glow Shadowing and the Pyro
+  look; generated materials rebuild when opened.
+- New domains start with 1 Sub-Step, and new emitters Add what they emit;
+  saved domains and emitters keep their values.
 
 ## 1.3.1 — 2026-10-26
 

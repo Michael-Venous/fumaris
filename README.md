@@ -1,6 +1,6 @@
 # Fumaris Blender Integration
 
-Current release: **1.4.0**.
+Current release: **2.0.0 beta 1**.
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Develop
 motion with a live volume preview, then bake OpenVDB sequences for Blender's
@@ -55,7 +55,7 @@ Memory** (or use Auto) or lower **Resolution**, then restart to recover a
 complete result.
 Doubling resolution needs approximately eight times the cells for equal coverage.
 
-## What's New In 1.4.0
+## What's New In 2.0
 
 - About 1.5x more simulation in the same GPU memory and faster bakes, set
   directly as Simulation Memory (GB or Auto).
@@ -68,9 +68,16 @@ Doubling resolution needs approximately eight times the cells for equal coverage
   Expansion and Normal Velocity, Turbulence Detail (Disturb, Grain, Shred).
 - Quick Setup for five effects, Add Source (Candle, Burst, Trail, Spreading
   Fire), user presets, Sparks, Takes and Make Lighter Copy.
+- Two fire looks with their own controls: Temperature (blackbody) and Pyro
+  (golden or blackbody, soft glowing cells, dark soot).
+- Fewer, more accurate solver steps (1 Sub-Step with Trace by default), a
+  pressure solve that converges with colliders (low and high resolutions
+  match), and a faster, smoother live preview.
+- Per-grid VDB resolution (Full / Half / Quarter), VDB Writers for low-RAM
+  bakes, and faster VDB writing.
 
-Saved scenes keep their settings but simulate somewhat differently. See the
-[changelog](CHANGELOG.md).
+Fumaris 2.0 is a beta. Saved scenes keep their settings but simulate and look
+differently. See the [changelog](CHANGELOG.md).
 
 ## Earlier 1.3.1 Features
 

@@ -1,10 +1,10 @@
-# Fumaris 1.4.0 Documentation
+# Fumaris 2.0 Documentation
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Use its
 live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
-Fumaris 1.4 lights the live preview like Cycles (the scene's lights and world,
+Fumaris 2.0 lights the live preview like Cycles (the scene's lights and world,
 fire light, Scatter Glow, Blender's own colour management), adds Realistic
 combustion for every domain, and smaller VDB options (temperature floor, Half
 Res grids). Preview shading controls do not change baked VDB materials.
@@ -390,7 +390,7 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 ### Combustion
 
 Every domain uses one physical combustion model (the Classic model was removed
-in 1.4; scenes saved with it open as Realistic).
+in 2.0; scenes saved with it open as Realistic).
 
 - Gas with fuel that is hotter than `Ignition Temperature` burns a fixed share
   of its fuel each second: 95% within `Burn Time`, so Burn Time is how long
@@ -462,7 +462,7 @@ Emitter Smoke, Temperature, Fuel, Burn, and Expansion define the source
 channels. Expansion is how fast the emitting region adds volume, per second:
 1 makes the gas there grow by its own volume each second and pushes the smoke
 around it outward, the same at any Resolution and Sub-Steps. Negative values
-pull inward. Emitters made before 1.4 keep the older, weaker and
+pull inward. Emitters made before 2.0 keep the older, weaker and
 resolution-dependent Divergence. Initial Velocity adds a constant vector. Motion
 Velocity Scale controls velocity inherited from source movement or mapped point
 velocities.
@@ -474,7 +474,7 @@ distance. A closed mesh that grows or shrinks (animated scale, shape keys,
 modifiers) pushes or pulls the smoke around it the same way. On open meshes,
 particle and Geometry Nodes mesh instances it pushes along averaged vertex
 normals, which can be uneven across faces and hard edges. Sphere and Box
-emitters made in 1.4 or later blow out evenly from their whole volume.
+emitters made in 2.0 or later blow out evenly from their whole volume.
 Point and volume modes do not support this control.
 
 ### Source Operations
@@ -735,7 +735,7 @@ smoke picks up their light, and hot soot turns dark. `Thin Gas` is the smoke
 density at which Pyro glows as brightly as Temperature; thinner gas glows up to
 twice as bright, denser smoke shows as dark soot over the fire. It holds at any
 scene size, and Full Glow changes need no re-bake. Pyro needs a bake from
-Fumaris 1.4.0 or later (heat and soft density grids, written with the glow
+Fumaris 2.0 or later (heat and soft density grids, written with the glow
 grids).
 
 When `Volume Material` is unset, Fumaris creates a material driven by the

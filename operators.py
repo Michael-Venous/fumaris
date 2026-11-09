@@ -1109,7 +1109,7 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
         domain = _active_domain(context)
         data = read_settings_snapshot(output_directory_for_object(domain))
         if not data:
-            self.report({"ERROR"}, "This cache slot has no stored settings (baked before Fumaris 1.4)")
+            self.report({"ERROR"}, "This cache slot has no stored settings (baked before Fumaris 2.0)")
             return {"CANCELLED"}
         changed, restored, missing = apply_settings_snapshot(domain, data, bpy.data.objects)
         message = f"Restored {changed} settings from '{domain.fumaris.cache_slot}' (baked {data.get('written', '?')})"

@@ -21,7 +21,7 @@ LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
 TEMPERATURE_EXPORT_SCALE = 5000.0
 TEMPERATURE_MAPPING_VERSION = 2
 # 1: domain created with the Realistic combustion model available. Earlier
-# domains keep their other settings; Classic itself was removed in 1.4.
+# domains keep their other settings; Classic itself was removed in 2.0.
 COMBUSTION_VERSION = 2
 # 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
 SUBSTEP_SETTINGS_VERSION = 1
@@ -384,7 +384,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_divergence: FloatProperty(
         name="Expansion",
-        description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps (emitters made before 1.4 keep the older, weaker per-cell Divergence)",
+        description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps (emitters made before 2.0 keep the older, weaker per-cell Divergence)",
         default=2.0,
         soft_min=-10.0,
         soft_max=10.0,
@@ -692,7 +692,7 @@ class FumarisSettings(PropertyGroup):
         name="Tone Mapping",
         description="How bright smoke and fire fit into the preview image, using Blender's own color management transforms. Preview only",
         # Fixed numbers: files store the number, and 1.3.1 had filmic, none,
-        # agx as 0, 1, 2 (Scene was added first in the list in 1.4).
+        # agx as 0, 1, 2 (Scene was added first in the list in 2.0).
         items=(
             ("scene", "Scene", "Follow the scene's View Transform, Look and Display, so the preview tone maps like the render", 3),
             ("filmic", "Filmic", "Blender's Filmic view transform", 0),
@@ -1420,7 +1420,7 @@ class FumarisSettings(PropertyGroup):
         name="Combustion Model",
         description="How fuel burns",
         items=(
-            # Classic (Flow's original model) was removed in 1.4; such files load as Realistic.
+            # Classic (Flow's original model) was removed in 2.0; such files load as Realistic.
             ("realistic", "Realistic", "Fuel burns away gradually at a set flame temperature, so fires glow at real flame colours and fade out instead of stopping at once"),
         ),
         default="realistic",
@@ -1959,7 +1959,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_glow_spread: FloatProperty(
         name="Glow Spread",
-        description="How far Scatter Glow reaches into the smoke. 0 keeps fire light within Glow Radius of the flames; higher values blend in light spread four times farther, so the falloff gets a long, soft tail and thick smoke glows deep inside; 1 is only the wide, soft glow. Needs a bake from Fumaris 1.4 or later",
+        description="How far Scatter Glow reaches into the smoke. 0 keeps fire light within Glow Radius of the flames; higher values blend in light spread four times farther, so the falloff gets a long, soft tail and thick smoke glows deep inside; 1 is only the wide, soft glow. Needs a bake from Fumaris 2.0 or later",
         default=0.0,
         min=0.0,
         max=1.0,
@@ -1980,7 +1980,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_glow_shadowing: FloatProperty(
         name="Glow Shadowing",
-        description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. High values can hide Scatter Glow almost entirely in dense smoke; lower this if Scatter Glow or Glow Spread seem to do nothing. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 1.4 or later",
+        description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. High values can hide Scatter Glow almost entirely in dense smoke; lower this if Scatter Glow or Glow Spread seem to do nothing. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 2.0 or later",
         default=0.0,
         min=0.0,
         soft_max=10.0,
@@ -2003,7 +2003,7 @@ class FumarisSettings(PropertyGroup):
         description="How fire is shaded in the generated material",
         items=(
             ("TEMPERATURE", "Temperature", "Gas glows by its own temperature and density (blackbody), with Scatter Glow from nearby fire"),
-            ("PYRO", "Pyro", "Houdini Pyro-style: golden fire with soft glowing cells and dark soot in dense smoke; thin gas glows brighter, dense smoke darker (Thin Gas). Same Brightness, Full Glow and Contrast as Temperature. Needs a bake from Fumaris 1.4 (heat and soft density grids)"),
+            ("PYRO", "Pyro", "Houdini Pyro-style: golden fire with soft glowing cells and dark soot in dense smoke; thin gas glows brighter, dense smoke darker (Thin Gas). Same Brightness, Full Glow and Contrast as Temperature. Needs a bake from Fumaris 2.0 (heat and soft density grids)"),
         ),
         default="TEMPERATURE",
         update=_appearance_updated,
@@ -2318,7 +2318,7 @@ def _migrate_temperature_mapping():
         props = getattr(obj, "fumaris", None)
         if (props is not None and props.smoke_object_type == "domain"
                 and props.get("combustion_model", 0) != 0):
-            # Classic (1) was removed in 1.4: drop the stale value so the
+            # Classic (1) was removed in 2.0: drop the stale value so the
             # domain reads Realistic without RNA warnings.
             props.property_unset("combustion_model")
         if (props is not None and props.smoke_object_type == "domain"
@@ -2346,7 +2346,7 @@ def _migrate_temperature_mapping():
                 props.vdb_writers = "LOW"
             del props["low_memory_bake"]
         if props is not None and props.smoke_object_type == "domain":
-            # 1.4: the Half Res toggles became resolution menus. Velocity Half
+            # 2.0: the Half Res toggles became resolution menus. Velocity Half
             # Res halved the stored velocity, itself at half resolution unless
             # Full-Resolution Velocity was on.
             if "export_temperature_half_res" in props:
@@ -2372,7 +2372,7 @@ def _migrate_temperature_mapping():
             # 1). Its Oxygen Limit 0 meant 4; keep that air limit.
             if props.get("physical_heat") and props.oxygen_limit == 0.0:
                 props.oxygen_limit = 4.0
-            # Saved before Realistic combustion existed. Classic is gone (1.4): Realistic.
+            # Saved before Realistic combustion existed. Classic is gone (2.0): Realistic.
             props.combustion_version = COMBUSTION_VERSION
         props = getattr(obj, "fumaris", None)
         if props is None or props.temperature_mapping_version >= TEMPERATURE_MAPPING_VERSION:

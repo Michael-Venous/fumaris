@@ -11,7 +11,7 @@ from .runtime import active_job
 
 
 # Presets start from the new-domain defaults (properties._object_type_updated)
-# and change only what makes each effect what it is (1.4 preset pass,
+# and change only what makes each effect what it is (2.0 preset pass,
 # 2026-11-07): the look, combustion and fade settings stay the defaults.
 # 2 GB of VRAM: the presets use at most ~2,000 blocks (2 GB holds 14,000+), and
 # every frame stays under 25 ms at 1 Sub-Step on an RTX 4060 Ti, so preview
@@ -22,7 +22,7 @@ _DOMAIN_DEFAULTS = {
     "simulation_memory": 2.0,
 }
 
-# Emitters are physical since 1.4: Expansion in 1/s, and Normal Velocity on a
+# Emitters are physical since 2.0: Expansion in 1/s, and Normal Velocity on a
 # closed source is a volume source (v x area), so presets use smaller values
 # than the old, mostly cancelled per-cell push (output/expansion, 2026-11-04).
 PRESETS = {

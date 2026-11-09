@@ -23,10 +23,15 @@ _IMAGE_UPLOAD_SHAPE = None
 # Latest viewport depth per region, resampled to that region's preview size.
 _SCENE_DEPTHS = {}
 _SCENE_DEPTH_SERIAL = 0
-_SCENE_DEPTH_QUIET_UNTIL = 0.0
 _SCENE_DEPTH_FAILED = False
-# A draw skipped its depth readback during the quiet period; take it once after.
-_SCENE_DEPTH_DEFERRED = False
+# Scene Occlusion depth readback (1-5 ms and a GPU sync per draw): at most this
+# often while the view moves or the scene frame changes, every
+# SCENE_DEPTH_IDLE_INTERVAL otherwise (objects moving in a still view), and once
+# more after the view stops. A changed depth is sent with the next request.
+SCENE_DEPTH_MOVING_INTERVAL = 1.0 / 15.0
+SCENE_DEPTH_IDLE_INTERVAL = 0.5
+# A draw skipped a due readback (rate limit): redraw at this time to take it.
+_SCENE_DEPTH_RETRY_AT = 0.0
 
 
 def capture_volume_preview(context, domain, target=None):
@@ -141,25 +146,47 @@ def _preview_tone_mapping(context, props):
 
 
 def _scene_depth_request(props, view_id, width, height):
-    global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_DEFERRED
+    global _SCENE_DEPTH_RETRY_AT
     if not getattr(props, "preview_occlusion", False):
         return {}
-    if _SCENE_DEPTH_DEFERRED and time.monotonic() >= _SCENE_DEPTH_QUIET_UNTIL:
-        # Draws skipped the readback while images streamed in: one redraw
-        # now captures the final depth (published by a later request).
-        _SCENE_DEPTH_DEFERRED = False
+    if _SCENE_DEPTH_RETRY_AT and time.monotonic() >= _SCENE_DEPTH_RETRY_AT:
+        # A draw skipped a due readback (rate limit) and the view may have
+        # stopped since: one redraw takes the final depth.
+        _SCENE_DEPTH_RETRY_AT = 0.0
         _tag_viewports()
     depth = _SCENE_DEPTHS.get(view_id)
     if depth is None or depth["size"] != (width, height):
         # The draw handler has not seen this size yet; it triggers a rerender.
         return {}
-    # Preview requests are polled even while paused and without another draw.
-    # Publish a throttled change once the quiet period ends.
-    if depth.get("pending", False) and time.monotonic() >= _SCENE_DEPTH_QUIET_UNTIL:
-        _SCENE_DEPTH_SERIAL += 1
-        depth["serial"] = _SCENE_DEPTH_SERIAL
-        depth["pending"] = False
     return {"depth_serial": depth["serial"], SCENE_DEPTH_KEY: depth["data"]}
+
+
+def _scene_depth_key(context):
+    """What the viewport's depth depends on: view, projection, scene frame."""
+    region_3d = getattr(context, "region_data", None)
+    scene = getattr(context, "scene", None)
+    if region_3d is None:
+        return None
+    return (
+        tuple(round(value, 6) for row in region_3d.view_matrix for value in row),
+        tuple(round(value, 6) for row in region_3d.window_matrix for value in row),
+        getattr(scene, "frame_current", 0),
+    )
+
+
+def _scene_depth_due(view_id, size, key, now):
+    """Whether this draw should read the depth back (see the intervals above)."""
+    global _SCENE_DEPTH_RETRY_AT
+    known = _SCENE_DEPTHS.get(view_id)
+    if known is None or known["size"] != size:
+        return True
+    elapsed = now - known.get("captured_at", 0.0)
+    if key != known.get("key"):
+        if elapsed >= SCENE_DEPTH_MOVING_INTERVAL:
+            return True
+        _SCENE_DEPTH_RETRY_AT = known.get("captured_at", 0.0) + SCENE_DEPTH_MOVING_INTERVAL
+        return False
+    return elapsed >= SCENE_DEPTH_IDLE_INTERVAL
 
 
 def volume_preview_signature(preview):
@@ -249,7 +276,6 @@ def update_volume_image(domain, data, payload):
         "texture": None,
     }
     _sync_draw_handlers()
-    _quiet_scene_depth()
     _tag_viewports()
     return (time.perf_counter() - started) * 1000.0
 
@@ -333,7 +359,6 @@ def _visible_preview_domain(preview):
 
 
 def _draw_volume_previews():
-    global _SCENE_DEPTH_DEFERRED
     region = bpy.context.region
     if region is None:
         return
@@ -353,14 +378,9 @@ def _draw_volume_previews():
         settings = getattr(preview.get("domain"), "fumaris", None)
         if getattr(settings, "preview_occlusion", False) and preview.get("width"):
             size = (preview["width"], preview["height"])
-            known = _SCENE_DEPTHS.get(view_id)
-            if known is not None and known["size"] == size and time.monotonic() < _SCENE_DEPTH_QUIET_UNTIL:
-                # Images are streaming in (orbiting or playing): a changed depth
-                # would only wait for the quiet period, so skip the readback
-                # (1-5 ms and a GPU sync per draw) until it ends.
-                _SCENE_DEPTH_DEFERRED = True
-            else:
-                _capture_scene_depth(view_id, *size)
+            key = _scene_depth_key(bpy.context)
+            if _scene_depth_due(view_id, size, key, time.monotonic()):
+                _capture_scene_depth(view_id, *size, key=key)
             break
 
     shader = _image_shader()
@@ -379,13 +399,7 @@ def _draw_volume_previews():
         gpu.state.blend_set("NONE")
 
 
-def _quiet_scene_depth():
-    """Redraws caused by a new preview image must not request another one."""
-    global _SCENE_DEPTH_QUIET_UNTIL
-    _SCENE_DEPTH_QUIET_UNTIL = time.monotonic() + 0.25
-
-
-def _capture_scene_depth(view_id, width, height):
+def _capture_scene_depth(view_id, width, height, key=None):
     """Store the viewport's depth so the bridge can hide smoke behind objects."""
     global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_FAILED
     if np is None or _SCENE_DEPTH_FAILED:
@@ -411,15 +425,16 @@ def _capture_scene_depth(view_id, width, height):
         sampled = 1.0 - sampled
     previous = _SCENE_DEPTHS.get(view_id)
     same_size = previous is not None and previous["size"] == (width, height)
+    now = time.monotonic()
     if same_size and np.array_equal(previous["data"], sampled):
+        # Unchanged: keep the serial (the bridge reuses its copy).
+        previous["captured_at"] = now
+        previous["key"] = key
         return
-    serial = previous["serial"] if previous else 0
-    pending = same_size and time.monotonic() < _SCENE_DEPTH_QUIET_UNTIL
-    if not pending:
-        _SCENE_DEPTH_SERIAL += 1
-        serial = _SCENE_DEPTH_SERIAL
+    _SCENE_DEPTH_SERIAL += 1
     _SCENE_DEPTHS[view_id] = {
-        "size": (width, height), "data": sampled, "serial": serial, "pending": pending,
+        "size": (width, height), "data": sampled, "serial": _SCENE_DEPTH_SERIAL,
+        "captured_at": now, "key": key,
     }
 
 

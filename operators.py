@@ -75,6 +75,13 @@ from .runtime import (
 # A request is cheap (~0.05 ms) and only one is in flight, so the bridge sets
 # the pace; 30 Hz here capped orbiting at 30 fps at any preview size.
 PREVIEW_CAPTURE_INTERVAL = 1.0 / 250.0
+# While playing, a changed view is rerendered between simulation frames when
+# the rerender (this many times its measured time) fits before the next frame
+# is due; once the frame is due, at most once per frame. Playback of a 512
+# Rising Smoke at 24 fps while orbiting at 144 Hz: 48 -> 131 images/s, view to
+# image 23 -> 8 ms, simulation unchanged (output/preview_sched, 2026-11-08).
+PREVIEW_RERENDER_MARGIN = 1.5
+PREVIEW_RERENDER_DEFAULT_SECONDS = 0.005
 
 
 class FUMARIS_OT_bake(FrameRangeJob, Operator):
@@ -405,10 +412,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if deadline:
             domain = bpy.data.objects.get(self._domain_name)
             if time.monotonic() < deadline and preview_image_pending(domain):
-                # Paused: render the next view while Blender draws this one
-                # (a request costs the main thread ~0.05 ms; no frame is built).
-                if (getattr(self, "_pause_requested", False)
-                        and not getattr(self, "_recording_enabled", False)):
+                # Render the next view while Blender draws this one (a request
+                # costs the main thread ~0.05 ms; no frame is built). Playing,
+                # only when it fits before the next frame is due.
+                if not getattr(self, "_recording_enabled", False):
                     self._submit_changed_volume_preview(context)
                 return False
             self._preview_display_deadline = 0.0
@@ -448,9 +455,11 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if self._submit_other_viewports(context):
             return True
         if (
-            getattr(self, "_preview_rerendered_since_frame", False)
-            and not getattr(self, "_pause_requested", False)
+            not getattr(self, "_pause_requested", False)
+            and getattr(self, "_preview_rerendered_since_frame", False)
+            and not self._rerender_fits_before_frame()
         ):
+            # Playing: the due frame carries the latest view.
             return False
         now = time.monotonic()
         if now < getattr(self, "_next_preview_capture_at", 0.0):
@@ -465,10 +474,17 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if signature is None or signature == self._last_preview_signature:
             return False
         self._worker.send_preview(preview)
+        self._preview_sent_at = time.monotonic()
         self._preview_render_submitted = True
         self._preview_rerendered_since_frame = True
         self._last_preview_signature = signature
         return True
+
+    def _rerender_fits_before_frame(self):
+        """A rerender (by its measured time, with margin) finishes before the
+        next simulation frame is due."""
+        seconds = getattr(self, "_preview_rerender_seconds", PREVIEW_RERENDER_DEFAULT_SECONDS)
+        return time.monotonic() + PREVIEW_RERENDER_MARGIN * seconds < getattr(self, "_next_submit_at", 0.0)
 
     def _submit_other_viewports(self, context):
         """All Viewports: rerender the retained volume once for each other
@@ -662,6 +678,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._next_submit_at = started + _scene_frame_duration(context.scene)
 
     def _after_preview_complete(self, _context, domain, data, payload):
+        sent = getattr(self, "_preview_sent_at", None)
+        if sent is not None:
+            # Smoothed rerender time, for fitting rerenders between frames.
+            elapsed = max(0.0, time.monotonic() - sent)
+            previous = getattr(self, "_preview_rerender_seconds", PREVIEW_RERENDER_DEFAULT_SECONDS)
+            self._preview_rerender_seconds = 0.8 * previous + 0.2 * elapsed
+            self._preview_sent_at = None
         if domain:
             data["blender_preview_upload_ms"] = show_preview_payload(
                 domain,

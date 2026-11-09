@@ -153,6 +153,11 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - Stays in the window it was started from; View > Show Fumaris Preview Here
   and All Viewports choose where it appears.
 - The self-shadow and flame light volumes are counted in Simulation Memory.
+- Smooth playback: panning while the preview plays re-renders between
+  simulation frames (Rising Smoke: ~23 -> ~130 images/s, 24 fps kept), and
+  playback no longer slows as Simulation Memory grows (Flow recreated its
+  scratch textures every preview frame). Scene occlusion depth now follows the
+  view while orbiting and playing.
 - Scene lighting with a world: the sky-light shading inside the smoke no
   longer shows block-shaped patches that shifted as the smoke grew.
 - Lighting: Custom replaces the scene's lights and world with its one light

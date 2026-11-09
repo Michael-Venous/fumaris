@@ -263,7 +263,9 @@ def _draw_emitter(layout, obj, props):
             row = column.row(align=True)
             row.prop(props, f"couple_rate_{channel}")
             row.prop(props, f"source_op_{channel}", text="")
-        column.prop(props, "couple_rate_velocity")
+        row = column.row(align=True)
+        row.prop(props, "couple_rate_velocity")
+        row.prop(props, "source_op_velocity", text="")
         column.prop(props, "couple_rate_divergence")
 
     box = layout.box()
@@ -666,7 +668,10 @@ def _draw_domain(layout, scene, props):
     settings.prop(props, "air_margin")
     substeps_row = settings.row(align=True)
     substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
-    substeps_row.prop(props, "adaptive_cfl")
+    # Cells per Step adds steps up to Max Sub-Steps: nothing to add at 1.
+    cells = substeps_row.row(align=True)
+    cells.active = props.num_sub_steps > 1
+    cells.prop(props, "adaptive_cfl")
 
     appearance, appearance_open = _nested_foldout(
         settings,

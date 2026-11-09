@@ -153,6 +153,8 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 - Stays in the window it was started from; View > Show Fumaris Preview Here
   and All Viewports choose where it appears.
 - The self-shadow and flame light volumes are counted in Simulation Memory.
+- Scene lighting with a world: the sky-light shading inside the smoke no
+  longer shows block-shaped patches that shifted as the smoke grew.
 - Lighting: Custom replaces the scene's lights and world with its one light
   and its own grey Sky (shadowed by the smoke, for soft ambient depth), the
   same in every scene; it used to add the world's light.
@@ -184,7 +186,13 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 ### Workflow
 
 - **Quick Setup**: Rising Smoke, Steady Fire, Explosion (optional Debris
-  Trails), Ground Fog and Chimney Smoke, starting from the new defaults.
+  Trails), Ground Fog and Chimney Smoke, starting from the new defaults, at
+  2 GB of VRAM with every frame under 25 ms on an RTX 4060 Ti (24 fps
+  playback). The Explosion is grander (a longer, stronger burst and more soot:
+  a large mushroom cloud) and Chimney Smoke breaks up into turbulent smoke.
+- **Emitter operations**: new emitters Add what they emit (Smoke, Temperature,
+  Fuel, Burn); Velocity gets the operation menu too (Blend by default). The
+  coupling tooltips say what each rate means per operation.
 - **Add Source**: Candle, Burst, Trail and Spreading Fire Geometry Nodes
   sources.
 - **User presets** for domains and sources, shared between files; applying
@@ -207,8 +215,9 @@ sparse grid, pressure solve and rounding changed (see Compatibility).
 Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Smoke Per Burn 1 (3 buried
 the fire in dark smoke within a second), Temperature Diffusion 0.1, Soot
 Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
-up to 2 Sub-Steps with Trace Steps 16 and Cells per Step 8 (as close to a
-converged 12-step result as 4 plain steps, about 38% faster), Simulation Memory 4 GB; even burning
+1 Sub-Step with Trace Steps 16 (Cells per Step 8 applies once Max Sub-Steps is
+raised; Trace brings 1 step much closer to a converged result), Simulation
+Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
 Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.5, Blue Core 0,
 Smoke Density 1, smoke colour 0.45, Anisotropy 0.3.

@@ -927,9 +927,10 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
     else:
         _point_normal_velocity(props, radii, values)
     for name in replaced:
-        rates = values.get(f"couple_rate_{name}s")
+        key = "couple_rate_velocities" if name == "velocity" else f"couple_rate_{name}s"
+        rates = values.get(key)
         if rates:
-            values[f"couple_rate_{name}s"] = array(
+            values[key] = array(
                 "f", (_REPLACE_COUPLE_RATE if rate > 0.0 else 0.0 for rate in rates))
 
     if getattr(props, "emitter_influence", False):
@@ -1168,6 +1169,9 @@ def _primitive_surface_source(props, area, volume):
 
 # Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE: Expansion is in 1/s, applied exactly.
 EXPANSION_RATE_OP = 1 << 16
+# NV_FLOW_EMITTER_OP_VELOCITY_ADD / _MAX for velocity x, y, z.
+VELOCITY_ADD_OPS = (1 << 8) | (1 << 9) | (1 << 10)
+VELOCITY_MAX_OPS = (1 << 12) | (1 << 13) | (1 << 14)
 
 
 def _source_operations(props):
@@ -1184,6 +1188,15 @@ def _source_operations(props):
             value_ops |= 1 << (4 + channel)
         elif operation == "replace":
             replaced.append(name)
+    # Velocity, per axis (Flow's velocity-pass channels x, y, z; w is Expansion,
+    # stamped as an exact rate, so it has no operation).
+    operation = getattr(props, "source_op_velocity", "blend")
+    if operation == "add":
+        value_ops |= VELOCITY_ADD_OPS
+    elif operation == "max":
+        value_ops |= VELOCITY_MAX_OPS
+    elif operation == "replace":
+        replaced.append("velocity")
     return value_ops, replaced
 
 

@@ -128,11 +128,12 @@ def _object_type_updated(self, _context):
         self.shader_smoke_density = 1.0
         self.shader_smoke_color = (0.45, 0.45, 0.45)
     if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
-        # New domains: up to 2 Sub-Steps, added when the smoke moves more than
-        # 8 voxels per step, with the back-trace following the flow in steps of
-        # 1.5 cells (Trace Steps 16): as close to the 12-step result as 4 plain
-        # steps and about 38% faster (user scene, 2026-11-08; output/trace_test).
-        self.num_sub_steps = 2
+        # New domains: 1 Sub-Step (user, 2026-11-08) with the back-trace
+        # following the flow in steps of 1.5 cells (Trace Steps 16): about 35%
+        # faster than 2 steps; Trace brings 1 step much closer to a converged
+        # result (hot gas +21%, spread +13%; output/trace_final). Cells per Step
+        # 8 applies once Max Sub-Steps is raised.
+        self.num_sub_steps = 1
         self.adaptive_cfl = 8.0
         self.trace_steps = 16
         self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
@@ -143,6 +144,10 @@ def _object_type_updated(self, _context):
     if self.smoke_object_type == "emitter" and self.emitter_settings_version == 0:
         self.emitter_settings_version = EMITTER_SETTINGS_VERSION
         self.emitter_divergence = DEFAULT_EMITTER_EXPANSION
+        # New emitters add what they emit (2026-11-08, user); velocity keeps
+        # Blend (Add would keep accelerating the air like a force).
+        for channel in ("smoke", "temperature", "fuel", "burn"):
+            setattr(self, f"source_op_{channel}", "add")
 
 
 def _cache_slot_updated(self, _context):
@@ -388,7 +393,7 @@ class FumarisSettings(PropertyGroup):
     # Flow exposes an independent coupling rate for every emitted channel.
     couple_rate_velocity: FloatProperty(
         name="Velocity",
-        description="How strongly the emitter pushes smoke along its velocity or movement; a stationary emitter does not slow existing smoke",
+        description="How strongly the emitter pushes smoke along its velocity or movement; a stationary emitter does not slow existing smoke. With Add it accelerates the air by velocity × coupling every second (a force); with Blend, Maximum and Replace, how fast the air reaches the velocity",
         default=8.0,
         min=0.0,
         soft_max=200.0,
@@ -396,7 +401,7 @@ class FumarisSettings(PropertyGroup):
 
     couple_rate_divergence: FloatProperty(
         name="Divergence",
-        description="How quickly the emitter applies its Expansion value to nearby smoke",
+        description="Whether and how strongly the emitter applies its Expansion. Expansion is a rate (1/s) and is stamped exactly where the emitter couples, so it has no operation menu: the stronger of it and existing expansion (combustion, other emitters) applies, and repeated stamps do not stack",
         default=2.0,
         min=0.0,
         soft_max=200.0,
@@ -404,7 +409,7 @@ class FumarisSettings(PropertyGroup):
 
     couple_rate_temperature: FloatProperty(
         name="Temperature",
-        description="How quickly the emitter heats nearby smoke toward its Temperature value",
+        description="How quickly the emitter heats the gas in its shape. With Add it is the amount added per second (value × coupling); with Blend, Maximum and Replace, how fast the field reaches the value",
         default=2.0,
         min=0.0,
         soft_max=200.0,
@@ -412,7 +417,7 @@ class FumarisSettings(PropertyGroup):
 
     couple_rate_fuel: FloatProperty(
         name="Fuel",
-        description="How quickly the emitter supplies its Fuel amount; higher values refill fuel faster",
+        description="How quickly the emitter supplies its Fuel. With Add it is the amount added per second (value × coupling); with Blend, Maximum and Replace, how fast the field reaches the value",
         default=2.0,
         min=0.0,
         soft_max=200.0,
@@ -420,7 +425,7 @@ class FumarisSettings(PropertyGroup):
 
     couple_rate_burn: FloatProperty(
         name="Burn",
-        description="How quickly the emitter applies its Burn amount to start combustion",
+        description="How quickly the emitter applies its Burn to start combustion. With Add it is the amount added per second (value × coupling); with Blend, Maximum and Replace, how fast the field reaches the value",
         default=0.0,
         min=0.0,
         soft_max=200.0,
@@ -428,14 +433,15 @@ class FumarisSettings(PropertyGroup):
 
     couple_rate_smoke: FloatProperty(
         name="Smoke",
-        description="How quickly the emitter fills its shape with the chosen Smoke amount",
+        description="How quickly the emitter fills its shape with Smoke. With Add it is the amount added per second (value × coupling); with Blend, Maximum and Replace, how fast the field reaches the value",
         default=2.0,
         min=0.0,
         soft_max=200.0,
     )
 
-    # How each emitted channel is written into the simulation. Blend is the
-    # original behavior and remains the default for existing scenes.
+    # How each emitted channel is written into the simulation. New emitters
+    # start with Add (2026-11-08, user); the property default stays Blend so
+    # saved emitters keep their behavior.
     source_op_smoke: EnumProperty(
         name="Smoke Operation",
         description="How this emitter writes smoke into the simulation",
@@ -460,6 +466,13 @@ class FumarisSettings(PropertyGroup):
     source_op_burn: EnumProperty(
         name="Burn Operation",
         description="How this emitter writes burn into the simulation",
+        items=_SOURCE_OPERATIONS,
+        default="blend",
+    )
+
+    source_op_velocity: EnumProperty(
+        name="Velocity Operation",
+        description="How this emitter writes velocity into the simulation, per axis. Add accelerates the air every second (a force); Maximum raises each axis toward the velocity but never lowers it, so it suits upward or positive-axis pushes (a negative axis is left alone); Blend pulls the air toward it; Replace sets it",
         items=_SOURCE_OPERATIONS,
         default="blend",
     )

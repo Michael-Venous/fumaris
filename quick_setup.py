@@ -13,9 +13,13 @@ from .runtime import active_job
 # Presets start from the new-domain defaults (properties._object_type_updated)
 # and change only what makes each effect what it is (1.4 preset pass,
 # 2026-11-07): the look, combustion and fade settings stay the defaults.
+# 2 GB of VRAM: the presets use at most ~2,000 blocks (2 GB holds 14,000+), and
+# every frame stays under 25 ms at 1 Sub-Step on an RTX 4060 Ti, so preview
+# playback keeps 24 fps (output/qs_pass, 2026-11-08).
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
     "preview_max_ray_steps": 256,
+    "simulation_memory": 2.0,
 }
 
 # Emitters are physical since 1.4: Expansion in 1/s, and Normal Velocity on a
@@ -49,8 +53,11 @@ PRESETS = {
         # lifts into a cap over a smoke stem. Disturb (size set below) breaks
         # it into cauliflower billows; the fire burns out in about a second,
         # leaving glowing cracks in the smoke (output/presets1.4).
+        # Grander (2026-11-08): a longer, stronger burst (8 frames, Fuel 16,
+        # Expansion 14) and more soot (Smoke Per Burn 2.5) leave a large
+        # mushroom cloud instead of a fireball that fades within a second.
         "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0,
-                   "disturb": 175.0, "disturb_detail": 3},
+                   "disturb": 220.0, "disturb_detail": 3, "smoke_per_burn": 2.5},
         # Disturb's largest swirls relative to the sources' largest dimension.
         "disturb_size_per_size": 0.3,
         # No forced jet: a sustained upward push sheds stacked vortex rings.
@@ -58,15 +65,15 @@ PRESETS = {
         # Temperature); burning heats it. Light source smoke: soot forms as
         # the fuel burns, so the young fireball glows instead of hiding in
         # smoke.
-        "emitter": {"emitter_smoke": 0.5, "emitter_temperature": 0.35,
+        "emitter": {"emitter_smoke": 1.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
-                    # Expansion burst: the source gas swells about 8x per
-                    # second during its few burst frames, a pressure blast
-                    # that drives the fast, tearing front of a detonation.
-                    "emitter_fuel": 8.0, "normal_velocity": 1.0, "emitter_divergence": 8.0,
+                    # Expansion burst: the source gas swells about 14x per
+                    # second during its burst frames, a pressure blast that
+                    # drives the fast, tearing front of a detonation.
+                    "emitter_fuel": 16.0, "normal_velocity": 1.0, "emitter_divergence": 14.0,
                     "velocity": (0.0, 0.0, 0.0)},
-        "burst_frames": 4,
-        "duration": 100,
+        "burst_frames": 8,
+        "duration": 120,
     },
     "FOG": {
         "name": "Ground Fog",
@@ -81,7 +88,10 @@ PRESETS = {
     "STACK": {
         "name": "Chimney Smoke",
         "description": "A warm column of smoke blown upward from the source, as from a chimney or stack",
-        "domain": {"shader_flame_enabled": False},
+        # Disturb breaks the column into turbulent smoke a few source widths
+        # up; without it the exhaust rose as a smooth tube.
+        "domain": {"shader_flame_enabled": False, "disturb": 60.0},
+        "disturb_size_per_size": 0.5,
         # Warm exhaust (a quarter of Flame Temperature) pushed up at 4 m/s.
         "emitter": {"emitter_smoke": 4.0, "emitter_temperature": 0.25,
                     "emitter_fuel": 0.0, "normal_velocity": 0.0, "emitter_divergence": 0.0,

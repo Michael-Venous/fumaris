@@ -130,7 +130,7 @@ def build_session(
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
         # Preview cache: a live preview keeps its frames for scrubbing.
-        "preview_cache": bool(preview_enabled and not write_vdb) and _preview_cache_mode() != "OFF",
+        "preview_cache": bool(preview_enabled and not write_vdb and getattr(domain.fumaris, "preview_cache", False)),
         "preview_cache_every_frame": _preview_cache_mode() == "EVERY",
         "preview_cache_budget_mb": _preview_cache_budget_mb(),
         # Velocity compresses poorly: kept only for velocity export and the

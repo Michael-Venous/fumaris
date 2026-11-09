@@ -645,6 +645,12 @@ class FumarisSettings(PropertyGroup):
     preview_bake: BoolProperty(
         name="Preview While Baking",
         description="Show the live preview while baking, to watch the bake as it runs. Off keeps the bake as fast as possible",
+        default=True,
+    )
+
+    preview_cache: BoolProperty(
+        name="Cache Preview",
+        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Export Cache to VDB (Presets & Compare) can write them as a version. The preview then pauses at the end of its range instead of looping. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",
         default=False,
     )
 

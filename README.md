@@ -36,10 +36,11 @@ operating system.
 2. Press **Play** and adjust the simulation. **Shift–Alt–Space** plays,
    pauses, or resumes; **Shift–Alt–X** stops. The controls show your current
    bindings, which can be changed in Fumaris preferences.
-3. **Pause** to look back: the preview caches every frame it simulates, so
-   scrubbing or playing the timeline while paused shows them again with the
-   live camera and look. **Export Cache to VDB** writes them as a version you
-   can import, render and compare.
+3. **Pause** to look back: with **Cache Preview** on (under Play), the preview
+   keeps the frames it simulates, so scrubbing or playing the timeline while
+   paused shows them again with the live camera and look. **Export Cache to
+   VDB** in Presets & Compare writes them as a version you can import, render
+   and compare.
 4. Use **Bake** for a final sequence at the domain's full resolution.
 
 Domain participant collections include nested child collections and select only

@@ -648,8 +648,9 @@ def _draw_domain(layout, scene, props):
         controls.separator(factor=0.5)
         options = controls.row(align=True)
         record = _pair(options)
-        export = record.row(align=True)
-        export.operator("fumaris.preview_cache_export", text="Export Cache to VDB", icon="EXPORT")
+        cache_preview = record.row(align=True)
+        cache_preview.enabled = mode is None
+        cache_preview.prop(props, "preview_cache")
         bake_preview = record.row(align=True)
         bake_preview.enabled = mode is None
         bake_preview.prop(props, "preview_bake")

@@ -79,11 +79,10 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     preview_cache_mode: EnumProperty(
         name="Preview Cache",
-        description="Whether the live preview keeps its frames, so a paused preview can scrub, play back and export them",
+        description="How often a cached live preview (Cache Preview, under Play) keeps its frames",
         items=(
             ("BALANCED", "Balanced", "As many frames as copying them to system memory allows in about a fifth of the frame time, spread evenly so playback stays smooth: small scenes keep most frames, large ones every few (fewer on slower PCIe links)"),
             ("EVERY", "Every Frame", "Every frame, whatever the cost: copying a frame takes about 40 ms per GB on a PCIe 4.0 x16 link and several times that on narrower ones, so large scenes preview slower"),
-            ("OFF", "Off", "No cache: nothing to scrub or export"),
         ),
         default="BALANCED",
     )
@@ -104,9 +103,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         box.label(text="Applies to the next Preview or Bake. Save Preferences to keep this choice.")
         cache = layout.row(align=True)
         cache.prop(self, "preview_cache_mode")
-        memory = cache.row(align=True)
-        memory.enabled = self.preview_cache_mode != "OFF"
-        memory.prop(self, "preview_cache_memory_gb", text="RAM (GB, 0 = Auto)")
+        cache.prop(self, "preview_cache_memory_gb", text="RAM (GB, 0 = Auto)")
         if not _devices:
             box.label(text="Refresh GPUs to list available devices", icon='INFO')
         if self.gpu_device_uuid and _devices and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):

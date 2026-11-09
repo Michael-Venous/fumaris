@@ -31,11 +31,12 @@ Removed). This is a beta: please report scenes that look wrong.
 - **Scatter Glow**: fire light spreads into the smoke around it, with Glow
   Spread (a long, soft falloff) and Glow Shadowing (dense outer billows stay
   dark while crevices next to the flames glow).
-- **Preview cache**: the live preview keeps the frames it simulates
+- **Preview cache** (**Cache Preview** under Play, off by default): the live preview keeps the frames it simulates
   (compressed, full detail), so a paused preview scrubs and plays them back
-  with the live camera and look, and **Export Cache to VDB** writes them as a
+  with the live camera and look, and **Export Cache to VDB** (Presets &
+  Compare) writes them as a
   version that imports, renders and compares like a bake. Replaces Bake on
-  Preview. The preview now pauses at the end of its range. Balanced (the
+  Preview. A cached preview pauses at the end of its range. Balanced (the
   default) keeps as many frames as about a fifth of the frame time allows,
   with the copy spread evenly so playback stays smooth; Every Frame keeps all.
 - **Simulation Memory** replaces Sparse Block Capacity: set GB (or Auto, 80%
@@ -245,7 +246,7 @@ Removed). This is a beta: please report scenes that look wrong.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
 - Transport status (Live / Cached / Baked frames).
-- **Preview While Baking**: watch the live preview
+- **Preview While Baking** (on by default): watch the live preview
   while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving
   domain, colliders and memory (Simulation Speed and Trace Steps first, then

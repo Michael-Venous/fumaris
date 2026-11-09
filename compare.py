@@ -920,7 +920,12 @@ class FUMARIS_OT_preview_cache_export(_DomainOperator, Operator):
         domain = _domain(context)
         job = active_job()
         if domain is None or job is None or active_mode() != "previewing":
-            cls.poll_message_set("Play a live preview, then pause it")
+            cls.poll_message_set("Turn on Cache Preview (under Play), play a live preview, then pause it"
+                                 if domain is not None and not domain.fumaris.preview_cache
+                                 else "Play a live preview, then pause it")
+            return False
+        if not job._worker._session.get("preview_cache"):
+            cls.poll_message_set("This preview keeps no cache: turn on Cache Preview (under Play) and play again")
             return False
         if not getattr(job, "_pause_requested", False):
             cls.poll_message_set("Pause the live preview first")
@@ -1120,7 +1125,7 @@ def draw_compare(layout, domain, props):
     new.enabled = idle
     new.operator("fumaris.cache_slot_new", text="", icon="ADD")
     header.operator("fumaris.version_keep_frame", text="", icon="IMAGE_PLANE")
-    header.operator("fumaris.preview_cache_export", text="", icon="EXPORT")
+    column.operator("fumaris.preview_cache_export", text="Export Cache to VDB", icon="EXPORT")
     versions = list_versions(domain)
     current = os.path.basename(_current_directory(domain) or "")
     if not versions:

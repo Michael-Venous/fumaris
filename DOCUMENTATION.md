@@ -258,8 +258,8 @@ of their panel (apply, `+` to save, `X` to delete).
   - `Keep Frame` (image button) keeps the current frame of the bake (files
     hard-linked where the disk allows, so it costs no space), or of a paused
     preview's cache, as a one-frame slot shown on every frame.
-  - `Export Cache to VDB` (export button) writes a paused preview's cache as a
-    slot of its own (see Preview Cache).
+  - `Export Cache to VDB` (below the Versions header) writes a paused
+    preview's cache as a slot of its own (see Preview Cache).
 - **B** on a version shows its bake as B. `Show` picks A only, B only, or Side
   by Side (B moved along X beside the domain); `Swap` makes B current and the
   old current B; `Diff` lists the settings that differ between the two bakes
@@ -962,8 +962,10 @@ The simulation empty stores settings; smoke can extend freely around it.
 
 ### Preview Cache
 
-The live preview keeps every frame it simulates, compressed in system memory,
-at full detail (exactly what the preview drew). While the preview is paused:
+With **Cache Preview** on (under Play; off by default, applies from the next
+Play), the live preview keeps the frames it simulates, compressed in system
+memory, at full detail (exactly what the preview drew). Without it the preview
+loops over its range and keeps nothing. While a cached preview is paused:
 
 - Scrub or play the timeline (Blender's own playback) to see the cached frames
   with the live camera, lighting and look. The status line shows the cached
@@ -971,7 +973,7 @@ at full detail (exactly what the preview drew). While the preview is paused:
 - **Resume** returns to the live frame and continues the simulation from it.
   At the end of the range the preview pauses; Resume then starts over (a new
   cache).
-- **Export Cache to VDB** writes the cached frames as VDB files into a new
+- **Export Cache to VDB** (Presets & Compare) writes the cached frames as VDB files into a new
   cache slot (a version, see Presets & Compare), with the Output settings
   (grids, resolutions, Glow) at the preview's resolution. It imports, renders
   and compares like a bake. **Keep Frame** in Presets & Compare exports one
@@ -984,8 +986,7 @@ PCIe 4.0 x16 link and several times that on a narrower one (a card in an x4
 slot). **Balanced** (the default) measures the link and spends about a fifth of
 the frame time on the copy, spread evenly over the frames that follow a kept
 one, so playback stays smooth: small scenes keep most frames, large ones every
-few. **Every Frame** always keeps every frame, whatever the cost; **Off** keeps
-none. RAM sets how much
+few. **Every Frame** always keeps every frame, whatever the cost. RAM sets how much
 memory the cache may use (0: a quarter of the RAM, 1 to 16 GB). When it is full, every other frame of the
 older half is dropped, so the whole range stays reachable at a coarser step;
 scrubbing to a dropped frame shows the nearest earlier one.

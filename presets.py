@@ -26,6 +26,8 @@ _NEVER = {"smoke_object_type", "participant_type", "particle_system_name", "gn_s
           "cache_slot", "cache_id", "output_dir", "output_prefix", "simulation_state",
           "baked_frames", "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb",
           "sim_start_frame", "sim_end_frame", "use_scene_frame_range"}
+# Compare section state (which presets and slots are being compared).
+_NEVER_PREFIXES = ("compare_",)
 
 
 def preset_role(props):
@@ -33,7 +35,7 @@ def preset_role(props):
 
 
 def _belongs(name, role):
-    if name in _NEVER or "collection" in name:
+    if name in _NEVER or "collection" in name or name.startswith(_NEVER_PREFIXES):
         return False
     source = name in _SOURCE_NAMES or name.startswith(_SOURCE_PREFIXES)
     return source if role == "source" else not source
@@ -58,16 +60,28 @@ def _safe(name):
     return re.sub(r"[^A-Za-z0-9 _.-]", "_", name).strip() or "Preset"
 
 
-def save_preset(props, name):
+def capture(props):
+    """This object's preset settings as plain data (what a preset file holds)."""
     role = preset_role(props)
     values = {key: value for key, value in _rna_values(props).items() if _belongs(key, role)}
     data = {"version": 2, "role": role, "settings": values}
     if role == "domain":
         data["detail_layers"] = detail_stack.to_list(props)
-    path = os.path.join(presets_directory(role, create=True), _safe(name) + ".json")
+    return data
+
+
+def save_preset(props, name):
+    data = capture(props)
+    path = os.path.join(presets_directory(data["role"], create=True), _safe(name) + ".json")
     with open(path, "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1, sort_keys=True)
-    return path, len(values)
+    return path, len(data["settings"])
+
+
+def load_preset(role, name):
+    path = os.path.join(presets_directory(role), _safe(name) + ".json")
+    with open(path, encoding="utf-8") as stream:
+        return json.load(stream)
 
 
 def _default(prop):
@@ -79,10 +93,11 @@ def _default(prop):
 
 
 def apply_preset(props, name):
+    return apply_data(props, load_preset(preset_role(props), name))
+
+
+def apply_data(props, data):
     role = preset_role(props)
-    path = os.path.join(presets_directory(role), _safe(name) + ".json")
-    with open(path, encoding="utf-8") as stream:
-        data = json.load(stream)
     saved = data.get("settings", {})
     settings = dict(saved)
     for key in _rna_values(props):

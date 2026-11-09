@@ -37,6 +37,11 @@ def _object_type_updated(self, _context):
         obj.display_type = "WIRE"
 
 
+def _compare_view_updated(self, _context):
+    from .compare import apply_compare_view
+    apply_compare_view(self.id_data)
+
+
 def _cache_slot_updated(self, _context):
     from .bake_state import sync_cache_slot
     sync_cache_slot(self.id_data)
@@ -782,6 +787,32 @@ class FumarisSettings(PropertyGroup):
         default="main",
         update=_cache_slot_updated,
     )
+
+    # Compare section: a second cache slot (B) shown next to the current one
+    # (A), and two presets to swap between. UI state, never in presets.
+    compare_slot: StringProperty(
+        name="Compare With",
+        description="Cache slot compared with the current one (B)",
+        default="",
+    )
+
+    compare_view: EnumProperty(
+        name="Show",
+        description="Which bake the viewport shows while comparing",
+        items=(
+            ("A", "A", "Only the current cache slot"),
+            ("B", "B", "Only the compared cache slot"),
+            ("SIDE", "Side by Side", "Both, B moved beside the domain"),
+        ),
+        default="SIDE",
+        update=_compare_view_updated,
+    )
+
+    compare_preset_a: StringProperty(name="Preset A", default="")
+    compare_preset_b: StringProperty(name="Preset B", default="")
+    compare_preset_active: StringProperty(default="", options={"HIDDEN"})
+    # Settings before the first A/B swap when A is "Current".
+    compare_stash: StringProperty(default="", options={"HIDDEN"})
 
     cache_id: StringProperty(
         name="Cache ID",
@@ -2042,6 +2073,7 @@ class FumarisSettings(PropertyGroup):
 
     # Top-level panel foldouts (ui._section): open by default, so Play, Bake and
     # each participant's main settings show on a new object; sub-sections fold.
+    show_panel_compare: BoolProperty(name="Compare", default=False)
     show_panel_simulate: BoolProperty(name="Simulate", default=True)
     show_panel_participants: BoolProperty(name="Participants", default=True)
     show_panel_behavior: BoolProperty(name="Smoke Behavior", default=True)

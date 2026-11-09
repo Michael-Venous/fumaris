@@ -222,6 +222,13 @@ Removed). This is a beta: please report scenes that look wrong.
   sources.
 - **User presets** for domains and sources, shared between files; applying
   one restores the whole saved state.
+- **Compare** (top of the domain panel): every cache slot is a version, listed
+  with its frames, size and a note; click one to make it current. Show another
+  slot as B beside the current bake (or instead of it), swap them, list the
+  settings that differ, or take B's settings. Keep a preview recording or a
+  single frame as a version of its own. Snapshot the viewport (live preview
+  included) and put two snapshots side by side. Swap between two presets, or a
+  preset and your unsaved settings, with one click.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
 - Transport status (Live / Recorded frames) and **Scrub Recording**.

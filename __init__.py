@@ -16,6 +16,7 @@ from . import playback
 from . import quick_setup
 from . import effector_display
 from . import detail_stack
+from . import compare
 
 
 def register():
@@ -27,9 +28,11 @@ def register():
     preferences.register()
     effector_display.register()
     detail_stack.register()
+    compare.register()
 
 
 def unregister():
+    compare.unregister()
     detail_stack.unregister()
     effector_display.unregister()
     preferences.unregister()

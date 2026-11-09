@@ -280,7 +280,7 @@ def _rna_values(props):
             continue
         if prop.type in {"POINTER", "COLLECTION"}:
             continue
-        if name.startswith("show_"):
+        if name.startswith(("show_", "compare_")):
             continue
         try:
             value = getattr(props, name)

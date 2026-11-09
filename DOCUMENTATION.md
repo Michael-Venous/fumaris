@@ -239,6 +239,35 @@ solver state cannot currently be serialized, so a stopped bake cannot resume;
 the next Bake starts from the beginning. `Delete` removes the selected cache
 slot and its imported volume. It is unavailable while a job is active.
 
+## Compare
+
+The `Compare` section at the top of the domain panel works with the domain's
+cache slots as versions of the shot.
+
+- **Presets**: pick a saved domain preset for A and for B and apply either, or
+  press `Swap` to flip between them. A left as `Current` stands for the
+  settings you had before first switching to B, so a preset can be tried and
+  undone with one click.
+- **Versions** lists every cache slot of the domain that holds frames,
+  recordings, snapshots or a lock: frame range, and in the tooltip size, date,
+  recordings, snapshots and note. Click a name to make it the current slot (A);
+  its bake is imported if it was not already. The pencil sets a note.
+  - `Keep Frame` (image button) keeps the current frame of the bake, or of the
+    latest preview recording, as a one-frame slot shown on every frame.
+  - `Keep Recording` (record button) keeps the latest Bake on Preview
+    recording as a slot of its own, so it can be compared, imported and
+    rendered like a bake. Files are hard-linked where the disk allows, so
+    keeping costs no space.
+- **B** on a version shows its bake as B. `Show` picks A only, B only, or Side
+  by Side (B moved along X beside the domain); `Swap` makes B current and the
+  old current B; `Diff` lists the settings that differ between the two bakes
+  (by the settings stored with each); `Use B` takes B's settings. The X stops
+  comparing and puts B's volume back. The live preview is not affected by
+  Show.
+- **Snapshot** saves what the 3D Viewport shows, live preview included, as a
+  PNG in the current slot's `snapshots` folder. `A|B Image` puts the latest
+  snapshot of A and of B (or A's last two) side by side in an Image Editor.
+
 ## Domain Settings
 
 ### Resolution And Simulation Memory

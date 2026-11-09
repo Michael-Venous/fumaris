@@ -561,6 +561,11 @@ def _draw_domain(layout, scene, props):
     )
     is_initializing = job is not None and not getattr(job, "_accepted", False)
 
+    compare_box = layout.box()
+    if _section(compare_box, props, "show_panel_compare", "Compare", "SEQ_SPLITVIEW"):
+        from .compare import draw_compare
+        draw_compare(compare_box, props.id_data, props)
+
     simulate_box = layout.box()
     if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
         controls = simulate_box.column(align=True)

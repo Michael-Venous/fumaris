@@ -245,6 +245,17 @@ Scattering, and recognition of pre-1.0 beta data.
 
 ### Fixes
 
+- Fast moving colliders at high resolution no longer blow up the simulation
+  (a car at Resolution 1400 reached 12,000 m/s at frame 89): the pressure
+  solve's coarse levels keep every sealed pocket solvable.
+- Moving and dragged mesh emitters and mesh colliders cost much less: motion
+  stamps share one closest-face pass and faces too far away are skipped (a
+  source dragged 3 m per frame: emitter pass 19 -> 7 ms in a bake, 8 -> 3 ms
+  live; a scene with two mesh colliders: 535 -> 302 ms over 60 frames).
+  Results are unchanged.
+- Preview Scatter Glow widens smoothly as the fire grows instead of jumping
+  to twice its spread.
+
 - OpenVDB sources read temperature grids in Kelvin: re-emitting a Fumaris bake
   made its gas millions of degrees hot (infinite in Half precision files).
 

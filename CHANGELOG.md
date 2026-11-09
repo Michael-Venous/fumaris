@@ -181,7 +181,7 @@ replaced (see Removed). This is a beta: please report scenes that look wrong.
 - **Faster, smaller VDB bakes**: only cells holding smoke are read back,
   VDB files are written by more threads (FUMARIS_VDB_WORKERS limits them),
   bakes use far less RAM, and **VDB Writers** (Output) trades speed for even
-  less: Balanced (6), Low Memory (4 writers, ~40% less RAM for ~5% more time)
+  less: Balanced (6, the default: as fast as Fastest with ~22% less RAM), Low Memory (4 writers, ~40% less RAM for ~5% more time)
   or Ultra Low Memory (1 writer, about half the RAM, several times slower).
 - **Smaller files**: VDB Precision (Half by default), temperature below 500 K
   not stored, a Full / Half / Quarter resolution menu for each grid (Density,

@@ -119,7 +119,7 @@ def build_session(
         "vdb_precision": getattr(domain.fumaris, "vdb_precision", "half"),
         # VDB Writers: (most writers, frames converted at once; 0 = no limit).
         **dict(zip(("vdb_writer_limit", "vdb_writer_frames"),
-                   _VDB_WRITERS.get(getattr(domain.fumaris, "vdb_writers", "FASTEST"), (0, 0)))),
+                   _VDB_WRITERS.get(getattr(domain.fumaris, "vdb_writers", "BALANCED"), (6, 0)))),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
         "flow_profile_enabled": os.environ.get("FUMARIS_FLOW_PROFILE", "").strip().lower()

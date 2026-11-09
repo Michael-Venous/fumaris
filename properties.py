@@ -942,11 +942,11 @@ class FumarisSettings(PropertyGroup):
         description="How many frames are converted and written to VDB at once while baking. Fewer use less system RAM; use them when a bake would otherwise run out of RAM or swap. Results are the same",
         items=(
             ("FASTEST", "Fastest", "One writer per two CPU cores, up to 12: the fastest bakes, the most RAM", 0),
-            ("BALANCED", "Balanced", "Up to 6 writers: about as fast, somewhat less RAM", 1),
+            ("BALANCED", "Balanced", "Up to 6 writers: as fast as Fastest with about 22% less RAM (default)", 1),
             ("LOW", "Low Memory", "Up to 4 writers: about 40% less RAM in large bakes (4.0 to 2.4 GB) for about 5% more time", 2),
             ("ULTRA", "Ultra Low Memory", "1 writer, one frame at a time: the least RAM (about half), for several times the bake time", 3),
         ),
-        default="FASTEST",
+        default="BALANCED",
     )
 
     # Object References

@@ -6,10 +6,9 @@ All notable customer-facing changes are recorded here.
 
 Fumaris 2.0: a new solver core, physical fire, a live preview lit like Cycles,
 two fire looks (Temperature and Pyro) and a reworked panel. A major version
-because results change: **saved scenes keep their settings, but simulate and
-look differently** (the sparse grid, pressure solve, rounding, combustion and
-emitters changed; see Compatibility), and several features were removed or
-replaced (see Removed). This is a beta: please report scenes that look wrong.
+that starts fresh: **scenes from 1.x are not converted** and need to be set up
+again (see Compatibility), and several features were removed or replaced (see
+Removed). This is a beta: please report scenes that look wrong.
 
 ### Highlights
 
@@ -233,7 +232,7 @@ replaced (see Removed). This is a beta: please report scenes that look wrong.
 - Linux: a failed bridge start says what to fix (missing library, old glibc,
   no Vulkan driver).
 
-### New-domain defaults
+### New defaults
 
 Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Smoke Per Burn 1 (3 buried
 the fire in dark smoke within a second), Temperature Diffusion 0.1, Soot
@@ -243,14 +242,16 @@ raised; Trace brings 1 step much closer to a converged result), Simulation
 Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
 Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.5, Blue Core 0,
-Smoke Density 1, smoke colour 0.45, Anisotropy 0.3.
+Smoke Density 1, smoke colour 0.45, Anisotropy 0.3. Emitters: Expansion 0.2,
+and smoke, heat, fuel and burn Add (velocity Blends).
 
 ### Removed
 
 Classic combustion and the Burn look, Upres, Small Sparse Blocks, Sparse
-Block Capacity (scenes that set it keep it until Simulation Memory is
-changed), the Adaptive toggle (Cells per Step 0), Shadow Min Light and Light
-Scattering, and recognition of pre-1.0 beta data.
+Block Capacity, Ray Steps (Step Size), the Adaptive toggle (Cells per Step 0),
+Shadow Min Light and Light Scattering, the per-cell Expansion, and the
+separate Turbulence Detail, Control Ramps and Soot Burn-off settings (Detail &
+Shaping layers).
 
 ### Fixes
 
@@ -283,28 +284,23 @@ Scattering, and recognition of pre-1.0 beta data.
 
 ### Compatibility
 
-Saved scenes keep their settings, and emitters keep their channel
-operations. Because the solver core changed, saved scenes simulate
-differently:
+2.0 does not convert anything from 1.x. Scenes open, but settings that were
+removed or renamed are dropped, and settings left at their old defaults take
+the new defaults; set the domain and sources up again (Quick Setup is a good
+start). Presets and takes saved by 1.x restore only the settings that still
+exist, and older bakes in a cache folder's top level are no longer moved into
+cache slots. Expect saved scenes to simulate and look differently:
 
 - The pressure solve now converges with colliders: plumes next to the ground
-  rise less (an expanding emitter on a ground plane about half as high at
-  Resolution 80) and spread wider, and look the same at any resolution.
+  rise less and spread wider, and look the same at any resolution.
 - Heat and smoke no longer drift with the Sub-Steps count (unbiased rounding).
-- Fire scenes follow the new heat law and may look hotter or cooler.
+- Fire follows the new heat law.
+- Expansion is a rate per second at any Resolution: values from 1.x (per cell)
+  push far harder; start from about a tenth.
+- Turbulence Detail, Control Ramps and Soot Burn-off are now Detail & Shaping
+  layers: add them again.
 - Existing bakes need a new bake for Glow Spread, Glow Shadowing and the Pyro
   look; generated materials rebuild when opened.
-- New domains start with 1 Sub-Step, and new emitters Add what they emit;
-  saved domains and emitters keep their values.
-- The older per-cell Expansion, which pushed harder at higher Resolution
-  (about twice at twice the Resolution), was removed. Emitters saved with it
-  convert on load to Expansion per second, keeping the push they had at
-  their domain's saved Resolution; per-point Expansion attributes are not
-  converted. Their Normal Velocity now blows the air out as on new emitters.
-- Turbulence Detail, Control Ramps and Soot Burn-off became Detail & Shaping
-  layers (Min Speed and Edges Only as masks): saved scenes, presets and takes
-  convert on load and simulate the same to within rounding; a Disturb or
-  Grain speed ramp now reads the speed after the layers above it.
 
 ## 1.3.1 — 2026-10-26
 

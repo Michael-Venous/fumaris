@@ -202,28 +202,6 @@ def delete_temporary_writes(directory, prefix=PREFIX):
             pass
 
 
-def migrate_legacy_cache(legacy_directory, directory, prefix=PREFIX):
-    legacy_directory = os.path.normpath(legacy_directory)
-    directory = os.path.normpath(directory)
-    if legacy_directory == directory:
-        return False
-    legacy_files = _frame_files(legacy_directory, prefix)
-    if not legacy_files:
-        return False
-    if _frame_files(directory, prefix):
-        return False
-
-    os.makedirs(directory, exist_ok=True)
-    for source in legacy_files:
-        os.replace(source, os.path.join(directory, os.path.basename(source)))
-    _remove_volume_for_directory(legacy_directory, prefix)
-    console_log(
-        f"Fumaris migrated {len(legacy_files)} legacy VDB frame(s) to "
-        f"{directory}"
-    )
-    return True
-
-
 def _socket(sockets, *names):
     for name in names:
         socket = sockets.get(name)
@@ -374,8 +352,7 @@ def apply_generated_material_settings(material, settings):
     return True
 
 
-def add_density_material(volume_object, settings=None, flame_rate_scale=1.0):
-    # flame_rate_scale normalised the removed Burn look; kept for callers.
+def add_density_material(volume_object, settings=None):
     material = bpy.data.materials.new("Fumaris Material")
     material.use_nodes = True
     material[GENERATED_MATERIAL_MARKER] = True
@@ -838,7 +815,6 @@ def import_sequence(
     material=None,
     selectable=True,
     appearance=None,
-    flame_rate_scale=1.0,
     frame_end=None,
 ):
     files = _sequence_files(directory, prefix)
@@ -896,7 +872,6 @@ def import_sequence(
         add_density_material(
             volume_object,
             settings=appearance,
-            flame_rate_scale=flame_rate_scale,
         )
     _restore_selection(previous_selection, previous_active)
     return volume_object

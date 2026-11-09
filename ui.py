@@ -5,7 +5,6 @@ from bpy.types import Panel
 from . import detail_stack
 from .runtime import active_job, active_mode
 from . import diagnostics
-from .exporters import simulation_memory_mb
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
 from .utils import FLAME_VALUE_KEYS, flame_value, get_addon_preferences, peek_output_directory_for_object, physical_buoyancy
@@ -656,11 +655,7 @@ def _draw_domain(layout, scene, props):
     auto = grid_row.row(align=True)
     auto.ui_units_x = 2.2
     auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
-    if simulation_memory_mb(props) == 0.0 and not props.simulation_memory_auto:
-        legacy = settings.row()
-        legacy.label(text=f"Using saved block capacity {props.sparse_block_capacity:,}", icon="INFO")
-    else:
-        draw_budget_summary(settings, props, diagnostics.snapshot(domain))
+    draw_budget_summary(settings, props, diagnostics.snapshot(domain))
     settings.prop(props, "air_margin")
     substeps_row = settings.row(align=True)
     substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")

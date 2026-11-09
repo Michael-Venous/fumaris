@@ -256,8 +256,7 @@ higher resolution covers a smaller region.
 Leave room for Blender and anything else on the same GPU, such as Cycles
 renders. If the simulation does not fit, Fumaris shows "GPU memory full": the
 driver moves data to system memory and the simulation runs very slowly, so
-lower Simulation Memory and restart. Scenes saved before Simulation Memory
-existed keep their Sparse Block Capacity until Simulation Memory is changed.
+lower Simulation Memory and restart.
 
 `Auto` next to Memory reserves 80% of the GPU memory that is free when the
 simulation starts (at least 0.5 GB), read from the driver; the GB value then

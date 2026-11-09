@@ -1,7 +1,6 @@
 from math import atan2, cos, hypot, isfinite, pi, sin
 
 import bpy
-from bpy.app.handlers import persistent
 from bpy.props import (
     BoolProperty,
     CollectionProperty,
@@ -14,64 +13,8 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
-from .detail_stack import FumarisDetailLayer, STACK_VERSION as DETAIL_STACK_VERSION, migrate as _migrate_detail_stack
+from .detail_stack import FumarisDetailLayer
 from .memory_auto import auto_toggled
-from .utils import FLAME_VALUE_KEYS
-
-
-LEGACY_TEMPERATURE_EXPORT_SCALE = 2200.0
-TEMPERATURE_EXPORT_SCALE = 5000.0
-TEMPERATURE_MAPPING_VERSION = 2
-# 1: domain created with the Realistic combustion model available. Earlier
-# domains keep their other settings; Classic itself was removed in 2.0.
-COMBUSTION_VERSION = 2
-# 1: Cells per Step 0 turns Adaptive Sub-Steps off (the toggle was removed).
-SUBSTEP_SETTINGS_VERSION = 1
-# 1: new domains fade smoke over several seconds (Dissipation 0.2, Smoke Decay
-# 0.1); saved domains keep the older 0.5 / 0.3, which ended a rising column
-# about 13 m up (2026-11-06).
-FADE_SETTINGS_VERSION = 1
-# Emitters: Expansion in 1/s, applied exactly at any resolution and Sub-Steps
-# (Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE). Older saves (0; 1 for point and
-# particle emitters) used Flow's per-cell divergence, which pushed harder at
-# higher resolution: they convert on load (exporters.upgrade_emitters).
-EMITTER_SETTINGS_VERSION = 2
-# Matches the push of the older default Divergence 2 (measured 2026-11-04).
-DEFAULT_EMITTER_EXPANSION = 0.2
-
-
-def _ramp_field(label):
-    return EnumProperty(
-        name=f"{label} Scale By",
-        description=f"Scale {label} per voxel by this field: from the first value at the low end of the range to the second at the high end. Temperature is relative to Flame Temperature (1 = Flame Temperature), Speed in m/s, Smoke in smoke amount",
-        items=(
-            ("uniform", "None", "Uniform"),
-            ("temperature", "Temperature", "Relative to Flame Temperature (0-1)"),
-            ("speed", "Speed", "Gas speed, m/s"),
-            ("smoke", "Smoke", "Smoke amount"),
-        ),
-        default="uniform",
-    )
-
-
-def _ramp_range():
-    return FloatVectorProperty(
-        name="Range",
-        description="Field values where the ramp starts and ends",
-        size=2,
-        default=(0.0, 1.0),
-    )
-
-
-def _ramp_values(label):
-    return FloatVectorProperty(
-        name="Scale",
-        description=f"{label} multiplier at the low and the high end of the range",
-        size=2,
-        default=(1.0, 1.0),
-        min=0.0,
-        soft_max=4.0,
-    )
 
 
 _EXPORT_RESOLUTION_ITEMS = (
@@ -85,74 +28,6 @@ _VELOCITY_RESOLUTION_ITEMS = _EXPORT_RESOLUTION_ITEMS[1:]
 def _velocity_resolution_items(self, _context):
     # Full only when motion is simulated at full resolution.
     return _EXPORT_RESOLUTION_ITEMS if getattr(self, "full_resolution_velocity", False) else _VELOCITY_RESOLUTION_ITEMS
-
-
-def _object_type_updated(self, _context):
-    # A new domain follows the timeline, so its range matches the scene
-    # without editing (customer request). Domains whose Start/End were
-    # already changed, and scenes saved earlier, keep their own range.
-    if (self.smoke_object_type == "domain" and not self.use_scene_frame_range
-            and self.sim_start_frame == 1 and self.sim_end_frame == 250):
-        self.use_scene_frame_range = True
-    if self.smoke_object_type == "domain" and self.detail_stack_version == 0:
-        # New domains start with the Detail & Shaping stack (nothing to migrate).
-        self.detail_stack_version = DETAIL_STACK_VERSION
-    if self.smoke_object_type == "domain" and self.combustion_version == 0:
-        self.combustion_version = COMBUSTION_VERSION
-        # Defaults pass 2026-11-07 (user, from the Cube.002 setup): fire that
-        # lasts about 2 s and fades as fast, some expansion, sooty caps with
-        # glowing cracks, softer heat edges; even burning (Oxygen Limit 0, no
-        # Oxygen Field), no Wisp Cooling or Flame Sheets. Preserve Turbulence
-        # stays off. Saved domains keep their values.
-        self.burn_time = 2.0
-        self.cooling_time = 2.0
-        self.gas_expansion = 0.3
-        self.simulation_memory = 4.0
-        self.oxygen_limit = 0.0
-        self.oxygen_field = False
-        self.wisp_cooling = 0.0
-        self.fuel_threshold = 0.0
-        self.soot_radiation = 1.0
-        self.edge_sharpness = 0.5
-        # Less smoke per burn (2026-11-08): at 3 a dense dark cloud buried the
-        # fire within a second (user explosion: smoke -79%, fire visible to the end).
-        self.smoke_per_burn = 1.0
-        # Smooths fire speckle (Axiom's default is the same 0.1), 2026-11-07.
-        self.temperature_diffusion = 0.1
-        # Look: Full Glow at the default Flame Temperature, so Brightness reads
-        # as exposure for the hottest gas.
-        self.shader_glow_temperature = 2000.0
-        self.shader_flame_brightness = 2.0
-        self.shader_scatter_glow = 2.0
-        # 0.5 keeps sooty caps darker (user, 2026-11-08); 1 hid Scatter Glow in
-        # dense smoke (2-5% left in a few density-metres).
-        self.shader_glow_shadowing = 0.5
-        # Blue Core off (2026-11-08): with Brightness raised it turned fuel-rich
-        # scenes lilac.
-        self.shader_flame_core = 0.0
-        self.shader_smoke_density = 1.0
-        self.shader_smoke_color = (0.45, 0.45, 0.45)
-    if self.smoke_object_type == "domain" and self.substep_settings_version == 0:
-        # New domains: 1 Sub-Step (user, 2026-11-08) with the back-trace
-        # following the flow in steps of 1.5 cells (Trace Steps 16): about 35%
-        # faster than 2 steps; Trace brings 1 step much closer to a converged
-        # result (hot gas +21%, spread +13%; output/trace_final). Cells per Step
-        # 8 applies once Max Sub-Steps is raised.
-        self.num_sub_steps = 1
-        self.adaptive_cfl = 8.0
-        self.trace_steps = 16
-        self.substep_settings_version = SUBSTEP_SETTINGS_VERSION
-    if self.smoke_object_type == "domain" and self.fade_settings_version == 0:
-        self.dissipation = 0.2
-        self.smoke_decay = 0.1
-        self.fade_settings_version = FADE_SETTINGS_VERSION
-    if self.smoke_object_type == "emitter" and self.emitter_settings_version == 0:
-        self.emitter_settings_version = EMITTER_SETTINGS_VERSION
-        self.emitter_divergence = DEFAULT_EMITTER_EXPANSION
-        # New emitters add what they emit (2026-11-08, user); velocity keeps
-        # Blend (Add would keep accelerating the air like a force).
-        for channel in ("smoke", "temperature", "fuel", "burn"):
-            setattr(self, f"source_op_{channel}", "add")
 
 
 def _cache_slot_updated(self, _context):
@@ -232,7 +107,6 @@ class FumarisSettings(PropertyGroup):
             ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
-        update=_object_type_updated,
     )
 
     participant_enabled: BoolProperty(
@@ -387,10 +261,11 @@ class FumarisSettings(PropertyGroup):
         soft_max=5.0,
     )
 
+    # 0.2 matches the push of the older per-cell default Divergence 2 (2026-11-04).
     emitter_divergence: FloatProperty(
         name="Expansion",
         description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps",
-        default=2.0,
+        default=0.2,
         soft_min=-10.0,
         soft_max=10.0,
     )
@@ -444,35 +319,34 @@ class FumarisSettings(PropertyGroup):
         soft_max=200.0,
     )
 
-    # How each emitted channel is written into the simulation. New emitters
-    # start with Add (2026-11-08, user); the property default stays Blend so
-    # saved emitters keep their behavior.
+    # How each emitted channel is written into the simulation: Add (2026-11-08,
+    # user); velocity keeps Blend (Add would keep accelerating the air like a force).
     source_op_smoke: EnumProperty(
         name="Smoke Operation",
         description="How this emitter writes smoke into the simulation",
         items=_SOURCE_OPERATIONS,
-        default="blend",
+        default="add",
     )
 
     source_op_temperature: EnumProperty(
         name="Temperature Operation",
         description="How this emitter writes temperature into the simulation",
         items=_SOURCE_OPERATIONS,
-        default="blend",
+        default="add",
     )
 
     source_op_fuel: EnumProperty(
         name="Fuel Operation",
         description="How this emitter writes fuel into the simulation",
         items=_SOURCE_OPERATIONS,
-        default="blend",
+        default="add",
     )
 
     source_op_burn: EnumProperty(
         name="Burn Operation",
         description="How this emitter writes burn into the simulation",
         items=_SOURCE_OPERATIONS,
-        default="blend",
+        default="add",
     )
 
     source_op_velocity: EnumProperty(
@@ -545,7 +419,7 @@ class FumarisSettings(PropertyGroup):
     use_scene_frame_range: BoolProperty(
         name="Use Timeline",
         description="Simulate the scene's timeline range, starting Warmup frames early, instead of a separate Start and End. On for new domains",
-        default=False,
+        default=True,
     )
 
     warmup_frames: IntProperty(
@@ -600,14 +474,6 @@ class FumarisSettings(PropertyGroup):
         subtype="PERCENTAGE",
     )
 
-    preview_max_ray_steps: IntProperty(
-        name="Ray Steps",
-        description="Sampling quality of the smoke preview; increase to reduce visible bands, but very high values stop helping once the simulation's detail is resolved",
-        default=256,
-        min=32,
-        max=4096,
-        soft_max=1024,
-    )
 
     preview_step_size: FloatProperty(
         name="Step Size",
@@ -762,19 +628,11 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    sparse_block_capacity: IntProperty(
-        name="Sparse Block Capacity",
-        description="Legacy space limit in sparse blocks, kept for scenes and scripts that set it. VRAM replaces it once changed",
-        default=16384,
-        min=256,
-        max=524288,
-        soft_max=131072,
-    )
 
     simulation_memory: FloatProperty(
         name="VRAM",
         description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant",
-        default=1.0,
+        default=4.0,
         min=0.1,
         max=1024.0,
         soft_max=24.0,
@@ -1438,15 +1296,6 @@ class FumarisSettings(PropertyGroup):
     )
 
 
-    combustion_model: EnumProperty(
-        name="Combustion Model",
-        description="How fuel burns",
-        items=(
-            # Classic (Flow's original model) was removed in 2.0; such files load as Realistic.
-            ("realistic", "Realistic", "Fuel burns away gradually at a set flame temperature, so fires glow at real flame colours and fade out instead of stopping at once"),
-        ),
-        default="realistic",
-    )
 
     flame_temperature: FloatProperty(
         name="Flame Temperature",
@@ -1461,7 +1310,7 @@ class FumarisSettings(PropertyGroup):
     gas_expansion: FloatProperty(
         name="Gas Expansion",
         description="Expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 = burning does not expand the gas. Start around 0.05-0.2 for fuel values of 10-50",
-        default=0.0,
+        default=0.3,
         min=0.0,
         soft_max=1.0,
     )
@@ -1483,10 +1332,11 @@ class FumarisSettings(PropertyGroup):
         soft_max=8.0,
     )
 
+    # 0.1 smooths fire speckle (Axiom's default is the same), 2026-11-07.
     temperature_diffusion: FloatProperty(
         name="Temperature Diffusion",
         description="Heat evens out between neighbouring voxels: each 1/24 s, temperature moves this share of the way to its neighbours' average. Flame brightness rises steeply with temperature, so this smooths speckle and noise in fire and softens flame edges; large shapes keep their look. 0 = off; try 0.1-0.3",
-        default=0.0,
+        default=0.1,
         min=0.0,
         max=1.0,
         subtype="FACTOR",
@@ -1517,7 +1367,7 @@ class FumarisSettings(PropertyGroup):
     edge_sharpness: FloatProperty(
         name="Edge Sharpness",
         description="How strongly each step restores detail lost to interpolation (MacCormack correction of smoke and heat). High values give crisp edges that can stair-step in close-ups when Smoke Detail is Sharp; about 0.45 keeps edges near two voxels soft",
-        default=0.9,
+        default=0.5,
         min=0.0,
         max=1.0,
     )
@@ -1531,7 +1381,7 @@ class FumarisSettings(PropertyGroup):
     soot_radiation: FloatProperty(
         name="Soot Radiation",
         description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature and capped where soot is optically thick), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",
-        default=0.0,
+        default=1.0,
         min=0.0,
         soft_max=3.0,
     )
@@ -1580,10 +1430,11 @@ class FumarisSettings(PropertyGroup):
     )
 
 
+    # 1 (2026-11-08): at 3 a dense dark cloud buried the fire within a second.
     smoke_per_burn: FloatProperty(
         name="Smoke Per Burn",
         description="How much smoke burning fuel produces; increase for smokier fire or lower for cleaner flames",
-        default=3.0,
+        default=1.0,
         min=0.0,
         soft_max=25.0,
     )
@@ -1606,123 +1457,22 @@ class FumarisSettings(PropertyGroup):
         max=10.0,
     )
 
-    disturb: FloatProperty(
-        name="Disturb",
-        description="Small random swirling pushes inside smoke and hot gas, for breakup and detail the base motion lacks. Strength in m/s²: about 50 is subtle and 300 strongly mixed on a fireball a few metres across; zero turns it off",
-        default=0.0,
-        min=0.0,
-        soft_max=200.0,
-        max=1000.0,
-    )
 
-    disturb_size: FloatProperty(
-        name="Disturb Size",
-        description="Size of the Disturb swirls in scene units. Use a few voxels or more; smaller swirls than the voxels cannot be resolved",
-        default=0.5,
-        min=0.001,
-        soft_max=10.0,
-        subtype="DISTANCE",
-    )
 
-    disturb_detail: IntProperty(
-        name="Disturb Detail",
-        description="Adds smaller Disturb swirls: each step halves the size and pushes a little harder, like real turbulence, so big lobes carry smaller billows. 1 = one size",
-        default=1,
-        min=1,
-        max=6,
-    )
 
-    grain: FloatProperty(
-        name="Grain",
-        description="Small random kicks, one direction per block of Grain Size, renewed every frame. The solver turns the edges between blocks into fine shear and eddies, the gritty breakup of a fast front, at the same world size whatever the resolution. Strength in m/s²: about 20-60 for a fireball a few metres across; zero turns it off",
-        default=0.0,
-        min=0.0,
-        soft_max=200.0,
-        max=2000.0,
-    )
 
-    grain_size: FloatProperty(
-        name="Grain Size",
-        description="Edge length of the Grain blocks in scene units. One to three voxels gives the finest grit; smaller than a voxel does nothing",
-        default=0.2,
-        min=0.001,
-        soft_max=2.0,
-        subtype="DISTANCE",
-    )
 
-    grain_edge: FloatProperty(
-        name="Grain Edges Only",
-        description="Apply Grain only to gas thinner than this amount of smoke, so thin, breaking-up edges get grit while dense cores stay smooth and rolling. Zero applies it everywhere there is smoke or heat",
-        default=0.0,
-        min=0.0,
-        soft_max=4.0,
-    )
 
-    grain_min_speed: FloatProperty(
-        name="Grain Min Speed",
-        description="Apply Grain only to gas moving faster than this, so fast, expanding fronts break up while slow, settled smoke stays smooth. Zero applies it at any speed",
-        default=0.0,
-        min=0.0,
-        soft_max=50.0,
-        unit="VELOCITY",
-    )
 
-    grain_layers: IntProperty(
-        name="Grain Layers",
-        description="Adds larger Grain: each layer uses blocks three times the size of the last, for breakup at several scales. 1 = one size",
-        default=1,
-        min=1,
-        max=3,
-    )
 
-    disturb_min_speed: FloatProperty(
-        name="Disturb Min Speed",
-        description="Apply Disturb only to gas moving faster than this, so it mixes fast-moving fronts and leaves slow smoke alone. Zero applies it at any speed",
-        default=0.0,
-        min=0.0,
-        soft_max=50.0,
-        unit="VELOCITY",
-    )
 
-    # "Scale by" control ramps (Smoke Behavior > Control Ramps): each scales a
-    # force or rate per voxel by temperature (relative to Flame Temperature),
-    # speed or smoke, linearly from the value at the range's low end to the
-    # value at its high end. None keeps the setting uniform.
-    vorticity_scale_by: _ramp_field("Vorticity")
-    vorticity_scale_range: _ramp_range()
-    vorticity_scale_values: _ramp_values("Vorticity")
-    disturb_scale_by: _ramp_field("Disturb")
-    disturb_scale_range: _ramp_range()
-    disturb_scale_values: _ramp_values("Disturb")
-    grain_scale_by: _ramp_field("Grain")
-    grain_scale_range: _ramp_range()
-    grain_scale_values: _ramp_values("Grain")
-    dissipation_scale_by: _ramp_field("Dissipation")
-    dissipation_scale_range: _ramp_range()
-    dissipation_scale_values: _ramp_values("Dissipation")
-    cooling_scale_by: _ramp_field("Cooling")
-    cooling_scale_range: _ramp_range()
-    cooling_scale_values: _ramp_values("Cooling")
 
-    soot_burn_off: FloatProperty(
-        name="Soot Burn-off",
-        description="Smoke thins where gas is hot (from 0.65 to 0.9 of Flame Temperature), per second, so hot layers between soot puffs clear and show the fire. Forms nothing: no heat, no expansion. 0 = off; try 2-6",
-        default=0.0,
-        min=0.0,
-        soft_max=10.0,
-        max=1000.0,
-    )
 
-    soot_burn_needs_air: BoolProperty(
-        name="Needs Air",
-        description="Soot Burn-off only as far as the gas still holds air (the Oxygen Field when on, otherwise less in the hottest gas), so it clears the mixing layers where hot gas meets air",
-        default=False,
-    )
 
     trace_steps: IntProperty(
         name="Trace Steps",
         description="Follow the flow back over each step in sub-steps of at most 1.5 cells, up to this many, so fast curved motion stays accurate with fewer Sub-Steps (fewer interpolations keep more fine detail). 0 = one straight step",
-        default=0,
+        default=16,
         min=0,
         max=16,
     )
@@ -1755,18 +1505,9 @@ class FumarisSettings(PropertyGroup):
     advection_reflection: BoolProperty(
         name="Preserve Turbulence",
         description="Advection-reflection: keeps swirling motion that the solver would otherwise lose to numerical damping, for livelier, longer-lasting turbulence and larger plumes. Steps run in pairs, so the Sub-Step count is rounded up to an even number (at least 2). About 3% more GPU time per block; the livelier smoke fills more space, so it fills VRAM sooner",
-        # Off for domains saved before it existed; new domains turn it on.
         default=False,
     )
 
-    shred: FloatProperty(
-        name="Shred",
-        description="Tear flames into tongues by stretching the motion across sharp temperature edges. Zero turns it off; high values can make fire unstable",
-        default=0.0,
-        min=0.0,
-        soft_max=10.0,
-        max=100.0,
-    )
 
     vorticity_mask: EnumProperty(
         name="Vorticity Mask",
@@ -1780,10 +1521,12 @@ class FumarisSettings(PropertyGroup):
         default="speed",
     )
 
+    # 0.2 with Smoke Decay 0.1 fades smoke over several seconds; 0.5 / 0.3 ended
+    # a rising column about 13 m up (2026-11-06).
     dissipation: FloatProperty(
         name="Dissipation",
         description="How quickly smoke fades away over time, in smoke density per second; zero keeps it from fading through this setting. It removes the same amount from thin and dense smoke, so smoke spread thin (by Wind or fast spreading) clears sooner; Smoke Decay fades in proportion instead. Type a value above 1 for dense smoke that must clear quickly",
-        default=0.5,
+        default=0.2,
         min=0.0,
         soft_max=1.0,
         max=100.0,
@@ -1801,7 +1544,7 @@ class FumarisSettings(PropertyGroup):
     smoke_decay: FloatProperty(
         name="Smoke Decay",
         description="Fraction of the smoke removed per second, in proportion to its density. Flow applies whichever removes more each step, this or Dissipation, so dense smoke ignores Dissipation and fades only at this rate. Raise it when dense leftovers linger after the thin smoke is gone. Flow's built-in value is 0.3",
-        default=0.3,
+        default=0.1,
         min=0.0,
         max=0.99,
         subtype="FACTOR",
@@ -1905,7 +1648,7 @@ class FumarisSettings(PropertyGroup):
     shader_smoke_density: FloatProperty(
         name="Density",
         description="Density multiplier used by the generated volume material and live volume preview",
-        default=2.0,
+        default=1.0,
         min=0.0,
         max=100.0,
         soft_max=10.0,
@@ -1915,7 +1658,7 @@ class FumarisSettings(PropertyGroup):
     shader_smoke_color: FloatVectorProperty(
         name="Color",
         description="Smoke color used by the generated volume material and live volume preview",
-        default=(0.5, 0.5, 0.5),
+        default=(0.45, 0.45, 0.45),
         min=0.0,
         max=1.0,
         size=3,
@@ -1942,7 +1685,7 @@ class FumarisSettings(PropertyGroup):
     shader_flame_brightness: FloatProperty(
         name="Brightness",
         description="Emission strength multiplier for generated fire",
-        default=5.0,
+        default=2.0,
         min=0.0,
         max=100.0,
         soft_max=10.0,
@@ -1952,7 +1695,7 @@ class FumarisSettings(PropertyGroup):
     shader_glow_temperature: FloatProperty(
         name="Full Glow",
         description="Temperature (K) at which fire glows at full Brightness; hotter gas is brighter, cooler gas falls off by Contrast",
-        default=1600.0,
+        default=2000.0,
         min=300.0,
         soft_min=800.0,
         soft_max=3000.0,
@@ -1972,7 +1715,7 @@ class FumarisSettings(PropertyGroup):
     shader_scatter_glow: FloatProperty(
         name="Scatter Glow",
         description="Fire light scattered into the surrounding smoke, so dark billows glow from inside near flames. Cycles barely carries emission through smoke on its own; this uses the baked glow grid (see Glow Radius under Output)",
-        default=1.0,
+        default=2.0,
         min=0.0,
         max=20.0,
         soft_max=4.0,
@@ -2000,10 +1743,12 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
+    # 0.5 keeps sooty caps darker (user, 2026-11-08); 1 hid Scatter Glow in
+    # dense smoke (2-5% left in a few density-metres).
     shader_glow_shadowing: FloatProperty(
         name="Glow Shadowing",
         description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. High values can hide Scatter Glow almost entirely in dense smoke; lower this if Scatter Glow or Glow Spread seem to do nothing. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 2.0 or later",
-        default=0.0,
+        default=0.5,
         min=0.0,
         soft_max=10.0,
         max=100.0,
@@ -2134,6 +1879,7 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
+    # Off (2026-11-08): with Brightness raised it turned fuel-rich scenes lilac.
     shader_flame_core: FloatProperty(
         name="Blue Core (Render Only)",
         description="Blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation, and the bake then also writes the fuel grid (larger files); the live preview does not show it. Zero turns it off",
@@ -2164,69 +1910,37 @@ class FumarisSettings(PropertyGroup):
         update=_appearance_updated,
     )
 
-    temperature_mapping_version: IntProperty(
-        default=0,
-        options={"HIDDEN"},
-    )
 
     # Detail & Shaping stack (detail_stack.py): replaces Turbulence Detail,
     # Control Ramps and Soot Burn-off, whose properties remain only as inputs.
     detail_layers: CollectionProperty(type=FumarisDetailLayer)
     detail_layers_index: IntProperty(name="Active Layer", default=0)
-    detail_stack_version: IntProperty(default=0, options={"HIDDEN"})
     show_domain_detail_stack: BoolProperty(name="Detail & Shaping", default=False)
 
-    combustion_version: IntProperty(
-        default=0,
-        options={"HIDDEN"},
-    )
 
-    adaptive_sub_steps: BoolProperty(
-        name="Adaptive",
-        description="Use only as many Sub-Steps as the flow needs each frame, up to Sub-Steps: fewer while it is slow, all of them while it is fast. Saves time when Sub-Steps is high; the result differs a little from always using all of them",
-        default=False,
-    )
 
     adaptive_cfl: FloatProperty(
         name="Cells per Step",
         description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; 8 bakes explosions in about half the time with a similar result, while 16 loses much of the smoke. 0 = off: always use Max Sub-Steps",
-        default=4.0,
+        default=8.0,
         min=0.0,
         max=40.0,
         soft_max=8.0,
     )
 
-    substep_settings_version: IntProperty(
-        default=0,
-        options={"HIDDEN"},
-    )
 
-    fade_settings_version: IntProperty(
-        default=0,
-        options={"HIDDEN"},
-    )
 
-    emitter_settings_version: IntProperty(
-        default=0,
-        options={"HIDDEN"},
-    )
 
+    # 1 Sub-Step (user, 2026-11-08) with Trace Steps 16: about 35% faster than
+    # 2 steps and close to a converged result (output/trace_final).
     num_sub_steps: IntProperty(
         name="Sub-Steps",
         description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation",
-        default=2,
+        default=1,
         min=1,
         max=40,
     )
 
-    # Hidden compatibility multiplier for existing point-emitter .blend files.
-    velocity_scale: FloatProperty(
-        name="Velocity Scale",
-        description="Multiplier for point/particle velocity influence",
-        default=1.0,
-        min=0.0,
-        soft_max=10.0,
-    )
 
     # Simulation State
     simulation_state: EnumProperty(
@@ -2342,110 +2056,6 @@ class FumarisSettings(PropertyGroup):
     )
 
 
-def _migrate_temperature_mapping():
-    for obj in bpy.data.objects:
-        props = getattr(obj, "fumaris", None)
-        if (props is not None and props.smoke_object_type == "domain"
-                and props.get("combustion_model", 0) != 0):
-            # Classic (1) was removed in 2.0: drop the stale value so the
-            # domain reads Realistic without RNA warnings.
-            props.property_unset("combustion_model")
-        if (props is not None and props.smoke_object_type == "domain"
-                and ("shader_density_low" in props or "shader_density_high" in props)):
-            # Density Low / High were removed (2026-11-07): fold their scale
-            # into Density so the look stays; Low no longer hides thin smoke.
-            low = float(props.get("shader_density_low", 0.0))
-            high = float(props.get("shader_density_high", 1.0))
-            scale = 1.0 / max(high - low, 1e-4)
-            if abs(scale - 1.0) > 1e-6:
-                props.shader_smoke_density = props.shader_smoke_density * scale
-            for key in ("shader_density_low", "shader_density_high"):
-                if key in props:
-                    del props[key]
-        if (props is not None and props.smoke_object_type == "domain"
-                and props.shader_look == "PYRO" and "pyro_brightness" not in props):
-            # The Pyro look shared the Temperature look's flame values until
-            # 2026-11-08: keep a Pyro scene's look by copying them once.
-            for key, (temperature_key, pyro_key) in FLAME_VALUE_KEYS.items():
-                if pyro_key != temperature_key:
-                    setattr(props, pyro_key, getattr(props, temperature_key))
-        if props is not None and props.smoke_object_type == "domain" and "low_memory_bake" in props:
-            # Low Memory Bake became VDB Writers: Low Memory.
-            if props["low_memory_bake"]:
-                props.vdb_writers = "LOW"
-            del props["low_memory_bake"]
-        if props is not None and props.smoke_object_type == "domain":
-            # 2.0: the Half Res toggles became resolution menus. Velocity Half
-            # Res halved the stored velocity, itself at half resolution unless
-            # Full-Resolution Velocity was on.
-            if "export_temperature_half_res" in props:
-                if props["export_temperature_half_res"]:
-                    props.export_temperature_resolution = "HALF"
-                del props["export_temperature_half_res"]
-            if "export_velocity_half_res" in props:
-                halved = bool(props["export_velocity_half_res"])
-                if props.full_resolution_velocity:
-                    props.export_velocity_resolution = "HALF" if halved else "FULL"
-                elif halved:
-                    props.export_velocity_resolution = "QUARTER"
-                del props["export_velocity_half_res"]
-        if props is not None and props.smoke_object_type == "domain":
-            # 2.0: Turbulence Detail, Control Ramps and Soot Burn-off became layers.
-            _migrate_detail_stack(props)
-        if (props is not None and props.smoke_object_type == "domain"
-                and props.substep_settings_version < SUBSTEP_SETTINGS_VERSION):
-            # The Adaptive toggle became Cells per Step 0.
-            if not props.adaptive_sub_steps:
-                props.adaptive_cfl = 0.0
-            props.substep_settings_version = SUBSTEP_SETTINGS_VERSION
-        if props is not None and props.smoke_object_type == "domain":
-            # 2.0: per-cell Expansion was removed; older emitters keep the push
-            # they had at their domain's Resolution, now in 1/s.
-            from .exporters import upgrade_emitters
-            scene = obj.users_scene[0] if obj.users_scene else bpy.context.scene
-            upgrade_emitters(obj, scene.render.fps / scene.render.fps_base)
-        if (props is not None and props.smoke_object_type == "domain"
-                and props.combustion_version < COMBUSTION_VERSION):
-            # 2: Physical Heat was removed (one physical heat law, Fuel Energy
-            # 1). Its Oxygen Limit 0 meant 4; keep that air limit.
-            if props.get("physical_heat") and props.oxygen_limit == 0.0:
-                props.oxygen_limit = 4.0
-            # Saved before Realistic combustion existed. Classic is gone (2.0): Realistic.
-            props.combustion_version = COMBUSTION_VERSION
-        props = getattr(obj, "fumaris", None)
-        if props is None or props.temperature_mapping_version >= TEMPERATURE_MAPPING_VERSION:
-            continue
-        if props.temperature_mapping_version == 0:
-            if 0.0 <= props.flame_temperature_max <= 1.0:
-                props.flame_temperature_min *= TEMPERATURE_EXPORT_SCALE
-                props.flame_temperature_max *= TEMPERATURE_EXPORT_SCALE
-        elif props.flame_temperature_max <= LEGACY_TEMPERATURE_EXPORT_SCALE:
-            # Correct values produced by the short-lived development migration.
-            correction = (
-                TEMPERATURE_EXPORT_SCALE / LEGACY_TEMPERATURE_EXPORT_SCALE
-            )
-            props.flame_temperature_min *= correction
-            props.flame_temperature_max *= correction
-        props.temperature_mapping_version = TEMPERATURE_MAPPING_VERSION
-
-
-@persistent
-def _migrate_temperature_mapping_after_load(_unused):
-    _migrate_temperature_mapping()
-
-
-def _migrate_temperature_mapping_deferred():
-    """Run after add-on registration, when Blender exposes normal datablocks."""
-    _migrate_temperature_mapping()
-    return None
-
-
-def _remove_handler_named(handlers, name):
-    for handler in list(handlers):
-        if handler.__name__ == name:
-            handlers.remove(handler)
-
-
 def register():
     try:
         bpy.utils.unregister_class(FumarisSettings)
@@ -2456,19 +2066,9 @@ def register():
     detail_stack.register_properties()
     bpy.utils.register_class(FumarisSettings)
     bpy.types.Object.fumaris = PointerProperty(type=FumarisSettings)
-    _remove_handler_named(
-        bpy.app.handlers.load_post,
-        "_migrate_temperature_mapping_after_load",
-    )
-    bpy.app.handlers.load_post.append(_migrate_temperature_mapping_after_load)
-    bpy.app.timers.register(_migrate_temperature_mapping_deferred, first_interval=0.0)
 
 
 def unregister():
-    _remove_handler_named(
-        bpy.app.handlers.load_post,
-        "_migrate_temperature_mapping_after_load",
-    )
     if hasattr(bpy.types.Object, 'fumaris'):
         del bpy.types.Object.fumaris
     try:

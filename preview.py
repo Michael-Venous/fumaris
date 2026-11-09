@@ -73,7 +73,6 @@ def capture_volume_preview(context, domain, target=None):
         "view_id": int(region.as_pointer()),
         "view": _flatten_matrix(region_3d.view_matrix),
         "projection": _flatten_matrix(projection),
-        "max_ray_steps": int(props.preview_max_ray_steps),
         "step_cells": float(props.preview_step_size),
         "smoke_density": float(props.shader_smoke_density),
         "smoke_color": [float(value) for value in props.shader_smoke_color],
@@ -202,7 +201,6 @@ def volume_preview_signature(preview):
         int(preview.get("view_id", 0)),
         rounded(preview["view"]),
         rounded(preview["projection"]),
-        int(preview["max_ray_steps"]),
         round(float(preview.get("step_cells", 1.0)), 4),
         round(float(preview["smoke_density"]), 7),
         rounded(preview["smoke_color"]),
@@ -315,7 +313,6 @@ def clear_preview(domain):
     for key, preview in tuple(_PREVIEWS.items()):
         if key[0] == name or (not isinstance(domain, str) and preview.get("domain") == domain):
             _PREVIEWS.pop(key, None)
-    _remove_legacy_preview_objects(name)
     _sync_draw_handlers()
     _tag_viewports()
 
@@ -638,15 +635,6 @@ def _zero_to_one_projection(projection):
 
 def _flatten_matrix(matrix):
     return [float(value) for row in matrix for value in row]
-
-
-def _remove_legacy_preview_objects(domain_name):
-    objects = getattr(bpy.data, "objects", None)
-    if objects is None:
-        return
-    for obj in list(objects):
-        if obj.get(PREVIEW_MARKER) == domain_name:
-            _remove_object(obj)
 
 
 def _remove_object(obj):

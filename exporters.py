@@ -78,13 +78,7 @@ def bridge_executable():
 
 
 def simulation_memory_mb(props):
-    """Simulation Memory in MiB, or 0 to keep a stored Sparse Block Capacity.
-
-    Scenes and scripts that set Sparse Block Capacity keep it until Simulation
-    Memory is changed; the bridge then sizes the pool from the memory budget.
-    """
-    if props.get("simulation_memory") is None and props.get("sparse_block_capacity") is not None:
-        return 0.0
+    """Simulation Memory in MiB: the bridge sizes the block pool from it."""
     return float(props.simulation_memory) * 1024.0
 
 
@@ -102,8 +96,6 @@ def build_session(
     scene = context.scene
     domain = domain or context.object
     sim_start, sim_end = simulation_frame_range(domain)
-    # Older emitters appended or linked after the file loaded.
-    upgrade_emitters(domain, scene.render.fps / scene.render.fps_base)
     participants = _participants(domain.fumaris)
     if not any(item["role"] == "emitter" for item in participants):
         raise RuntimeError("Assign an emitter collection containing at least one Fumaris emitter")
@@ -192,7 +184,6 @@ def session_structure_signature(domain):
     sim_start, sim_end = simulation_frame_range(domain)
     participants = _participants(props)
     return (
-        int(props.sparse_block_capacity),
         # Channel storage is fixed per session: a change (an emitter gaining
         # heat or fuel) starts a new one instead of dropping the channel.
         density_channels(props, participants),
@@ -377,13 +368,10 @@ def _domain_state(props, resolution_scale=1.0):
     generated_material = props.volume_material is None
     return {
         "resolution": resolution,
-        "sparse_block_capacity": props.sparse_block_capacity,
         "simulation_speed": props.simulation_speed,
         "num_sub_steps": props.num_sub_steps,
-        # Cells per Step 0 is off; domains not yet migrated keep their toggle.
-        "adaptive_sub_steps": (props.adaptive_cfl > 0.0
-                               if props.substep_settings_version > 0
-                               else props.adaptive_sub_steps),
+        # Cells per Step 0 is off.
+        "adaptive_sub_steps": props.adaptive_cfl > 0.0,
         "adaptive_cfl": props.adaptive_cfl,
         "full_resolution_velocity": props.full_resolution_velocity,
         "simulation_memory_mb": simulation_memory_mb(props),
@@ -401,8 +389,7 @@ def _domain_state(props, resolution_scale=1.0):
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
         "vorticity": props.vorticity,
         "vorticity_mask": props.vorticity_mask,
-        # Detail & Shaping stack (detail_stack.py); the bridge reads the old
-        # single Disturb/Grain/ramp keys only when this is absent.
+        # Detail & Shaping stack (detail_stack.py).
         "detail_layers": detail_stack.export_layers(props),
         "wisp_cooling": props.wisp_cooling,
         "fuel_threshold": props.fuel_threshold,
@@ -1155,56 +1142,6 @@ def _primitive_surface_source(props, area, volume):
 
 # Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE: Expansion is in 1/s, applied exactly.
 EXPANSION_RATE_OP = 1 << 16
-
-
-def _point_emitter(props):
-    shape = getattr(props, "participant_type", "mesh")
-    return (shape == "collection_points"
-            or (shape == "particles" and getattr(props, "particle_subtype", "") == "point_cloud")
-            or (shape == "geometry_nodes" and getattr(props, "gn_subtype", "") == "point_cloud"))
-
-
-def uses_cell_expansion(props):
-    """An emitter saved before physical Expansion (settings 0, or 1 for point
-    emitters): its Expansion was Flow's per-cell Divergence, which pushed
-    harder the finer the cells. upgrade_emitters converts it."""
-    if getattr(props, "smoke_object_type", "") != "emitter":
-        return False
-    version = getattr(props, "emitter_settings_version", 0)
-    return version < 2 if _point_emitter(props) else version < 1
-
-
-def physical_expansion(props, domain_props, fps):
-    """The Expansion (1/s) that pushes as hard as this emitter's per-cell
-    Divergence did at the domain's current Resolution. Flow pulls the cell's
-    divergence toward Expansion at the coupling rate over a 2-step reference
-    interval (about Expansion x rate x step), per velocity cell."""
-    cell = 32.0 / max(1, int(domain_props.resolution))
-    velocity_cell = cell if getattr(domain_props, "full_resolution_velocity", False) else 2.0 * cell
-    step = float(getattr(domain_props, "simulation_speed", 1.0)) / (2.0 * max(1.0, fps))
-    per_step = min(1.0, max(0.0, float(props.couple_rate_divergence)) * step)
-    return float(props.emitter_divergence) * per_step / velocity_cell
-
-
-def upgrade_emitters(domain, fps):
-    """Convert the older emitters in a domain's Emitters collection to
-    physical Expansion, keeping the push they had at its current Resolution.
-    Returns the number converted."""
-    from .properties import EMITTER_SETTINGS_VERSION
-    collection = getattr(domain.fumaris, "emitter_collection", None)
-    if collection is None:
-        return 0
-    converted = 0
-    for obj in collection.all_objects:
-        props = getattr(obj, "fumaris", None)
-        if props is None or props.smoke_object_type != "emitter":
-            continue
-        if uses_cell_expansion(props):
-            props.emitter_divergence = physical_expansion(props, domain.fumaris, fps)
-            converted += 1
-        if props.emitter_settings_version < EMITTER_SETTINGS_VERSION:
-            props.emitter_settings_version = EMITTER_SETTINGS_VERSION
-    return converted
 # NV_FLOW_EMITTER_OP_VELOCITY_ADD / _MAX for velocity x, y, z.
 VELOCITY_ADD_OPS = (1 << 8) | (1 << 9) | (1 << 10)
 VELOCITY_MAX_OPS = (1 << 12) | (1 << 13) | (1 << 14)

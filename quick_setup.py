@@ -11,7 +11,7 @@ from . import detail_stack
 from .runtime import active_job
 
 
-# Presets start from the new-domain defaults (properties._object_type_updated)
+# Presets start from the domain defaults (properties.py)
 # and change only what makes each effect what it is (2.0 preset pass,
 # 2026-11-07): the look, combustion and fade settings stay the defaults.
 # 2 GB of VRAM: the presets use at most ~2,000 blocks (2 GB holds 14,000+), and
@@ -19,7 +19,6 @@ from .runtime import active_job
 # playback keeps 24 fps (output/qs_pass, 2026-11-08).
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
-    "preview_max_ray_steps": 256,
     "simulation_memory": 2.0,
 }
 
@@ -57,10 +56,9 @@ PRESETS = {
         # Grander (2026-11-08): a longer, stronger burst (8 frames, Fuel 16,
         # Expansion 14) and more soot (Smoke Per Burn 2.5) leave a large
         # mushroom cloud instead of a fireball that fades within a second.
-        "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0,
-                   "disturb": 220.0, "disturb_detail": 3, "smoke_per_burn": 2.5},
-        # Disturb's largest swirls relative to the sources' largest dimension.
-        "disturb_size_per_size": 0.3,
+        "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0, "smoke_per_burn": 2.5},
+        # A Disturb layer; its largest swirls relative to the sources' largest dimension.
+        "disturb": {"strength": 220.0, "detail": 3, "size_per_size": 0.3},
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it. Light source smoke: soot forms as
@@ -91,8 +89,8 @@ PRESETS = {
         "description": "A warm column of smoke blown upward from the source, as from a chimney or stack",
         # Disturb breaks the column into turbulent smoke a few source widths
         # up; without it the exhaust rose as a smooth tube.
-        "domain": {"shader_flame_enabled": False, "disturb": 60.0},
-        "disturb_size_per_size": 0.5,
+        "domain": {"shader_flame_enabled": False},
+        "disturb": {"strength": 60.0, "detail": 1, "size_per_size": 0.5},
         # Warm exhaust (a quarter of Flame Temperature) pushed up at 4 m/s.
         "emitter": {"emitter_smoke": 4.0, "emitter_temperature": 0.25,
                     "emitter_fuel": 0.0, "normal_velocity": 0.0, "emitter_divergence": 0.0,
@@ -370,12 +368,12 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         props.use_scene_frame_range = "duration" not in preset
         _apply_settings(props, _DOMAIN_DEFAULTS)
         _apply_settings(props, preset["domain"])
-        if "disturb_size_per_size" in preset:
+        disturb = preset.get("disturb")
+        if disturb:
             # Disturb's size is in world units: scale it to the sources so
             # large explosions get large billows (0.1 m did nothing at 20 m).
-            props.disturb_size = max(0.05, preset["disturb_size_per_size"] * max(maximum - minimum))
-        # Presets name Disturb by its old settings: it becomes a Detail & Shaping layer.
-        detail_stack.adopt_legacy(props, replace=True)
+            detail_stack.add_layer(props, "DISTURB", strength=disturb["strength"], detail=disturb["detail"],
+                                   size=max(0.05, disturb["size_per_size"] * max(maximum - minimum)))
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:

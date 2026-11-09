@@ -236,27 +236,6 @@ def peek_output_directory_for_object(obj):
     )
 
 
-def legacy_output_directories_for_object(obj):
-    props = obj.fumaris
-    current_base = base_output_directory_for_object(obj)
-    bases = [current_base]
-
-    identity = cache_identity_for_object(obj)
-    slot = _safe_cache_slot(getattr(props, "cache_slot", "main"))
-    current = os.path.normpath(output_directory_for_object(obj))
-    candidates = []
-    for base in bases:
-        candidates.extend((
-            base,
-            os.path.join(base, ".fumaris_caches", identity, slot),
-        ))
-    return tuple(dict.fromkeys(
-        os.path.normpath(path)
-        for path in candidates
-        if os.path.normpath(path) != current and os.path.isdir(path)
-    ))
-
-
 def _domain_scene(domain):
     scenes = getattr(domain, "users_scene", ())
     current = bpy.context.scene

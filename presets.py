@@ -3,8 +3,7 @@
 A preset stores every setting of one role (domain, or
 emitter/collider/effector), as JSON in the extension's user folder, so it
 survives add-on updates and is shared between .blend files. Applying it
-restores that state: settings the file does not hold (older presets kept only
-non-default values) go back to their defaults.
+restores that state: settings the file does not hold go back to their defaults.
 """
 import json
 import os
@@ -21,7 +20,7 @@ _SOURCE_PREFIXES = ("emitter_", "couple_rate_", "source_op_", "normal_velocity",
                     "point_", "attr_", "collider_", "effector_", "outflow_", "motion_",
                     "participant_enabled", "physics_", "particle_subtype", "sphere_",
                     "volume_file", "volume_frame_offset", "volume_grid_", "volume_use_")
-_SOURCE_NAMES = {"velocity", "velocity_scale", "mesh_velocity_attribute"}
+_SOURCE_NAMES = {"velocity", "mesh_velocity_attribute"}
 # The frame range belongs to the scene, not the look.
 _NEVER = {"smoke_object_type", "participant_type", "particle_system_name", "gn_subtype",
           "cache_slot", "cache_id", "output_dir", "output_prefix", "simulation_state",
@@ -34,7 +33,7 @@ def preset_role(props):
 
 
 def _belongs(name, role):
-    if name in _NEVER or name.endswith("_version") or "collection" in name:
+    if name in _NEVER or "collection" in name:
         return False
     source = name in _SOURCE_NAMES or name.startswith(_SOURCE_PREFIXES)
     return source if role == "source" else not source
@@ -65,7 +64,6 @@ def save_preset(props, name):
     data = {"version": 2, "role": role, "settings": values}
     if role == "domain":
         data["detail_layers"] = detail_stack.to_list(props)
-        data["detail_stack_version"] = detail_stack.STACK_VERSION
     path = os.path.join(presets_directory(role, create=True), _safe(name) + ".json")
     with open(path, "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1, sort_keys=True)
@@ -105,20 +103,11 @@ def apply_preset(props, name):
         if _set(props, key, value):
             applied += 1
         elif key not in saved:
-            # Older preset: a dynamic enum has no default value to set; reset it.
+            # A dynamic enum has no default value to set; reset it.
             props.property_unset(key)
             applied += 1
     if role == "domain":
-        # The Detail & Shaping stack; a preset from before it rebuilds the stack
-        # from its Disturb, Grain, ramp and Soot Burn-off settings.
-        flame_kelvin = float(props.flame_temperature)
-        if "detail_layers" in data:
-            layers = detail_stack.upgrade(data["detail_layers"], int(data.get("detail_stack_version", 1)), flame_kelvin)
-        else:
-            layers = detail_stack.legacy_layers(
-                {key: settings[key] for key in detail_stack.LEGACY_DEFAULTS if key in settings}, flame_kelvin)
-        detail_stack.from_list(props, layers)
-        detail_stack.reset_legacy(props)
+        detail_stack.from_list(props, data.get("detail_layers", []))
         applied += 1
     return applied
 

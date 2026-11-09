@@ -111,7 +111,7 @@ def _attribute_point_arrays(data, matrix, props):
         positions = local @ transform[:3, :3].T + transform[:3, 3]
         motion *= np.float32(props.motion_velocity_scale)
         motion += np.asarray(props.velocity, dtype=np.float32)
-        velocities = (motion @ transform[:3, :3].T) * np.float32(props.velocity_scale)
+        velocities = motion @ transform[:3, :3].T
         radii = np.frombuffer(radii, dtype=np.float32)[active]
         widths = np.maximum(
             np.fmax(radii, 0.0) * np.float32(props.point_radius), MIN_POINT_RADIUS
@@ -129,14 +129,13 @@ def _attribute_point_arrays(data, matrix, props):
     initial = Vector(props.velocity)
     vector_transform = matrix.to_3x3()
     motion_scale = float(props.motion_velocity_scale)
-    velocity_scale = float(props.velocity_scale)
     for index in range(count):
         if masks[index] <= 0.0:
             continue
         source = index * 3
         position = matrix @ Vector(local_positions[source:source + 3])
         motion = Vector(motions[source:source + 3])
-        velocity = (vector_transform @ (initial + motion * motion_scale)) * velocity_scale
+        velocity = vector_transform @ (initial + motion * motion_scale)
         positions.extend((position.x, position.y, position.z))
         widths.append(_point_radius(props.point_radius * max(0.0, radii[index])))
         velocities.extend((velocity.x, velocity.y, velocity.z))
@@ -221,7 +220,7 @@ def _world_vector(matrix, value):
 def _point_velocity(attrs, index, matrix, props):
     motion = _vector_attr(attrs, props.attr_velocity, ("velocity", "Velocity", "vel", "v"), index, (0.0, 0.0, 0.0))
     velocity = Vector(props.velocity) + Vector(motion) * float(props.motion_velocity_scale)
-    world = Vector(_world_vector(matrix, velocity)) * float(props.velocity_scale)
+    world = Vector(_world_vector(matrix, velocity))
     return world.x, world.y, world.z
 
 
@@ -240,7 +239,6 @@ def _particle_arrays(obj, props, depsgraph):
     radius = array("f", [_point_radius(props.point_radius)])
     initial_velocity = Vector(_world_vector(evaluated.matrix_world, props.velocity))
     motion_scale = float(props.motion_velocity_scale)
-    velocity_scale = float(props.velocity_scale)
     exported = 0
     for system in systems:
         particles = system.particles
@@ -250,9 +248,7 @@ def _particle_arrays(obj, props, depsgraph):
             for particle in particles:
                 if getattr(particle, "alive_state", "ALIVE") != "ALIVE":
                     continue
-                exported_velocity = (
-                    initial_velocity + Vector(particle.velocity[:]) * motion_scale
-                ) * velocity_scale
+                exported_velocity = initial_velocity + Vector(particle.velocity[:]) * motion_scale
                 positions.extend(particle.location[:])
                 velocities.extend(exported_velocity[:])
                 exported += 1
@@ -266,7 +262,6 @@ def _particle_arrays(obj, props, depsgraph):
         # Separate float32 products and sums, as mathutils evaluates them.
         motion = motion * np.float32(motion_scale)
         motion = np.asarray(initial_velocity, dtype=np.float32) + motion
-        motion = motion * np.float32(velocity_scale)
         positions.frombytes(locations.tobytes())
         velocities.frombytes(motion.tobytes())
         exported += len(locations)
@@ -385,7 +380,7 @@ def _instance_point_arrays(obj, props, depsgraph, *, allow_instance_origins=True
         position = instance.matrix_world.translation
         positions.extend((position.x, position.y, position.z))
         widths.append(_point_radius(props.point_radius))
-        velocity = Vector(_world_vector(instance.matrix_world, props.velocity)) * float(props.velocity_scale)
+        velocity = Vector(_world_vector(instance.matrix_world, props.velocity))
         velocities.extend((velocity.x, velocity.y, velocity.z))
         _append_point_defaults(values, props)
     if not positions:

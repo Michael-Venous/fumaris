@@ -76,8 +76,8 @@ Doubling resolution needs approximately eight times the cells for equal coverage
 - Per-grid VDB resolution (Full / Half / Quarter), VDB Writers for low-RAM
   bakes, and faster VDB writing.
 
-Fumaris 2.0 is a beta. Saved scenes keep their settings but simulate and look
-differently. See the [changelog](CHANGELOG.md).
+Fumaris 2.0 is a beta and starts fresh: scenes from 1.x are not converted and
+need to be set up again. See the [changelog](CHANGELOG.md).
 
 ## Earlier 1.3.1 Features
 

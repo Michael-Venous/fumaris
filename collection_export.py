@@ -65,7 +65,6 @@ def collection_point_arrays(participant, depsgraph, frame, fps):
         velocity = initial.copy()
         if old_center is not None:
             velocity += (center - old_center) * (inverse_dt * props.motion_velocity_scale)
-        velocity *= props.velocity_scale
         positions.extend(center)
         radii.append(_point_radius(radius))
         velocities.extend(velocity)

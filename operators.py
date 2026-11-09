@@ -21,7 +21,6 @@ from .cache import (
     SETTINGS_FILE,
     require_unprotected,
     set_protected,
-    delete_obsolete_cache_state,
     owned_preview_takes,
     recover_cache_lock,
     write_preview_manifest,
@@ -41,7 +40,6 @@ from .importers import (
     replace_recorded_previews,
     restore_generated_volumes,
     restore_recorded_previews,
-    migrate_legacy_cache,
     _frame_files,
 )
 from .jobs import FrameRangeJob
@@ -57,7 +55,6 @@ from .preview import (
 )
 from .utils import (
     cache_slot_directory,
-    legacy_output_directories_for_object,
     output_directory_for_object,
     simulation_frame_range,
 )
@@ -349,13 +346,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if self._recording_enabled:
             # Recording writes into its take directory, while a previous
             # partial/final bake belongs to the owner's ordinary cache.
-            self._hidden_owner_imported_volumes = tuple(
-                (directory, self._prefix, hide_generated_volumes(directory, self._prefix, hide_render=True))
-                for directory in (
-                    self._preview_owner_directory,
-                    *legacy_output_directories_for_object(domain),
-                )
-            )
+            self._hidden_owner_imported_volumes = ((
+                self._preview_owner_directory, self._prefix,
+                hide_generated_volumes(self._preview_owner_directory, self._prefix, hide_render=True)),)
         self._hidden_preview_recordings = hide_recorded_previews(self._preview_owner_directory)
         self._session_signature = signature
         self._next_submit_at = 0.0
@@ -991,15 +984,6 @@ def _import_cache(context, domain, directory, prefix, *, frame_start=None, frame
     active = context.view_layer.objects.active
     clear_preview(domain)
     props = domain.fumaris
-    fps = float(context.scene.render.fps) / max(
-        1e-6,
-        float(context.scene.render.fps_base),
-    )
-    flame_rate_scale = (
-        fps
-        * float(props.num_sub_steps)
-        / max(1e-6, float(props.simulation_speed))
-    )
     try:
         volume = import_sequence(
             directory,
@@ -1008,7 +992,6 @@ def _import_cache(context, domain, directory, prefix, *, frame_start=None, frame
             material=props.volume_material,
             selectable=props.volume_selectable,
             appearance=props,
-            flame_rate_scale=flame_rate_scale,
             frame_end=frame_end,
         )
         hide_recorded_previews(output_directory_for_object(domain), except_volume=volume)
@@ -1392,17 +1375,10 @@ class FUMARIS_OT_delete(Operator):
         directory = output_directory_for_object(domain)
         try:
             require_unprotected(directory, "delete it")
-            for legacy_directory in legacy_output_directories_for_object(domain):
-                recover_cache_lock(legacy_directory, owner_pid=os.getpid())
-                with cache_lock(legacy_directory):
-                    migrate_legacy_cache(legacy_directory, directory, prefix)
-                    delete_generated_data(legacy_directory, prefix)
-                    delete_obsolete_cache_state(legacy_directory)
             recover_cache_lock(directory, owner_pid=os.getpid())
             with cache_lock(directory):
                 clear_preview(domain)
                 delete_generated_data(directory, prefix)
-                delete_obsolete_cache_state(directory)
                 for take_directory, manifest in owned_preview_takes(directory):
                     recover_cache_lock(take_directory, owner_pid=os.getpid())
                     with cache_lock(take_directory):

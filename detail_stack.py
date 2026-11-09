@@ -1,22 +1,18 @@
 """Detail & Shaping stack: an ordered list of layers that add detail to the flow
 (Disturb, Grain, Shred) or scale a rate per cell (Vorticity, Dissipation,
-Cooling, Soot Burn-off), each with up to four field masks combined by blend.
+Cooling, Soot Burn-off), each with up to six field masks combined by blend.
 
 Masks are map ranges: the field from From Min to From Max gives a factor from
 To Min to To Max (clamped). A layer acts only where its masks allow; new layers
 start with the masks that make them useful (Disturb and Grain: smoke or heat).
 
-Replaces Turbulence Detail, Control Ramps and Soot Burn-off (2.0). The old
-domain properties are kept, hidden, only as inputs: adopt_legacy() turns their
-values into layers (saved scenes, older presets and takes, Quick Setup) and
-resets them.
+Replaces Turbulence Detail, Control Ramps and Soot Burn-off (2.0).
 """
 import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
                        FloatVectorProperty, IntProperty, StringProperty)
 from bpy.types import Operator, PropertyGroup, UIList
 
-STACK_VERSION = 2
 MASKS_PER_LAYER = 6
 # Disturb and Grain act where there is smoke, or heat (full at this many kelvin).
 GATE_KELVIN = 2500.0
@@ -137,9 +133,6 @@ class FumarisDetailLayer(PropertyGroup):
     detail: IntProperty(name="Detail", default=1, min=1, max=6,
                         description="Disturb: adds smaller swirls, each half the size. Grain: layers, each "
                                     "three times the block size (up to 3). 1 = one size")
-    # Stack version 1 only: now Speed and Smoke masks.
-    min_speed: FloatProperty(name="Min Speed", default=0.0, min=0.0, options={"HIDDEN"})
-    edge: FloatProperty(name="Edges Only", default=0.0, min=0.0, options={"HIDDEN"})
     masks: CollectionProperty(type=FumarisFieldMask)
     masks_index: IntProperty(name="Active Mask", default=0)
 
@@ -162,15 +155,11 @@ def can_add(props, layer_type):
     return velocity < VELOCITY_LAYER_LIMIT if is_velocity(layer_type) else shape < SHAPE_LAYER_LIMIT
 
 
-def gate_masks(min_speed=0.0):
+def gate_masks():
     """Disturb and Grain's usual masks: smoke, or heat where there is more of
-    it (full at GATE_KELVIN); and with min_speed, only faster gas."""
-    masks = [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
-             {"field": "TEMPERATURE", "blend": "MAXIMUM", "range": [0.0, GATE_KELVIN], "values": [0.0, 1.0]}]
-    if min_speed > 0.0:
-        masks.append({"field": "SPEED", "blend": "MULTIPLY", "range": [0.5 * min_speed, min_speed],
-                      "values": [0.0, 1.0]})
-    return masks
+    it (full at GATE_KELVIN)."""
+    return [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+            {"field": "TEMPERATURE", "blend": "MAXIMUM", "range": [0.0, GATE_KELVIN], "values": [0.0, 1.0]}]
 
 
 def default_masks(layer_type, flame_kelvin):
@@ -240,7 +229,7 @@ def export_layers(props):
     return layers
 
 
-_LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail", "min_speed", "edge")
+_LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail")
 _MASK_KEYS = ("enabled", "field", "blend", "invert", "range", "values", "noise_size")
 
 
@@ -274,150 +263,6 @@ def from_list(props, layers):
                         pass
     props.detail_layers_index = min(props.detail_layers_index, max(0, len(props.detail_layers) - 1))
 
-
-# Old domain properties (hidden, inputs only) and their defaults.
-LEGACY_DEFAULTS = {
-    "disturb": 0.0, "disturb_size": 0.5, "disturb_detail": 1, "disturb_min_speed": 0.0,
-    "grain": 0.0, "grain_size": 0.2, "grain_edge": 0.0, "grain_min_speed": 0.0, "grain_layers": 1,
-    "shred": 0.0, "soot_burn_off": 0.0, "soot_burn_needs_air": False,
-    **{f"{name}_scale_by": "uniform" for name in ("vorticity", "disturb", "grain", "dissipation", "cooling")},
-    **{f"{name}_scale_range": (0.0, 1.0) for name in ("vorticity", "disturb", "grain", "dissipation", "cooling")},
-    **{f"{name}_scale_values": (1.0, 1.0) for name in ("vorticity", "disturb", "grain", "dissipation", "cooling")},
-}
-_LEGACY_FIELDS = {"temperature": "TEMPERATURE", "speed": "SPEED", "smoke": "SMOKE"}
-
-
-def _legacy(values, key):
-    return values.get(key, LEGACY_DEFAULTS[key])
-
-
-def _mask(field, range_, values, blend="MULTIPLY"):
-    return {"enabled": True, "field": field, "blend": blend, "invert": False,
-            "range": list(range_), "values": list(values), "noise_size": 1.0}
-
-
-def legacy_layers(values, flame_kelvin=2000.0):
-    """The stack equivalent to the old settings in `values` (a dict), in the
-    order the solver applied them (bridge readLegacyDetailLayers). Temperature
-    ramps were relative to Flame Temperature."""
-    def ramp(name):
-        field = _LEGACY_FIELDS.get(_legacy(values, f"{name}_scale_by"))
-        if field is None:
-            return []
-        range_ = list(_legacy(values, f"{name}_scale_range"))
-        if field == "TEMPERATURE":
-            range_ = [v * flame_kelvin for v in range_]
-        return [_mask(field, range_, _legacy(values, f"{name}_scale_values"))]
-
-    def gate(min_speed):
-        return [_mask(m["field"], m["range"], m["values"], m["blend"]) for m in gate_masks(min_speed)]
-
-    layers = []
-
-    def shaping(layer_type, name):
-        masks = ramp(name)
-        if masks:
-            layers.append({"enabled": True, "layer_type": layer_type, "strength": 0.0, "masks": masks})
-
-    shaping("VORTICITY", "vorticity")
-    if _legacy(values, "disturb") > 0.0:
-        layers.append({"enabled": True, "layer_type": "DISTURB", "strength": _legacy(values, "disturb"),
-                       "size": _legacy(values, "disturb_size"), "detail": int(_legacy(values, "disturb_detail")),
-                       "masks": gate(_legacy(values, "disturb_min_speed")) + ramp("disturb")})
-    if _legacy(values, "grain") > 0.0:
-        masks = gate(_legacy(values, "grain_min_speed"))
-        edge = _legacy(values, "grain_edge")
-        if edge > 0.0:  # Edges Only: thinner smoke than this
-            masks.append(_mask("SMOKE", (0.5 * edge, edge), (1.0, 0.0)))
-        layers.append({"enabled": True, "layer_type": "GRAIN", "strength": _legacy(values, "grain"),
-                       "size": _legacy(values, "grain_size"), "detail": int(_legacy(values, "grain_layers")),
-                       "masks": masks + ramp("grain")})
-    if _legacy(values, "shred") > 0.0:
-        layers.append({"enabled": True, "layer_type": "SHRED", "strength": _legacy(values, "shred"), "masks": []})
-    if _legacy(values, "soot_burn_off") > 0.0:
-        masks = [_mask("TEMPERATURE", (0.65 * flame_kelvin, 0.9 * flame_kelvin), (0.0, 1.0))]
-        if _legacy(values, "soot_burn_needs_air"):
-            masks.append(_mask("AIR", (0.0, 1.0), (0.0, 1.0)))
-        layers.append({"enabled": True, "layer_type": "SOOT_BURN", "strength": _legacy(values, "soot_burn_off"),
-                       "masks": masks})
-    shaping("DISSIPATION", "dissipation")
-    shaping("COOLING", "cooling")
-    return layers
-
-
-def upgrade(layers, version, flame_kelvin):
-    """Saved stack lists (layer dicts) to this version. Version 1 read
-    Temperature relative to Flame Temperature and had Disturb and Grain's
-    smoke-or-heat gate, Min Speed and Edges Only built in."""
-    if version >= STACK_VERSION:
-        return layers
-    upgraded = []
-    for entry in layers:
-        entry = dict(entry)
-        masks = [dict(mask) for mask in entry.get("masks", ())]
-        for mask in masks:
-            if mask.get("field") == "TEMPERATURE":
-                mask["range"] = [float(v) * flame_kelvin for v in mask.get("range", (0.0, 1.0))]
-        if entry.get("layer_type") in {"DISTURB", "GRAIN"}:
-            gate = [_mask(m["field"], m["range"], m["values"], m["blend"])
-                    for m in gate_masks(float(entry.get("min_speed", 0.0)))]
-            edge = float(entry.get("edge", 0.0))
-            if entry["layer_type"] == "GRAIN" and edge > 0.0:
-                gate.append(_mask("SMOKE", (0.5 * edge, edge), (1.0, 0.0)))
-            masks = gate + masks
-            entry["min_speed"], entry["edge"] = 0.0, 0.0
-        entry["masks"] = masks[:MASKS_PER_LAYER]
-        upgraded.append(entry)
-    return upgraded
-
-
-def _legacy_values(props):
-    return {key: _plain(getattr(props, key)) for key in LEGACY_DEFAULTS if hasattr(props, key)}
-
-
-def _differs(value, default):
-    if isinstance(default, tuple):
-        return any(_differs(v, d) for v, d in zip(value, default))
-    if isinstance(default, float):
-        return abs(float(value) - default) > 1e-6 * max(1.0, abs(default))
-    return value != default
-
-
-def has_legacy(props):
-    values = _legacy_values(props)
-    return any(_differs(values[key], default) for key, default in LEGACY_DEFAULTS.items() if key in values)
-
-
-def reset_legacy(props):
-    for key, value in LEGACY_DEFAULTS.items():
-        if hasattr(props, key):
-            setattr(props, key, value)
-
-
-def adopt_legacy(props, replace=False):
-    """Turn non-default old settings into layers (appended, or replacing the
-    stack) and reset them. Returns the number of layers made."""
-    if not has_legacy(props):
-        return 0
-    layers = legacy_layers(_legacy_values(props), float(props.flame_temperature))
-    if replace:
-        from_list(props, layers)
-    else:
-        existing = to_list(props)
-        from_list(props, existing + layers)
-    reset_legacy(props)
-    return len(layers)
-
-
-def migrate(props):
-    """Saved domains: old settings become layers; stacks saved by an earlier
-    version of the stack are upgraded."""
-    if props.smoke_object_type != "domain" or props.detail_stack_version >= STACK_VERSION:
-        return
-    if props.detail_stack_version >= 1:
-        from_list(props, upgrade(to_list(props), props.detail_stack_version, float(props.flame_temperature)))
-    adopt_legacy(props, replace=not len(props.detail_layers))
-    props.detail_stack_version = STACK_VERSION
 
 
 # ------------------------------------------------------------------ operators

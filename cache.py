@@ -2,7 +2,6 @@ import ctypes
 import json
 import os
 import re
-import shutil
 import tempfile
 import time
 
@@ -12,10 +11,6 @@ GUARD_FILE = ".fumaris.guard"
 # It lives with the files it guards, so it holds whichever scene or domain
 # points at that folder.
 PROTECT_FILE = ".fumaris_protected"
-_OBSOLETE_FILES = ("fumaris_cache.json",)
-_OBSOLETE_DIRECTORIES = (
-    ".fumaris_preview_cache",
-)
 
 
 def create_preview_take(directory):
@@ -103,16 +98,6 @@ def next_slot_name(current, taken):
         candidate = f"{stem}{number:0{width}d}"
         if not taken(candidate):
             return candidate
-
-
-def delete_obsolete_cache_state(directory):
-    for name in _OBSOLETE_FILES:
-        try:
-            os.remove(os.path.join(directory, name))
-        except OSError:
-            pass
-    for name in _OBSOLETE_DIRECTORIES:
-        shutil.rmtree(os.path.join(directory, name), ignore_errors=True)
 
 
 class CacheLock:
@@ -318,7 +303,6 @@ def write_settings_snapshot(directory, domain, participants=()):
         "domain": domain.name,
         "settings": _rna_values(domain.fumaris),
         "detail_layers": detail_stack.to_list(domain.fumaris),
-        "detail_stack_version": detail_stack.STACK_VERSION,
         "participants": {},
     }
     for participant in participants:
@@ -385,17 +369,10 @@ def apply_settings_snapshot(domain, data, objects):
     """
     from . import detail_stack
     changed = _apply_values(domain.fumaris, data.get("settings", {}))
-    # The Detail & Shaping stack; takes from before it rebuild it from their
-    # Disturb, Grain, ramp and Soot Burn-off settings.
-    if "detail_layers" in data:
-        layers = detail_stack.upgrade(data["detail_layers"], int(data.get("detail_stack_version", 1)),
-                                      float(domain.fumaris.flame_temperature))
-        if detail_stack.to_list(domain.fumaris) != layers:
-            detail_stack.from_list(domain.fumaris, layers)
-            changed += 1
-        detail_stack.reset_legacy(domain.fumaris)
-    else:
-        changed += detail_stack.adopt_legacy(domain.fumaris, replace=True)
+    layers = data.get("detail_layers", [])
+    if detail_stack.to_list(domain.fumaris) != layers:
+        detail_stack.from_list(domain.fumaris, layers)
+        changed += 1
     restored, missing = 0, []
     for name, values in data.get("participants", {}).items():
         obj = objects.get(name)

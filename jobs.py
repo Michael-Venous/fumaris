@@ -13,7 +13,6 @@ from .importers import (
     delete_generated_data,
     delete_temporary_writes,
     hide_generated_volumes,
-    migrate_legacy_cache,
     restore_generated_volumes,
 )
 from .protocol import (
@@ -28,7 +27,6 @@ from .protocol import (
 from .preview import capture_volume_preview, clear_preview
 from .runtime import release_job
 from .utils import (
-    legacy_output_directories_for_object,
     output_directory_for_object,
     runtime_validation_error,
     simulation_frame_range,
@@ -108,14 +106,6 @@ class FrameRangeJob:
         if clear_cache:
             require_unprotected(self._directory, "bake over it")
         os.makedirs(self._directory, exist_ok=True)
-        self._legacy_directories = (
-            () if output_directory else legacy_output_directories_for_object(domain)
-        )
-        for legacy_directory in self._legacy_directories:
-            with cache_lock(legacy_directory):
-                migrate_legacy_cache(legacy_directory, self._directory, self._prefix)
-                if clear_cache:
-                    delete_generated_data(legacy_directory, self._prefix)
         if write_vdb:
             self._cache_lock = cache_lock(self._directory).acquire()
         try:
@@ -557,17 +547,11 @@ class FrameRangeJob:
     def _hide_imported_volumes(self):
         if getattr(self, "_hidden_imported_volumes", None) is not None:
             return
-        self._hidden_imported_volumes = tuple(
-            (
-                directory,
-                self._prefix,
-                hide_generated_volumes(directory, self._prefix),
-            )
-            for directory in (
-                self._directory,
-                *getattr(self, "_legacy_directories", ()),
-            )
-        )
+        self._hidden_imported_volumes = ((
+            self._directory,
+            self._prefix,
+            hide_generated_volumes(self._directory, self._prefix),
+        ),)
 
     def _restore_imported_volumes(self):
         states = getattr(self, "_hidden_imported_volumes", None)

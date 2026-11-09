@@ -510,6 +510,12 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
+    preview_block_line_width: FloatProperty(
+        name="Line Width",
+        description="Active Blocks: width of the block outlines, in simulation cells",
+        default=0.7, min=0.05, max=4.0, soft_max=2.0,
+    )
+
     preview_field_view: EnumProperty(
         name="Show",
         description="What the live preview shows",

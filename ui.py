@@ -773,43 +773,46 @@ def _draw_domain(layout, scene, props):
         preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
         if preview_open:
             preview.prop(props, "preview_field_view")
+            if props.preview_field_view == "blocks":
+                # Block outlines only: the other preview options would only clutter it.
+                preview.prop(props, "preview_block_line_width")
+            else:
+                preview.label(text="Quality")
+                quality = preview.column(align=True)
+                sharpness = quality.row(align=True)
+                sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
+                sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
+                steps = quality.row(align=True)
+                steps.prop(props, "preview_step_size")
+                steps.prop(props, "preview_all_viewports", toggle=True)
+                rate = quality.row(align=True)
+                rate.prop(props, "preview_frame_rate")
+                if props.preview_frame_rate == "CUSTOM":
+                    rate.prop(props, "preview_custom_fps")
 
-            preview.label(text="Quality")
-            quality = preview.column(align=True)
-            sharpness = quality.row(align=True)
-            sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
-            sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
-            steps = quality.row(align=True)
-            steps.prop(props, "preview_step_size")
-            steps.prop(props, "preview_all_viewports", toggle=True)
-            rate = quality.row(align=True)
-            rate.prop(props, "preview_frame_rate")
-            if props.preview_frame_rate == "CUSTOM":
-                rate.prop(props, "preview_custom_fps")
+                # Speed, Expansion and Fuel draw a field as fire: lighting does not apply.
+                if props.preview_field_view == "look":
+                    preview.label(text="Lighting")
+                    lighting = preview.column(align=True)
+                    lighting.row(align=True).prop(props, "preview_lighting", expand=True)
+                    if props.preview_lighting == "CUSTOM":
+                        direction = lighting.row(align=True)
+                        direction.prop(props, "preview_light_azimuth")
+                        direction.prop(props, "preview_light_elevation")
+                        custom = lighting.row(align=True)
+                        custom.prop(props, "preview_light_strength")
+                        custom.prop(props, "preview_custom_sky")
+                    toggles = lighting.row(align=True)
+                    toggles.prop(props, "preview_shadows", toggle=True)
+                    toggles.prop(props, "preview_occlusion", toggle=True)
+                    fire = lighting.row(align=True)
+                    fire.enabled = props.shader_flame_enabled
+                    fire.prop(props, "preview_fire_lighting", slider=True)
 
-            # Speed, Expansion and Fuel draw a field as fire: lighting does not apply.
-            if props.preview_field_view in {"look", "blocks"}:
-                preview.label(text="Lighting")
-                lighting = preview.column(align=True)
-                lighting.row(align=True).prop(props, "preview_lighting", expand=True)
-                if props.preview_lighting == "CUSTOM":
-                    direction = lighting.row(align=True)
-                    direction.prop(props, "preview_light_azimuth")
-                    direction.prop(props, "preview_light_elevation")
-                    custom = lighting.row(align=True)
-                    custom.prop(props, "preview_light_strength")
-                    custom.prop(props, "preview_custom_sky")
-                toggles = lighting.row(align=True)
-                toggles.prop(props, "preview_shadows", toggle=True)
-                toggles.prop(props, "preview_occlusion", toggle=True)
-                fire = lighting.row(align=True)
-                fire.enabled = props.shader_flame_enabled
-                fire.prop(props, "preview_fire_lighting", slider=True)
-
-            preview.label(text="Color")
-            color = preview.row(align=True)
-            color.prop(props, "preview_tone_mapping", text="")
-            color.prop(props, "preview_exposure_offset", slider=True)
+                preview.label(text="Color")
+                color = preview.row(align=True)
+                color.prop(props, "preview_tone_mapping", text="")
+                color.prop(props, "preview_exposure_offset", slider=True)
             preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
 
     participants_box = layout.box()

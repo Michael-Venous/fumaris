@@ -65,6 +65,7 @@ def save_preset(props, name):
     data = {"version": 2, "role": role, "settings": values}
     if role == "domain":
         data["detail_layers"] = detail_stack.to_list(props)
+        data["detail_stack_version"] = detail_stack.STACK_VERSION
     path = os.path.join(presets_directory(role, create=True), _safe(name) + ".json")
     with open(path, "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1, sort_keys=True)
@@ -110,8 +111,12 @@ def apply_preset(props, name):
     if role == "domain":
         # The Detail & Shaping stack; a preset from before it rebuilds the stack
         # from its Disturb, Grain, ramp and Soot Burn-off settings.
-        layers = data["detail_layers"] if "detail_layers" in data else detail_stack.legacy_layers(
-            {key: settings[key] for key in detail_stack.LEGACY_DEFAULTS if key in settings})
+        flame_kelvin = float(props.flame_temperature)
+        if "detail_layers" in data:
+            layers = detail_stack.upgrade(data["detail_layers"], int(data.get("detail_stack_version", 1)), flame_kelvin)
+        else:
+            layers = detail_stack.legacy_layers(
+                {key: settings[key] for key in detail_stack.LEGACY_DEFAULTS if key in settings}, flame_kelvin)
         detail_stack.from_list(props, layers)
         detail_stack.reset_legacy(props)
         applied += 1

@@ -88,10 +88,13 @@ replaced (see Removed). This is a beta: please report scenes that look wrong.
   (blocky kicks that break up fast fronts; Size, Edges Only, Min Speed,
   Layers) and Shred add motion; Vorticity, Dissipation and Cooling layers
   scale those rates per cell; Soot Burn-off thins smoke where gas is hot.
-  Stack several (a large and a fine Disturb), and give each up to four
-  masks: Temperature, Speed, Smoke, Fuel, Burn, Air Left or Noise, combined
-  by Multiply, Minimum, Maximum, Add, Subtract or Replace. Clear air skips
-  the noise.
+  Stack several (a large and a fine Disturb), and give each up to six
+  masks: a map range (From Min/Max to To Min/Max) of Temperature (K), Speed
+  (m/s), Smoke, Fuel, Burn, Air Left or Noise, combined by Multiply,
+  Minimum, Maximum, Add, Subtract or Replace. New layers start with useful
+  masks (Disturb and Grain: smoke, or heat up to 2500 K); with none a layer
+  acts everywhere. Speed masks read the gas as each layer finds it. Clear
+  air skips the noise.
 - **Preserve Turbulence** (Advanced, advection–reflection) keeps more swirling
   energy; off for new domains.
 - **Smoke Detail** (Advanced): Sharp carries smoke with cubic interpolation
@@ -294,8 +297,9 @@ changed, saved scenes simulate differently:
 - New domains start with 1 Sub-Step, and new emitters Add what they emit;
   saved domains and emitters keep their values.
 - Turbulence Detail, Control Ramps and Soot Burn-off became Detail & Shaping
-  layers: saved scenes, presets and takes convert on load and simulate the
-  same (to within rounding).
+  layers (Min Speed and Edges Only as masks): saved scenes, presets and takes
+  convert on load and simulate the same to within rounding; a Disturb or
+  Grain speed ramp now reads the speed after the layers above it.
 
 ## 1.3.1 — 2026-10-26
 

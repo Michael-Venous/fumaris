@@ -318,6 +318,7 @@ def write_settings_snapshot(directory, domain, participants=()):
         "domain": domain.name,
         "settings": _rna_values(domain.fumaris),
         "detail_layers": detail_stack.to_list(domain.fumaris),
+        "detail_stack_version": detail_stack.STACK_VERSION,
         "participants": {},
     }
     for participant in participants:
@@ -387,8 +388,10 @@ def apply_settings_snapshot(domain, data, objects):
     # The Detail & Shaping stack; takes from before it rebuild it from their
     # Disturb, Grain, ramp and Soot Burn-off settings.
     if "detail_layers" in data:
-        if detail_stack.to_list(domain.fumaris) != data["detail_layers"]:
-            detail_stack.from_list(domain.fumaris, data["detail_layers"])
+        layers = detail_stack.upgrade(data["detail_layers"], int(data.get("detail_stack_version", 1)),
+                                      float(domain.fumaris.flame_temperature))
+        if detail_stack.to_list(domain.fumaris) != layers:
+            detail_stack.from_list(domain.fumaris, layers)
             changed += 1
         detail_stack.reset_legacy(domain.fumaris)
     else:

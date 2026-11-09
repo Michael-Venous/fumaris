@@ -2,6 +2,10 @@
 (Disturb, Grain, Shred) or scale a rate per cell (Vorticity, Dissipation,
 Cooling, Soot Burn-off), each with up to four field masks combined by blend.
 
+Masks are map ranges: the field from From Min to From Max gives a factor from
+To Min to To Max (clamped). A layer acts only where its masks allow; new layers
+start with the masks that make them useful (Disturb and Grain: smoke or heat).
+
 Replaces Turbulence Detail, Control Ramps and Soot Burn-off (2.0). The old
 domain properties are kept, hidden, only as inputs: adopt_legacy() turns their
 values into layers (saved scenes, older presets and takes, Quick Setup) and
@@ -12,8 +16,10 @@ from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProp
                        FloatVectorProperty, IntProperty, StringProperty)
 from bpy.types import Operator, PropertyGroup, UIList
 
-STACK_VERSION = 1
-MASKS_PER_LAYER = 4
+STACK_VERSION = 2
+MASKS_PER_LAYER = 6
+# Disturb and Grain act where there is smoke, or heat (full at this many kelvin).
+GATE_KELVIN = 2500.0
 VELOCITY_LAYER_LIMIT = 8
 SHAPE_LAYER_LIMIT = 4
 
@@ -49,20 +55,37 @@ VELOCITY_TYPES = {"DISTURB", "GRAIN", "SHRED", "VORTICITY"}
 SCALE_TYPES = {"VORTICITY", "DISSIPATION", "COOLING"}
 
 MASK_FIELDS = (
-    ("TEMPERATURE", "Temperature", "Temperature relative to Flame Temperature (1 = Flame Temperature)", "temperature"),
+    ("TEMPERATURE", "Temperature", "Gas temperature in kelvin", "temperature"),
     ("SPEED", "Speed", "Gas speed, scene units per second", "speed"),
     ("SMOKE", "Smoke", "Smoke amount", "smoke"),
     ("FUEL", "Fuel", "Unburnt fuel", "fuel"),
     ("BURN", "Burn", "This step's burning (where fire is reacting)", "burn"),
     ("AIR", "Air Left",
      "Air left to burn with, 0-1: the Oxygen Field when it is on, otherwise estimated from "
-     "temperature (1 - temperature relative to Flame Temperature)", "air"),
+     "temperature (1 at the air's temperature, 0 at Flame Temperature)", "air"),
     ("NOISE", "Noise", "A smooth noise of Noise Size, 0-1, fixed in the domain", "noise"),
 )
 _FIELD = {item[0]: item for item in MASK_FIELDS}
 
+# A new mask, or one whose field changes, maps this range of the field to 0..1.
+FIELD_DEFAULT_RANGES = {
+    "TEMPERATURE": (500.0, 1500.0),  # K: warm gas to fire
+    "SPEED": (1.0, 10.0),            # m/s: drifting smoke to a fast front
+    "SMOKE": (0.0, 1.0),
+    "FUEL": (0.0, 2.0),
+    "BURN": (0.0, 0.5),
+    "AIR": (0.0, 1.0),
+    "NOISE": (0.0, 1.0),
+}
+FIELD_UNITS = {"TEMPERATURE": " K", "SPEED": " m/s"}
+
+
+def _field_updated(self, _context):
+    # A sensible range for the new field; To keeps its values.
+    self.range = FIELD_DEFAULT_RANGES.get(self.field, (0.0, 1.0))
+
 BLENDS = (
-    ("MULTIPLY", "Multiply", "Multiply by this mask", "multiply"),
+    ("MULTIPLY", "Multiply", "Multiply by this mask (the first mask multiplies 1)", "multiply"),
     ("MINIMUM", "Minimum", "Keep the smaller of this mask and the masks above", "minimum"),
     ("MAXIMUM", "Maximum", "Keep the larger of this mask and the masks above", "maximum"),
     ("ADD", "Add", "Add this mask", "add"),
@@ -87,16 +110,16 @@ def _blend_items():
 
 class FumarisFieldMask(PropertyGroup):
     enabled: BoolProperty(name="Enabled", default=True, description="Use this mask")
-    field: EnumProperty(name="Field", items=_field_items(), default="TEMPERATURE",
+    field: EnumProperty(name="Field", items=_field_items(), default="TEMPERATURE", update=_field_updated,
                         description="Field this mask reads in each cell")
     blend: EnumProperty(name="Blend", items=_blend_items(), default="MULTIPLY",
                         description="How this mask combines with the masks above it (the first mask starts from 1)")
-    invert: BoolProperty(name="Invert", default=False,
-                         description="Flip the ramp: the high end's value at the low end of the range")
-    range: FloatVectorProperty(name="Range", size=2, default=(0.0, 1.0),
-                               description="Field values where the ramp starts and ends")
-    values: FloatVectorProperty(name="Values", size=2, default=(0.0, 1.0), min=0.0, soft_max=4.0,
-                                description="Factor at the low and the high end of the range (never below 0)")
+    invert: BoolProperty(name="Invert", default=False, options={"HIDDEN"},
+                         description="Flip the ramp (kept for older files; swap To Min and To Max instead)")
+    range: FloatVectorProperty(name="From", size=2, default=(500.0, 1500.0),
+                               description="Field values mapped from: From Min to From Max")
+    values: FloatVectorProperty(name="To", size=2, default=(0.0, 1.0), min=0.0, soft_max=4.0,
+                                description="Factor at From Min and at From Max (clamped between them, never below 0)")
     noise_size: FloatProperty(name="Noise Size", default=1.0, min=0.001, soft_max=10.0, subtype="DISTANCE",
                               description="Feature size of the noise field")
 
@@ -114,11 +137,9 @@ class FumarisDetailLayer(PropertyGroup):
     detail: IntProperty(name="Detail", default=1, min=1, max=6,
                         description="Disturb: adds smaller swirls, each half the size. Grain: layers, each "
                                     "three times the block size (up to 3). 1 = one size")
-    min_speed: FloatProperty(name="Min Speed", default=0.0, min=0.0, soft_max=20.0,
-                             description="Only gas moving faster than this (scene units per second); 0 = any speed")
-    edge: FloatProperty(name="Edges Only", default=0.0, min=0.0, soft_max=4.0,
-                        description="Grain: only gas thinner than this smoke amount, so breaking-up edges "
-                                    "get grit and dense cores stay smooth; 0 = everywhere")
+    # Stack version 1 only: now Speed and Smoke masks.
+    min_speed: FloatProperty(name="Min Speed", default=0.0, min=0.0, options={"HIDDEN"})
+    edge: FloatProperty(name="Edges Only", default=0.0, min=0.0, options={"HIDDEN"})
     masks: CollectionProperty(type=FumarisFieldMask)
     masks_index: IntProperty(name="Active Mask", default=0)
 
@@ -141,7 +162,33 @@ def can_add(props, layer_type):
     return velocity < VELOCITY_LAYER_LIMIT if is_velocity(layer_type) else shape < SHAPE_LAYER_LIMIT
 
 
-def add_layer(props, layer_type, **values):
+def gate_masks(min_speed=0.0):
+    """Disturb and Grain's usual masks: smoke, or heat where there is more of
+    it (full at GATE_KELVIN); and with min_speed, only faster gas."""
+    masks = [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+             {"field": "TEMPERATURE", "blend": "MAXIMUM", "range": [0.0, GATE_KELVIN], "values": [0.0, 1.0]}]
+    if min_speed > 0.0:
+        masks.append({"field": "SPEED", "blend": "MULTIPLY", "range": [0.5 * min_speed, min_speed],
+                      "values": [0.0, 1.0]})
+    return masks
+
+
+def default_masks(layer_type, flame_kelvin):
+    """The masks a new layer starts with, editable like any other."""
+    if layer_type in {"DISTURB", "GRAIN"}:
+        return gate_masks()
+    if layer_type == "SOOT_BURN":   # hot gas, 0.65 to 0.9 of Flame Temperature
+        return [{"field": "TEMPERATURE", "range": [0.65 * flame_kelvin, 0.9 * flame_kelvin], "values": [0.0, 1.0]}]
+    if layer_type == "VORTICITY":   # stronger swirls in hot gas
+        return [{"field": "TEMPERATURE", "range": [0.0, flame_kelvin], "values": [0.5, 2.0]}]
+    if layer_type == "DISSIPATION":  # cold smoke fades faster than hot
+        return [{"field": "TEMPERATURE", "range": [0.0, 0.5 * flame_kelvin], "values": [2.0, 0.5]}]
+    if layer_type == "COOLING":     # thin gas loses its heat faster
+        return [{"field": "SMOKE", "range": [0.0, 1.0], "values": [2.0, 1.0]}]
+    return []
+
+
+def add_layer(props, layer_type, masks=None, **values):
     layer = props.detail_layers.add()
     layer.layer_type = layer_type
     layer.strength = _LAYER[layer_type][5]
@@ -149,15 +196,20 @@ def add_layer(props, layer_type, **values):
         layer.size = 0.2
     for key, value in values.items():
         setattr(layer, key, value)
-    if layer_type == "SOOT_BURN" and "masks" not in values:
-        add_mask(layer, field="TEMPERATURE", range=(0.65, 0.9), values=(0.0, 1.0))
+    if masks is None:
+        masks = default_masks(layer_type, float(getattr(props, "flame_temperature", 2000.0)))
+    for mask in masks:
+        add_mask(layer, **mask)
     return layer
 
 
 def add_mask(layer, **values):
     mask = layer.masks.add()
+    values.setdefault("field", "TEMPERATURE")
     for key, value in values.items():
-        setattr(mask, key, value)
+        setattr(mask, key, value)  # field first: its default range, then any given one
+    if "range" not in values:
+        mask.range = FIELD_DEFAULT_RANGES.get(mask.field, (0.0, 1.0))
     return mask
 
 
@@ -180,8 +232,6 @@ def export_layers(props):
             "strength": float(layer.strength),
             "size": float(layer.size),
             "octaves": int(min(layer.detail, 3 if layer.layer_type == "GRAIN" else 6)),
-            "min_speed": float(layer.min_speed),
-            "edge": float(layer.edge),
             "masks": masks,
         })
     return layers
@@ -238,16 +288,26 @@ def _legacy(values, key):
     return values.get(key, LEGACY_DEFAULTS[key])
 
 
-def legacy_layers(values):
+def _mask(field, range_, values, blend="MULTIPLY"):
+    return {"enabled": True, "field": field, "blend": blend, "invert": False,
+            "range": list(range_), "values": list(values), "noise_size": 1.0}
+
+
+def legacy_layers(values, flame_kelvin=2000.0):
     """The stack equivalent to the old settings in `values` (a dict), in the
-    order the solver applied them (bridge readLegacyDetailLayers)."""
+    order the solver applied them (bridge readLegacyDetailLayers). Temperature
+    ramps were relative to Flame Temperature."""
     def ramp(name):
         field = _LEGACY_FIELDS.get(_legacy(values, f"{name}_scale_by"))
         if field is None:
             return []
-        return [{"enabled": True, "field": field, "blend": "MULTIPLY", "invert": False,
-                 "range": list(_legacy(values, f"{name}_scale_range")),
-                 "values": list(_legacy(values, f"{name}_scale_values")), "noise_size": 1.0}]
+        range_ = list(_legacy(values, f"{name}_scale_range"))
+        if field == "TEMPERATURE":
+            range_ = [v * flame_kelvin for v in range_]
+        return [_mask(field, range_, _legacy(values, f"{name}_scale_values"))]
+
+    def gate(min_speed):
+        return [_mask(m["field"], m["range"], m["values"], m["blend"]) for m in gate_masks(min_speed)]
 
     layers = []
 
@@ -260,25 +320,52 @@ def legacy_layers(values):
     if _legacy(values, "disturb") > 0.0:
         layers.append({"enabled": True, "layer_type": "DISTURB", "strength": _legacy(values, "disturb"),
                        "size": _legacy(values, "disturb_size"), "detail": int(_legacy(values, "disturb_detail")),
-                       "min_speed": _legacy(values, "disturb_min_speed"), "masks": ramp("disturb")})
+                       "masks": gate(_legacy(values, "disturb_min_speed")) + ramp("disturb")})
     if _legacy(values, "grain") > 0.0:
+        masks = gate(_legacy(values, "grain_min_speed"))
+        edge = _legacy(values, "grain_edge")
+        if edge > 0.0:  # Edges Only: thinner smoke than this
+            masks.append(_mask("SMOKE", (0.5 * edge, edge), (1.0, 0.0)))
         layers.append({"enabled": True, "layer_type": "GRAIN", "strength": _legacy(values, "grain"),
                        "size": _legacy(values, "grain_size"), "detail": int(_legacy(values, "grain_layers")),
-                       "min_speed": _legacy(values, "grain_min_speed"), "edge": _legacy(values, "grain_edge"),
-                       "masks": ramp("grain")})
+                       "masks": masks + ramp("grain")})
     if _legacy(values, "shred") > 0.0:
         layers.append({"enabled": True, "layer_type": "SHRED", "strength": _legacy(values, "shred"), "masks": []})
     if _legacy(values, "soot_burn_off") > 0.0:
-        masks = [{"enabled": True, "field": "TEMPERATURE", "blend": "MULTIPLY", "invert": False,
-                  "range": [0.65, 0.9], "values": [0.0, 1.0], "noise_size": 1.0}]
+        masks = [_mask("TEMPERATURE", (0.65 * flame_kelvin, 0.9 * flame_kelvin), (0.0, 1.0))]
         if _legacy(values, "soot_burn_needs_air"):
-            masks.append({"enabled": True, "field": "AIR", "blend": "MULTIPLY", "invert": False,
-                          "range": [0.0, 1.0], "values": [0.0, 1.0], "noise_size": 1.0})
+            masks.append(_mask("AIR", (0.0, 1.0), (0.0, 1.0)))
         layers.append({"enabled": True, "layer_type": "SOOT_BURN", "strength": _legacy(values, "soot_burn_off"),
                        "masks": masks})
     shaping("DISSIPATION", "dissipation")
     shaping("COOLING", "cooling")
     return layers
+
+
+def upgrade(layers, version, flame_kelvin):
+    """Saved stack lists (layer dicts) to this version. Version 1 read
+    Temperature relative to Flame Temperature and had Disturb and Grain's
+    smoke-or-heat gate, Min Speed and Edges Only built in."""
+    if version >= STACK_VERSION:
+        return layers
+    upgraded = []
+    for entry in layers:
+        entry = dict(entry)
+        masks = [dict(mask) for mask in entry.get("masks", ())]
+        for mask in masks:
+            if mask.get("field") == "TEMPERATURE":
+                mask["range"] = [float(v) * flame_kelvin for v in mask.get("range", (0.0, 1.0))]
+        if entry.get("layer_type") in {"DISTURB", "GRAIN"}:
+            gate = [_mask(m["field"], m["range"], m["values"], m["blend"])
+                    for m in gate_masks(float(entry.get("min_speed", 0.0)))]
+            edge = float(entry.get("edge", 0.0))
+            if entry["layer_type"] == "GRAIN" and edge > 0.0:
+                gate.append(_mask("SMOKE", (0.5 * edge, edge), (1.0, 0.0)))
+            masks = gate + masks
+            entry["min_speed"], entry["edge"] = 0.0, 0.0
+        entry["masks"] = masks[:MASKS_PER_LAYER]
+        upgraded.append(entry)
+    return upgraded
 
 
 def _legacy_values(props):
@@ -309,7 +396,7 @@ def adopt_legacy(props, replace=False):
     stack) and reset them. Returns the number of layers made."""
     if not has_legacy(props):
         return 0
-    layers = legacy_layers(_legacy_values(props))
+    layers = legacy_layers(_legacy_values(props), float(props.flame_temperature))
     if replace:
         from_list(props, layers)
     else:
@@ -320,9 +407,12 @@ def adopt_legacy(props, replace=False):
 
 
 def migrate(props):
-    """Saved domains from before the stack: their old settings become layers."""
+    """Saved domains: old settings become layers; stacks saved by an earlier
+    version of the stack are upgraded."""
     if props.smoke_object_type != "domain" or props.detail_stack_version >= STACK_VERSION:
         return
+    if props.detail_stack_version >= 1:
+        from_list(props, upgrade(to_list(props), props.detail_stack_version, float(props.flame_temperature)))
     adopt_legacy(props, replace=not len(props.detail_layers))
     props.detail_stack_version = STACK_VERSION
 
@@ -497,10 +587,10 @@ class FUMARIS_UL_field_masks(UIList):
         row.prop(item, "enabled", text="")
         sub = row.row(align=True)
         sub.active = item.enabled
-        blend = "" if index == 0 else _BLEND[item.blend][1] + " "
+        units = FIELD_UNITS.get(item.field, "")
         invert = " (inverted)" if item.invert else ""
-        sub.label(text=f"{blend}{_FIELD[item.field][1]}{invert}  {item.range[0]:g}-{item.range[1]:g}"
-                       f" → {item.values[0]:g}-{item.values[1]:g}")
+        sub.label(text=f"{_BLEND[item.blend][1]} {_FIELD[item.field][1]}{invert}  "
+                       f"{item.range[0]:g}-{item.range[1]:g}{units} → {item.values[0]:g}-{item.values[1]:g}")
 
 
 def draw(layout, domain):
@@ -527,11 +617,7 @@ def draw(layout, domain):
         row = box.row(align=True)
         row.prop(layer, "strength")
         row.prop(layer, "size")
-        row = box.row(align=True)
-        row.prop(layer, "detail", text="Detail" if kind == "DISTURB" else "Layers")
-        row.prop(layer, "min_speed")
-        if kind == "GRAIN":
-            box.prop(layer, "edge")
+        box.prop(layer, "detail", text="Detail" if kind == "DISTURB" else "Layers")
     elif kind in {"SHRED", "SOOT_BURN"}:
         box.prop(layer, "strength", text="Rate" if kind == "SOOT_BURN" else "Strength")
     else:
@@ -548,21 +634,25 @@ def draw(layout, domain):
     down = side.operator("fumaris.field_mask_move", text="", icon="TRIA_DOWN")
     down.direction, down.domain_name = "DOWN", domain.name
     if not len(layer.masks):
+        layout.label(text="No masks: this layer acts everywhere" if kind not in SCALE_TYPES
+                     else "No masks: this layer changes nothing", icon="INFO")
         return
     mask = layer.masks[min(layer.masks_index, len(layer.masks) - 1)]
+    # A map range: the field from From Min to From Max gives To Min to To Max.
     column = layout.column(align=True)
     column.active = mask.enabled
     row = column.row(align=True)
     row.prop(mask, "field", text="")
-    if layer.masks_index > 0:
-        row.prop(mask, "blend", text="")
-    row.prop(mask, "invert", text="", icon="ARROW_LEFTRIGHT")
+    row.prop(mask, "blend", text="")
     if mask.field == "NOISE":
         column.prop(mask, "noise_size")
+    units = FIELD_UNITS.get(mask.field, "")
     row = column.row(align=True)
-    row.prop(mask, "range", text="")
+    row.prop(mask, "range", index=0, text=f"From Min{units}")
+    row.prop(mask, "range", index=1, text=f"From Max{units}")
     row = column.row(align=True)
-    row.prop(mask, "values", text="")
+    row.prop(mask, "values", index=0, text="To Min")
+    row.prop(mask, "values", index=1, text="To Max")
 
 
 PROPERTY_CLASSES = (FumarisFieldMask, FumarisDetailLayer)

@@ -283,9 +283,9 @@ Scattering, and recognition of pre-1.0 beta data.
 
 ### Compatibility
 
-Saved scenes keep their settings; emitters and point emitters keep their
-old Expansion behaviour and channel operations. Because the solver core
-changed, saved scenes simulate differently:
+Saved scenes keep their settings, and emitters keep their channel
+operations. Because the solver core changed, saved scenes simulate
+differently:
 
 - The pressure solve now converges with colliders: plumes next to the ground
   rise less (an expanding emitter on a ground plane about half as high at
@@ -296,10 +296,11 @@ changed, saved scenes simulate differently:
   look; generated materials rebuild when opened.
 - New domains start with 1 Sub-Step, and new emitters Add what they emit;
   saved domains and emitters keep their values.
-- Emitters saved before physical Expansion keep the older per-cell Expansion,
-  which pushes harder at higher Resolution (about twice at twice the
-  Resolution); their panel says so, and **Use Physical Expansion** converts
-  them, keeping their push at the current Resolution.
+- The older per-cell Expansion, which pushed harder at higher Resolution
+  (about twice at twice the Resolution), was removed. Emitters saved with it
+  convert on load to Expansion per second, keeping the push they had at
+  their domain's saved Resolution; per-point Expansion attributes are not
+  converted. Their Normal Velocity now blows the air out as on new emitters.
 - Turbulence Detail, Control Ramps and Soot Burn-off became Detail & Shaping
   layers (Min Speed and Edges Only as masks): saved scenes, presets and takes
   convert on load and simulate the same to within rounding; a Disturb or

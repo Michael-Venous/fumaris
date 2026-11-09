@@ -120,7 +120,7 @@ def _evaluated_mesh(obj, depsgraph, props, matrix, surface_out=None):
         surface = closed_surface(mesh) if surface_out is not None else None
         if surface_out is not None:
             surface_out["surface"] = surface
-        if surface is not None and getattr(props, "emitter_settings_version", 0) >= 1:
+        if surface is not None:
             # A closed mesh's outward Normal Velocity is curl-free: the pressure
             # solve removes it. The bridge emits it as a volume source instead.
             velocities = array("f")
@@ -214,7 +214,7 @@ def _shared_mesh_arrays(obj, depsgraph, props, matrix, shared, used):
         shared[key] = entry
     used[key] = entry
     positions, indices, emission_weights, surface = entry
-    if surface is not None and getattr(props, "emitter_settings_version", 0) >= 1:
+    if surface is not None:
         velocities = array("f")
     else:
         velocities = _mesh_normal_velocities(positions, indices, props.normal_velocity, matrix)
@@ -223,12 +223,12 @@ def _shared_mesh_arrays(obj, depsgraph, props, matrix, shared, used):
 
 def _static_mesh_cache_key(obj, depsgraph, props, closed=False):
     """closed: the last evaluation of this mesh was a closed surface. Its
-    Normal Velocity is then a volume source (emitter settings 1+), so the
+    Normal Velocity is then a volume source, so the
     per-frame arrays do not depend on it and the geometry can be reused."""
     if obj.type != "MESH" or obj.modifiers or obj.data.shape_keys:
         return None
     if abs(float(props.normal_velocity)) > 1e-6 and not (
-            closed and getattr(props, "emitter_settings_version", 0) >= 1):
+            closed):
         return None
     if str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip():
         return None

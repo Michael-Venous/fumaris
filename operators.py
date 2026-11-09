@@ -1320,41 +1320,6 @@ class FUMARIS_OT_preset_delete(Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_emitter_physical_expansion(Operator):
-    bl_idname = "fumaris.emitter_physical_expansion"
-    bl_label = "Use Physical Expansion"
-    bl_description = ("Switch this older emitter to Expansion in 1/s, the same at any Resolution, "
-                      "keeping the push it has at its domain's current Resolution")
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        from .exporters import uses_cell_expansion
-        obj = context.object
-        return obj is not None and uses_cell_expansion(obj.fumaris) and not active_job()
-
-    def execute(self, context):
-        from .exporters import physical_expansion
-        from .properties import EMITTER_SETTINGS_VERSION
-        obj = context.object
-        props = obj.fumaris
-        domain = next((candidate for candidate in bpy.data.objects
-                       if getattr(candidate, "fumaris", None) is not None
-                       and candidate.fumaris.smoke_object_type == "domain"
-                       and candidate.fumaris.emitter_collection is not None
-                       and obj.name in candidate.fumaris.emitter_collection.all_objects), None)
-        if domain is None:
-            self.report({"WARNING"}, "Add this emitter to a domain's Emitters collection first")
-            return {"CANCELLED"}
-        fps = context.scene.render.fps / max(1e-6, context.scene.render.fps_base)
-        old = props.emitter_divergence
-        props.emitter_divergence = physical_expansion(props, domain.fumaris, fps)
-        props.emitter_settings_version = EMITTER_SETTINGS_VERSION
-        self.report({"INFO"}, f"Expansion {old:g} per cell is {props.emitter_divergence:.3g}/s at "
-                              f"{domain.name}'s Resolution {domain.fumaris.resolution}; now the same at any Resolution")
-        return {"FINISHED"}
-
-
 class FUMARIS_OT_cache_protect(Operator):
     bl_idname = "fumaris.cache_protect"
     bl_label = "Protect"
@@ -1539,7 +1504,6 @@ class FUMARIS_OT_copy_diagnostics(Operator):
 
 
 CLASSES = (
-    FUMARIS_OT_emitter_physical_expansion,
     FUMARIS_OT_copy_diagnostics,
     FUMARIS_OT_bake,
     FUMARIS_OT_bake_replace,

@@ -102,6 +102,8 @@ def build_session(
     scene = context.scene
     domain = domain or context.object
     sim_start, sim_end = simulation_frame_range(domain)
+    # Older emitters appended or linked after the file loaded.
+    upgrade_emitters(domain, scene.render.fps / scene.render.fps_base)
     participants = _participants(domain.fumaris)
     if not any(item["role"] == "emitter" for item in participants):
         raise RuntimeError("Assign an emitter collection containing at least one Fumaris emitter")
@@ -909,11 +911,7 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
 
     _disable_inactive_point_velocity_coupling(velocities, values)
     value_ops, replaced = _source_operations(props)
-    if getattr(props, "emitter_settings_version", 0) < 2:
-        # Point emitters made before 2: per-cell Divergence as before.
-        value_ops &= ~EXPANSION_RATE_OP
-    else:
-        _point_normal_velocity(props, radii, values)
+    _point_normal_velocity(props, radii, values)
     for name in replaced:
         key = "couple_rate_velocities" if name == "velocity" else f"couple_rate_{name}s"
         rates = values.get(key)
@@ -1119,7 +1117,7 @@ def _closed_surface_source(participant, props, matrix):
     outside thickness, and at least one velocity cell thick.
     """
     surface = participant.get("closed_surface")
-    if getattr(props, "emitter_settings_version", 0) < 1 or surface is None:
+    if surface is None:
         participant.pop("previous_volume", None)
         return {}
     area, volume = world_surface(surface, matrix)
@@ -1142,7 +1140,7 @@ def _closed_surface_source(participant, props, matrix):
 def _primitive_surface_source(props, area, volume):
     """Normal Velocity of a box or sphere emitter as a volume source: they fill
     their whole volume, so the flux v x area spreads over it."""
-    if getattr(props, "emitter_settings_version", 0) < 1 or area <= 0.0 or volume <= 0.0:
+    if area <= 0.0 or volume <= 0.0:
         return {}
     if abs(float(props.normal_velocity)) < 1e-6:
         return {}
@@ -1167,8 +1165,9 @@ def _point_emitter(props):
 
 
 def uses_cell_expansion(props):
-    """An emitter saved before physical Expansion: Flow's per-cell Divergence,
-    which pushes harder the finer the cells (about twice at twice the Resolution)."""
+    """An emitter saved before physical Expansion (settings 0, or 1 for point
+    emitters): its Expansion was Flow's per-cell Divergence, which pushed
+    harder the finer the cells. upgrade_emitters converts it."""
     if getattr(props, "smoke_object_type", "") != "emitter":
         return False
     version = getattr(props, "emitter_settings_version", 0)
@@ -1177,7 +1176,7 @@ def uses_cell_expansion(props):
 
 def physical_expansion(props, domain_props, fps):
     """The Expansion (1/s) that pushes as hard as this emitter's per-cell
-    Divergence does at the domain's current Resolution. Flow pulls the cell's
+    Divergence did at the domain's current Resolution. Flow pulls the cell's
     divergence toward Expansion at the coupling rate over a 2-step reference
     interval (about Expansion x rate x step), per velocity cell."""
     cell = 32.0 / max(1, int(domain_props.resolution))
@@ -1185,6 +1184,27 @@ def physical_expansion(props, domain_props, fps):
     step = float(getattr(domain_props, "simulation_speed", 1.0)) / (2.0 * max(1.0, fps))
     per_step = min(1.0, max(0.0, float(props.couple_rate_divergence)) * step)
     return float(props.emitter_divergence) * per_step / velocity_cell
+
+
+def upgrade_emitters(domain, fps):
+    """Convert the older emitters in a domain's Emitters collection to
+    physical Expansion, keeping the push they had at its current Resolution.
+    Returns the number converted."""
+    from .properties import EMITTER_SETTINGS_VERSION
+    collection = getattr(domain.fumaris, "emitter_collection", None)
+    if collection is None:
+        return 0
+    converted = 0
+    for obj in collection.all_objects:
+        props = getattr(obj, "fumaris", None)
+        if props is None or props.smoke_object_type != "emitter":
+            continue
+        if uses_cell_expansion(props):
+            props.emitter_divergence = physical_expansion(props, domain.fumaris, fps)
+            converted += 1
+        if props.emitter_settings_version < EMITTER_SETTINGS_VERSION:
+            props.emitter_settings_version = EMITTER_SETTINGS_VERSION
+    return converted
 # NV_FLOW_EMITTER_OP_VELOCITY_ADD / _MAX for velocity x, y, z.
 VELOCITY_ADD_OPS = (1 << 8) | (1 << 9) | (1 << 10)
 VELOCITY_MAX_OPS = (1 << 12) | (1 << 13) | (1 << 14)
@@ -1192,10 +1212,8 @@ VELOCITY_MAX_OPS = (1 << 12) | (1 << 13) | (1 << 14)
 
 def _source_operations(props):
     """Flow value-op bits and the channels that are in Replace mode."""
-    value_ops = 0
+    value_ops = EXPANSION_RATE_OP
     replaced = []
-    if getattr(props, "emitter_settings_version", 0) >= 1:
-        value_ops |= EXPANSION_RATE_OP
     for channel, name in enumerate(_SOURCE_OPERATION_CHANNELS):
         operation = getattr(props, f"source_op_{name}", "blend")
         if operation == "add":

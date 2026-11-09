@@ -31,10 +31,10 @@ SUBSTEP_SETTINGS_VERSION = 1
 # 0.1); saved domains keep the older 0.5 / 0.3, which ended a rising column
 # about 13 m up (2026-11-06).
 FADE_SETTINGS_VERSION = 1
-# Emitters: 1 = Expansion in 1/s, applied exactly at any resolution and
-# Sub-Steps (Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE). 0 = the older per-cell
-# divergence pull, kept for saved files.
-# 2: point and particle emitters use physical Expansion (1/s) and Normal Velocity.
+# Emitters: Expansion in 1/s, applied exactly at any resolution and Sub-Steps
+# (Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE). Older saves (0; 1 for point and
+# particle emitters) used Flow's per-cell divergence, which pushed harder at
+# higher resolution: they convert on load (exporters.upgrade_emitters).
 EMITTER_SETTINGS_VERSION = 2
 # Matches the push of the older default Divergence 2 (measured 2026-11-04).
 DEFAULT_EMITTER_EXPANSION = 0.2
@@ -389,7 +389,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_divergence: FloatProperty(
         name="Expansion",
-        description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps (emitters made before 2.0 keep the older, weaker per-cell Divergence)",
+        description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps",
         default=2.0,
         soft_min=-10.0,
         soft_max=10.0,
@@ -2398,6 +2398,12 @@ def _migrate_temperature_mapping():
             if not props.adaptive_sub_steps:
                 props.adaptive_cfl = 0.0
             props.substep_settings_version = SUBSTEP_SETTINGS_VERSION
+        if props is not None and props.smoke_object_type == "domain":
+            # 2.0: per-cell Expansion was removed; older emitters keep the push
+            # they had at their domain's Resolution, now in 1/s.
+            from .exporters import upgrade_emitters
+            scene = obj.users_scene[0] if obj.users_scene else bpy.context.scene
+            upgrade_emitters(obj, scene.render.fps / scene.render.fps_base)
         if (props is not None and props.smoke_object_type == "domain"
                 and props.combustion_version < COMBUSTION_VERSION):
             # 2: Physical Heat was removed (one physical heat law, Fuel Energy

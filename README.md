@@ -65,7 +65,7 @@ Doubling resolution needs approximately eight times the cells for equal coverage
 - A live preview lit like Cycles, tone mapped with Blender's own view
   transforms, and Scatter Glow with Glow Spread and Glow Shadowing.
 - Stronger pressure solve, colliders as walls, Wind, physical emitter
-  Expansion and Normal Velocity, Turbulence Detail (Disturb, Grain, Shred).
+  Expansion and Normal Velocity, Detail & Shaping layers (Disturb, Grain, Shred).
 - Quick Setup for five effects, Add Source (Candle, Burst, Trail, Spreading
   Fire), user presets, Sparks, Takes and Make Lighter Copy.
 - Two fire looks with their own controls: Temperature (blackbody) and Pyro

@@ -36,8 +36,7 @@ Removed). This is a beta: please report scenes that look wrong.
 
 ### Fire and combustion
 
-- **Realistic combustion only** (Classic removed; such scenes open as
-  Realistic). Combustion settings: Flame Temperature, Fuel Energy, Ignition
+- **One combustion model** (Classic removed). Combustion settings: Flame Temperature, Fuel Energy, Ignition
   Temperature, Burn Time, Cooling Time, Temperature Diffusion, Smoke Amount,
   Gas Expansion, Wisp Cooling, Flame Sheets, Oxygen Limit, Soot Radiation and
   Oxygen Field (Use, Mixing).
@@ -83,9 +82,8 @@ Removed). This is a beta: please report scenes that look wrong.
   grids rise and spread like fine ones, and it no longer keeps pumping energy
   into the gas after a fire dies. **Vorticity Mask** chooses where it acts.
 - **Detail & Shaping** (Smoke Behavior): a stack of layers, applied in order.
-  Disturb (swirls of a set size, with Detail octaves and Min Speed), Grain
-  (blocky kicks that break up fast fronts; Size, Edges Only, Min Speed,
-  Layers) and Shred add motion; Vorticity, Dissipation and Cooling layers
+  Disturb (swirls of a set size, with Detail octaves), Grain (blocky kicks
+  that break up fast fronts; Size, Layers) and Shred add motion; Vorticity, Dissipation and Cooling layers
   scale those rates per cell; Soot Burn-off thins smoke where gas is hot.
   Stack several (a large and a fine Disturb), and give each up to six
   masks: a map range (From Min/Max to To Min/Max) of Temperature (K), Speed
@@ -115,7 +113,7 @@ Removed). This is a beta: please report scenes that look wrong.
   that grow or shrink push or pull the smoke, and open meshes act as fans.
   Point and particle emitters expand per second and push outward too.
 - **Expansion operation**: Maximum (exact, the default), Blend (pulls toward
-  Expansion at the Divergence coupling rate, for gentler pushes) or Replace.
+  Expansion at the Expansion coupling rate, for gentler pushes) or Replace.
 - **Influence Only**: an emitter can steer, heat or expand the smoke already
   there without adding any (also for points and particles).
 - **Velocity attribute** for mesh and Geometry Nodes mesh emitters.
@@ -258,7 +256,8 @@ Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
 Glow 2000 K, Brightness 2, Scatter Glow 1, Glow Shadowing 0.5, Blue Core 0,
 Smoke Density 1, smoke colour 0.45, Anisotropy 0.3; Disturb layers 20 at 1 m.
-Domains show as a wireframe and start with every section folded. Emitters:
+Domains show as a wireframe; their sub-sections (Appearance, Output, Preview
+Settings, Advanced) start folded. Emitters:
 Temperature 0.35 (700 K) held by Maximum at coupling 10, so fuel ignites
 within about 0.1 s and burning makes the rest of the heat; Expansion 0.2
 (Maximum); smoke, fuel and burn Add at coupling 2; velocity Blends at 8.
@@ -275,7 +274,6 @@ Shaping layers).
 
 - A new domain's panel no longer logs errors from the Restore Settings and
   Make Lighter Copy buttons (they wrote the cache identity while drawing).
-
 - A domain that had never simulated hid the panel below Play and Stop (on the
   domain and on its participants) until the first run.
 - Fast moving colliders at high resolution no longer blow up the simulation

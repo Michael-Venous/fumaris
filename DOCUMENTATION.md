@@ -403,12 +403,14 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   `Vorticity Mask` chooses where: `Fast Motion` (default), `Smoke` (in
   proportion to density, so thin edges stay calm), `Flames` (hot gas) or
   `Everywhere`.
-- `Turbulence Detail` (folded) adds artistic forces. `Disturb` pushes smoke and
-  hot gas with small random swirls of `Disturb Size` (scene units; keep it a
-  few voxels or larger), for breakup the base motion lacks: about 50 m/s² is
+- `Detail & Shaping` (folded) holds layers of artistic forces and per-cell
+  rates (see Detail & Shaping below). A `Disturb` layer pushes smoke and hot
+  gas with small random swirls of its `Size` (scene units; keep it a few voxels
+  or larger), for breakup the base motion lacks: a Strength of about 50 is
   subtle and 300 strongly mixed on a fireball a few metres across. `Shred`
   stretches the motion across sharp temperature edges, tearing flames into
-  tongues; values around 1–5 are typical. `Preserve Turbulence`
+  tongues; values around 1–5 are typical.
+- `Preserve Turbulence` (Advanced)
   (advection–reflection, Zehnder et al. 2018) runs Sub-Steps in pairs that
   lose far less swirling energy to the solver itself: plumes stay lively
   longer and grow larger (in the test scenes kinetic energy ×1.1–2.7, 10–50%
@@ -421,10 +423,44 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   **0.01** is close to free air; raise it to calm turbulence and shorten how
   far smoke travels.
 
+### Detail & Shaping
+
+`Detail & Shaping` (in Smoke Behavior) is a stack of layers applied in order.
+Add a layer with `+`, reorder with the arrows; the checkbox turns one off.
+
+Layers that add motion:
+
+- `Disturb`: swirling pushes of a set `Size` (scene units; a few voxels or
+  larger), with `Detail` adding smaller swirls, each half the size. Strength
+  is an acceleration: about 50 is subtle, 300 strong on a fireball a few
+  metres across. Stack a large and a fine Disturb for detail at two scales.
+- `Grain`: small random kicks, one direction per block of `Size`, renewed
+  every frame: the gritty breakup of fast fronts. `Layers` adds blocks three
+  times larger (up to 3).
+- `Shred`: stretches the flow across steep temperature changes, tearing flame
+  edges into strands.
+
+Layers that scale a rate per cell (by their masks):
+
+- `Vorticity`, `Dissipation` and `Cooling` multiply the domain's Vorticity,
+  Dissipation and cooling, for example stronger swirls in hot gas or cold
+  smoke that fades faster.
+- `Soot Burn-off` thins smoke at its rate per second where the masks allow
+  (by default where gas is hot and air is left), as soot oxidises.
+
+Masks decide where a layer acts. Each layer holds up to six; each maps a
+field from `From Min`–`From Max` to `To Min`–`To Max` and combines with the
+masks above it by Multiply, Minimum, Maximum, Add, Subtract or Replace (the
+first starts from 1). Fields: Temperature (K), Speed (m/s), Smoke, Fuel,
+Burn, Air Left and Noise. New Disturb and Grain layers start with masks that
+keep them to smoke or heat (up to 2500 K), so clear air skips the work; a
+layer without masks acts everywhere (a scaling layer without masks changes
+nothing).
+
 ### Combustion
 
 Every domain uses one physical combustion model (the Classic model was removed
-in 2.0; scenes saved with it open as Realistic).
+in 2.0).
 
 - Gas with fuel that is hotter than `Ignition Temperature` burns a fixed share
   of its fuel each second: 95% within `Burn Time`, so Burn Time is how long
@@ -496,8 +532,7 @@ Emitter Smoke, Temperature, Fuel, Burn, and Expansion define the source
 channels. Expansion is how fast the emitting region adds volume, per second:
 1 makes the gas there grow by its own volume each second and pushes the smoke
 around it outward, the same at any Resolution and Sub-Steps. Negative values
-pull inward. Emitters made before 2.0 keep the older, weaker and
-resolution-dependent Divergence. Initial Velocity adds a constant vector. Motion
+pull inward. Emission Velocity adds a constant vector. Motion
 Velocity Scale controls velocity inherited from source movement or mapped point
 velocities.
 
@@ -601,7 +636,7 @@ The point path's minimum radius of 0.05 Blender units still applies.
 Motion velocity is calculated from successive evaluated world-space centers and
 elapsed frame time, including parented, constrained, and rigid-body transforms.
 It is matched by object identity, not collection order. New sources and the first
-frame have no inherited motion; explicit Initial Velocity still applies. Disabling
+frame have no inherited motion; explicit Emission Velocity still applies. Disabling
 the controller or restarting/rewinding the simulation clears motion history.
 Source membership and center-mode changes restart a live preview. Hide state is
 not an emission mask: collection membership selects source meshes.

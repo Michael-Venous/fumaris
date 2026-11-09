@@ -565,17 +565,7 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
-    preview_shadow_min_light: FloatProperty(
-        name="Shadow Min Light",
-        description="Minimum light in shadowed smoke. Lower for deeper shadows and more contrast; 0 allows black shadows, 1 removes shadow darkening. Preview only",
-        default=0.0, min=0.0, max=1.0, subtype="FACTOR",
-    )
 
-    preview_light_scattering: FloatProperty(
-        name="Light Scattering",
-        description="Approximate light spreading into self-shadowed smoke, retaining dark cores. 0 uses direct lighting only. Preview only; does not change baked volumes or materials",
-        default=0.5, min=0.0, max=1.0, subtype="FACTOR",
-    )
 
 
     preview_lighting: EnumProperty(

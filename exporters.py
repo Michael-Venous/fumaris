@@ -1157,6 +1157,34 @@ def _primitive_surface_source(props, area, volume):
 
 # Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE: Expansion is in 1/s, applied exactly.
 EXPANSION_RATE_OP = 1 << 16
+
+
+def _point_emitter(props):
+    shape = getattr(props, "participant_type", "mesh")
+    return (shape == "collection_points"
+            or (shape == "particles" and getattr(props, "particle_subtype", "") == "point_cloud")
+            or (shape == "geometry_nodes" and getattr(props, "gn_subtype", "") == "point_cloud"))
+
+
+def uses_cell_expansion(props):
+    """An emitter saved before physical Expansion: Flow's per-cell Divergence,
+    which pushes harder the finer the cells (about twice at twice the Resolution)."""
+    if getattr(props, "smoke_object_type", "") != "emitter":
+        return False
+    version = getattr(props, "emitter_settings_version", 0)
+    return version < 2 if _point_emitter(props) else version < 1
+
+
+def physical_expansion(props, domain_props, fps):
+    """The Expansion (1/s) that pushes as hard as this emitter's per-cell
+    Divergence does at the domain's current Resolution. Flow pulls the cell's
+    divergence toward Expansion at the coupling rate over a 2-step reference
+    interval (about Expansion x rate x step), per velocity cell."""
+    cell = 32.0 / max(1, int(domain_props.resolution))
+    velocity_cell = cell if getattr(domain_props, "full_resolution_velocity", False) else 2.0 * cell
+    step = float(getattr(domain_props, "simulation_speed", 1.0)) / (2.0 * max(1.0, fps))
+    per_step = min(1.0, max(0.0, float(props.couple_rate_divergence)) * step)
+    return float(props.emitter_divergence) * per_step / velocity_cell
 # NV_FLOW_EMITTER_OP_VELOCITY_ADD / _MAX for velocity x, y, z.
 VELOCITY_ADD_OPS = (1 << 8) | (1 << 9) | (1 << 10)
 VELOCITY_MAX_OPS = (1 << 12) | (1 << 13) | (1 << 14)

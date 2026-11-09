@@ -5,6 +5,7 @@ from bpy.types import Panel
 from . import detail_stack
 from .runtime import active_job, active_mode
 from . import diagnostics
+from .exporters import uses_cell_expansion
 from .exporters import simulation_memory_mb
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
@@ -244,6 +245,13 @@ def _draw_emitter(layout, obj, props):
         hint.label(text="a share of Flame Temperature; raise it")
     box.prop(props, "emitter_burn")
     box.prop(props, "emitter_divergence")
+    if uses_cell_expansion(props) and props.emitter_divergence != 0.0:
+        # Older emitters keep Flow's per-cell Divergence: it is stronger at
+        # higher Resolution (about twice at twice the Resolution).
+        hint = box.column(align=True)
+        hint.label(text="Older Expansion: per cell, so it pushes", icon="INFO")
+        hint.label(text="harder at higher Resolution")
+        hint.operator("fumaris.emitter_physical_expansion")
 
     box = layout.box()
     box.label(text="Velocity", icon="FORCE_FORCE")

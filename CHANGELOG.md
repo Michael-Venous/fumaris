@@ -296,6 +296,10 @@ changed, saved scenes simulate differently:
   look; generated materials rebuild when opened.
 - New domains start with 1 Sub-Step, and new emitters Add what they emit;
   saved domains and emitters keep their values.
+- Emitters saved before physical Expansion keep the older per-cell Expansion,
+  which pushes harder at higher Resolution (about twice at twice the
+  Resolution); their panel says so, and **Use Physical Expansion** converts
+  them, keeping their push at the current Resolution.
 - Turbulence Detail, Control Ramps and Soot Burn-off became Detail & Shaping
   layers (Min Speed and Edges Only as masks): saved scenes, presets and takes
   convert on load and simulate the same to within rounding; a Disturb or

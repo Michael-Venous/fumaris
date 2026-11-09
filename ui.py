@@ -23,6 +23,17 @@ def _foldout(layout, props, property_name, label):
     return opened
 
 
+def _section(box, props, property_name, label, icon):
+    """A top-level foldout: its arrow at the box edge (like Advanced), then the
+    section's icon and title; folded sections show only this row."""
+    row = box.row(align=True)
+    row.alignment = "LEFT"
+    opened = getattr(props, property_name)
+    row.prop(props, property_name, text="", icon="TRIA_DOWN" if opened else "TRIA_RIGHT", emboss=False)
+    row.label(text=label, icon=icon)
+    return opened
+
+
 def _nested_foldout(layout, props, property_name, label):
     row = layout.row(align=True)
     row.separator(factor=0.65)
@@ -218,41 +229,43 @@ def _emitter_below_ignition(obj, props):
 
 def _draw_emitter(layout, obj, props):
     box = layout.box()
-    box.label(text="Emitter", icon="OUTLINER_OB_FORCE_FIELD")
-    box.prop(props, "participant_enabled")
-    _draw_emitter_shape(box, obj, props)
+    if _section(box, props, "show_panel_emitter", "Emitter", "OUTLINER_OB_FORCE_FIELD"):
+        box.prop(props, "participant_enabled")
+        _draw_emitter_shape(box, obj, props)
 
     box = layout.box()
-    box.label(text="Emitted Channels", icon="MOD_FLUID")
-    smoke_row = box.row()
-    smoke_row.active = not props.emitter_influence
-    smoke_row.prop(props, "emitter_smoke")
-    box.prop(props, "emitter_temperature")
-    box.prop(props, "emitter_fuel")
-    if _hot_fuel_without_air(obj, props):
-        hint = box.column(align=True)
-        hint.label(text="Fuel enters at Flame Temperature, which the", icon="INFO")
-        hint.label(text="Oxygen Limit reads as burnt gas: it waits to mix.")
-        hint.label(text="Use Temperature about 0.35, or the Oxygen Field")
-    cold = _emitter_below_ignition(obj, props)
-    if cold is not None:
-        hint = box.column(align=True)
-        hint.alert = True
-        hint.label(text=f"Fuel won't light: {cold[0]:.0f} K is below", icon="ERROR")
-        hint.label(text=f"Ignition Temperature ({cold[1]:.0f} K). Temperature is")
-        hint.label(text="a share of Flame Temperature; raise it")
-    box.prop(props, "emitter_burn")
-    box.prop(props, "emitter_divergence")
+    if _section(box, props, "show_panel_emitted_channels", "Emitted Channels", "MOD_FLUID"):
+        smoke_row = box.row()
+        smoke_row.active = not props.emitter_influence
+        smoke_row.prop(props, "emitter_smoke")
+        box.prop(props, "emitter_temperature")
+        box.prop(props, "emitter_fuel")
+        if _hot_fuel_without_air(obj, props):
+            hint = box.column(align=True)
+            hint.label(text="Fuel enters at Flame Temperature, which the", icon="INFO")
+            hint.label(text="Oxygen Limit reads as burnt gas: it waits to mix.")
+            hint.label(text="Use Temperature about 0.35, or the Oxygen Field")
+        cold = _emitter_below_ignition(obj, props)
+        if cold is not None:
+            hint = box.column(align=True)
+            hint.alert = True
+            hint.label(text=f"Fuel won't light: {cold[0]:.0f} K is below", icon="ERROR")
+            hint.label(text=f"Ignition Temperature ({cold[1]:.0f} K). Temperature is")
+            hint.label(text="a share of Flame Temperature; raise it")
+        box.prop(props, "emitter_burn")
+        box.prop(props, "emitter_divergence")
 
     box = layout.box()
-    box.label(text="Velocity", icon="FORCE_FORCE")
-    box.prop(props, "velocity")
-    if props.participant_type != "openvdb":
-        box.prop(props, "normal_velocity")
-    box.prop(props, "motion_velocity_scale")
+    if _section(box, props, "show_panel_emitter_velocity", "Velocity", "FORCE_FORCE"):
+        box.prop(props, "velocity")
+        if props.participant_type != "openvdb":
+            box.prop(props, "normal_velocity")
+        box.prop(props, "motion_velocity_scale")
 
     box = layout.box()
-    column, opened = _nested_foldout(box, props, "show_emitter_coupling", "Channel Coupling")
+    # A box of its own: the arrow at the box edge, like the domain's Advanced.
+    opened = _foldout(box, props, "show_emitter_coupling", "Channel Coupling")
+    column = box.column(align=True)
     if opened:
         for channel in ("smoke", "temperature", "fuel", "burn"):
             row = column.row(align=True)
@@ -266,7 +279,8 @@ def _draw_emitter(layout, obj, props):
         row.prop(props, "source_op_divergence", text="")
 
     box = layout.box()
-    column, opened = _nested_foldout(box, props, "show_emitter_advanced", "Advanced")
+    opened = _foldout(box, props, "show_emitter_advanced", "Advanced")
+    column = box.column(align=True)
     if opened:
         column.prop(props, "emitter_influence")
         column.prop(props, "emitter_burning")
@@ -292,81 +306,81 @@ def _draw_emitter(layout, obj, props):
 
 def _draw_collider(layout, props):
     box = layout.box()
-    box.label(text="Collider", icon="MOD_PHYSICS")
-    box.prop(props, "participant_enabled")
-    box.prop(props, "collider_type", text="Shape")
-    if props.collider_type in {"mesh", "box"}:
-        box.prop(props, "collider_margin")
-    elif props.collider_type == "sphere":
-        box.prop(props, "collider_radius")
-    box.prop(props, "collider_velocity_influence")
+    if _section(box, props, "show_panel_collider", "Collider", "MOD_PHYSICS"):
+        box.prop(props, "participant_enabled")
+        box.prop(props, "collider_type", text="Shape")
+        if props.collider_type in {"mesh", "box"}:
+            box.prop(props, "collider_margin")
+        elif props.collider_type == "sphere":
+            box.prop(props, "collider_radius")
+        box.prop(props, "collider_velocity_influence")
 
 
 def _draw_effector(layout, props):
     box = layout.box()
-    box.label(text="Effector", icon="FORCE_FORCE")
-    box.prop(props, "participant_enabled")
-    box.prop(props, "effector_type")
-    strength_label = "Swirl" if props.effector_type == "vortex" else "Strength"
-    box.prop(props, "effector_strength", text=strength_label)
-    box.prop(props, "effector_radius")
-    if props.effector_type == "vortex":
-        box.prop(props, "effector_vortex_height")
-        box.prop(props, "effector_vortex_core_radius")
-        box.prop(props, "effector_vortex_inflow")
-        box.prop(props, "effector_vortex_lift")
-    box.prop(props, "effector_coupling")
-    box.prop(props, "effector_samples")
-
-    if props.effector_type in {"force", "wind", "vortex", "turbulence"}:
-        noise, noise_open = _nested_foldout(box, props, "show_panel_noise", "Noise")
-        if noise_open:
-            if props.effector_type != "turbulence":
-                noise.prop(props, "effector_noise_amount")
-            noise.prop(props, "effector_noise_size")
-            noise.prop(props, "effector_noise_w")
-            noise.prop(props, "effector_noise_seed")
-
-    mask, mask_open = _nested_foldout(box, props, "show_panel_mask", "Field Mask")
-    if mask_open:
-        mask.prop(props, "effector_mask_field")
-        if props.effector_mask_field != "none":
-            row = mask.row(align=True)
-            row.prop(props, "effector_mask_min")
-            row.prop(props, "effector_mask_max")
-            mask.prop(props, "effector_mask_invert")
-
-    falloff, falloff_open = _nested_foldout(box, props, "show_panel_falloff", "Falloff")
-    if falloff_open:
+    if _section(box, props, "show_panel_effector", "Effector", "FORCE_FORCE"):
+        box.prop(props, "participant_enabled")
+        box.prop(props, "effector_type")
+        strength_label = "Swirl" if props.effector_type == "vortex" else "Strength"
+        box.prop(props, "effector_strength", text=strength_label)
+        box.prop(props, "effector_radius")
         if props.effector_type == "vortex":
-            falloff.prop(props, "effector_z_direction")
-            falloff.prop(props, "effector_falloff_power", text="Edge Power")
-        else:
-            falloff.prop(props, "effector_z_direction")
-            falloff.prop(props, "effector_falloff_power")
-            row = falloff.row(align=True)
-            row.prop(props, "effector_use_min_distance", text="")
-            sub = row.row(align=True)
-            sub.enabled = props.effector_use_min_distance
-            sub.prop(props, "effector_min_distance")
-            row = falloff.row(align=True)
-            row.prop(props, "effector_use_max_distance", text="")
-            sub = row.row(align=True)
-            sub.enabled = props.effector_use_max_distance
-            sub.prop(props, "effector_max_distance")
+            box.prop(props, "effector_vortex_height")
+            box.prop(props, "effector_vortex_core_radius")
+            box.prop(props, "effector_vortex_inflow")
+            box.prop(props, "effector_vortex_lift")
+        box.prop(props, "effector_coupling")
+        box.prop(props, "effector_samples")
+
+        if props.effector_type in {"force", "wind", "vortex", "turbulence"}:
+            noise, noise_open = _nested_foldout(box, props, "show_panel_noise", "Noise")
+            if noise_open:
+                if props.effector_type != "turbulence":
+                    noise.prop(props, "effector_noise_amount")
+                noise.prop(props, "effector_noise_size")
+                noise.prop(props, "effector_noise_w")
+                noise.prop(props, "effector_noise_seed")
+
+        mask, mask_open = _nested_foldout(box, props, "show_panel_mask", "Field Mask")
+        if mask_open:
+            mask.prop(props, "effector_mask_field")
+            if props.effector_mask_field != "none":
+                row = mask.row(align=True)
+                row.prop(props, "effector_mask_min")
+                row.prop(props, "effector_mask_max")
+                mask.prop(props, "effector_mask_invert")
+
+        falloff, falloff_open = _nested_foldout(box, props, "show_panel_falloff", "Falloff")
+        if falloff_open:
+            if props.effector_type == "vortex":
+                falloff.prop(props, "effector_z_direction")
+                falloff.prop(props, "effector_falloff_power", text="Edge Power")
+            else:
+                falloff.prop(props, "effector_z_direction")
+                falloff.prop(props, "effector_falloff_power")
+                row = falloff.row(align=True)
+                row.prop(props, "effector_use_min_distance", text="")
+                sub = row.row(align=True)
+                sub.enabled = props.effector_use_min_distance
+                sub.prop(props, "effector_min_distance")
+                row = falloff.row(align=True)
+                row.prop(props, "effector_use_max_distance", text="")
+                sub = row.row(align=True)
+                sub.enabled = props.effector_use_max_distance
+                sub.prop(props, "effector_max_distance")
 
 
 def _draw_outflow(layout, props):
     box = layout.box()
-    box.label(text="Outflow", icon="MOD_FLUID")
-    box.prop(props, "participant_enabled")
-    box.prop(props, "mesh_emission_mode", text="Region")
-    box.prop(props, "mesh_emission_distance")
-    box.prop(props, "mesh_emission_mask_attribute", text="Mask")
-    if props.mesh_emission_mask_attribute.strip():
-        box.prop(props, "mesh_emission_mask_threshold")
-    box.prop(props, "outflow_coupling")
-    box.prop(props, "motion_velocity_scale", text="Motion Velocity")
+    if _section(box, props, "show_panel_outflow", "Outflow", "MOD_FLUID"):
+        box.prop(props, "participant_enabled")
+        box.prop(props, "mesh_emission_mode", text="Region")
+        box.prop(props, "mesh_emission_distance")
+        box.prop(props, "mesh_emission_mask_attribute", text="Mask")
+        if props.mesh_emission_mask_attribute.strip():
+            box.prop(props, "mesh_emission_mask_threshold")
+        box.prop(props, "outflow_coupling")
+        box.prop(props, "motion_velocity_scale", text="Motion Velocity")
 
 
 def _compact_time(seconds):
@@ -547,341 +561,342 @@ def _draw_domain(layout, scene, props):
     )
     is_initializing = job is not None and not getattr(job, "_accepted", False)
 
-    controls = layout.box().column(align=True)
-    controls.label(text="Simulate", icon="PHYSICS")
-    prefs = get_addon_preferences()
-    if prefs:
-        gpu = controls.row(align=True)
-        gpu.enabled = mode is None
-        gpu.prop(prefs, "simulation_gpu", text="GPU")
-        gpu.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
-    slot_directory = peek_output_directory_for_object(props.id_data)
-    slot_protected = is_protected(slot_directory)
-    row = controls.row(align=True)
-    sub = row.row(align=True)
-    sub.enabled = mode is None and not slot_protected
-    sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
-    stop = row.row(align=True)
-    stop.enabled = is_baking
-    stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
-    delete = row.row(align=True)
-    delete.enabled = mode is None and not slot_protected
-    delete.operator("fumaris.delete", icon="TRASH", text="Delete")
-    if slot_protected:
-        controls.label(text=f"Cache slot '{props.cache_slot}' is protected", icon="LOCKED")
+    simulate_box = layout.box()
+    if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
+        controls = simulate_box.column(align=True)
+        prefs = get_addon_preferences()
+        if prefs:
+            gpu = controls.row(align=True)
+            gpu.enabled = mode is None
+            gpu.prop(prefs, "simulation_gpu", text="GPU")
+            gpu.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
+        slot_directory = peek_output_directory_for_object(props.id_data)
+        slot_protected = is_protected(slot_directory)
+        row = controls.row(align=True)
+        sub = row.row(align=True)
+        sub.enabled = mode is None and not slot_protected
+        sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
+        stop = row.row(align=True)
+        stop.enabled = is_baking
+        stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
+        delete = row.row(align=True)
+        delete.enabled = mode is None and not slot_protected
+        delete.operator("fumaris.delete", icon="TRASH", text="Delete")
+        if slot_protected:
+            controls.label(text=f"Cache slot '{props.cache_slot}' is protected", icon="LOCKED")
 
-    controls.separator(factor=0.6)
-    header = controls.row(align=True)
-    header.label(text="Preview Controls")
-    if is_previewing:
-        header.label(text="Viewport preview approximates the Cycles render")
-    preview = controls.row(align=True)
-    play = preview.row(align=True)
-    play.enabled = mode is None and props.simulation_state != "baked"
-    play.operator("fumaris.preview_play", icon="PLAY", text="Play")
-    pause = preview.row(align=True)
-    pause.enabled = is_previewing and not is_initializing
-    pause.operator(
-        "fumaris.preview_pause",
-        icon="PLAY" if is_preview_paused else "PAUSE",
-        text="Resume" if is_preview_paused else "Pause",
-    )
-    preview_stop = preview.row(align=True)
-    # A preview that is still starting (or paused, or finishing a recording) can always be stopped.
-    preview_stop.enabled = job is not None and not is_baking
-    preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
-    controls.separator(factor=0.5)
-    options = controls.row(align=True)
-    record = options.row(align=True)
-    record.enabled = mode is None
-    record.prop(props, "bake_on_preview")
-    record.prop(props, "preview_bake")
-    controls.separator(factor=0.5)
-    # Keep transport rows together; all status text lives below their options.
-    status = controls.column(align=True)
-    failure = diagnostics.error_summary(diagnostics.snapshot(props.id_data))
-    if failure:
-        error_row = status.row(align=True)
-        error_row.alert = True
-        error_row.label(text=failure, icon="ERROR")
-        status.label(text="See Diagnostics below for details.")
-    elif is_initializing:
-        status.label(text="Initializing Flow GPU…", icon="INFO")
-        status.label(text="First-run shaders can take several minutes")
-    elif is_baking:
-        status.label(text="Baking…", icon="TIME")
-    elif mode is None and props.simulation_state in {"baked", "stopped"}:
-        completed = props.simulation_state == "baked"
-        status.label(
-            text=_bake_summary(props, "Baked" if completed else "Stopped"),
-            icon="CHECKMARK" if completed else "PAUSE",
+        controls.separator(factor=0.6)
+        header = controls.row(align=True)
+        header.label(text="Preview Controls")
+        if is_previewing:
+            header.label(text="Viewport preview approximates the Cycles render")
+        preview = controls.row(align=True)
+        play = preview.row(align=True)
+        play.enabled = mode is None and props.simulation_state != "baked"
+        play.operator("fumaris.preview_play", icon="PLAY", text="Play")
+        pause = preview.row(align=True)
+        pause.enabled = is_previewing and not is_initializing
+        pause.operator(
+            "fumaris.preview_pause",
+            icon="PLAY" if is_preview_paused else "PAUSE",
+            text="Resume" if is_preview_paused else "Pause",
         )
-        if completed:
-            # Why Play is greyed out.
-            status.label(text="Delete the bake or pick a new cache slot to preview again")
-    elif is_previewing and not getattr(job, "_recording_enabled", False):
-        status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
-                     icon="PAUSE" if is_preview_paused else "PLAY")
-    if is_previewing and getattr(job, "_recording_enabled", False):
-        if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):
-            status.label(text="Finishing recorded frames…", icon="TIME")
-        elif getattr(job, "_recording_showing_cache", False):
-            first = getattr(job, "_progress_start_frame", 1)
-            last = getattr(job, "_recording_committed_end", -1)
-            status.label(text=f"Recorded frames {first}–{last} · Paused", icon="CHECKMARK")
-            if getattr(job, "_recording_at_end", False):
-                status.label(text="Resume starts a new recording")
+        preview_stop = preview.row(align=True)
+        # A preview that is still starting (or paused, or finishing a recording) can always be stopped.
+        preview_stop.enabled = job is not None and not is_baking
+        preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
+        controls.separator(factor=0.5)
+        options = controls.row(align=True)
+        record = options.row(align=True)
+        record.enabled = mode is None
+        record.prop(props, "bake_on_preview")
+        record.prop(props, "preview_bake")
+        controls.separator(factor=0.5)
+        # Keep transport rows together; all status text lives below their options.
+        status = controls.column(align=True)
+        failure = diagnostics.error_summary(diagnostics.snapshot(props.id_data))
+        if failure:
+            error_row = status.row(align=True)
+            error_row.alert = True
+            error_row.label(text=failure, icon="ERROR")
+            status.label(text="See Diagnostics below for details.")
+        elif is_initializing:
+            status.label(text="Initializing Flow GPU…", icon="INFO")
+            status.label(text="First-run shaders can take several minutes")
+        elif is_baking:
+            status.label(text="Baking…", icon="TIME")
+        elif mode is None and props.simulation_state in {"baked", "stopped"}:
+            completed = props.simulation_state == "baked"
+            status.label(
+                text=_bake_summary(props, "Baked" if completed else "Stopped"),
+                icon="CHECKMARK" if completed else "PAUSE",
+            )
+            if completed:
+                # Why Play is greyed out.
+                status.label(text="Delete the bake or pick a new cache slot to preview again")
+        elif is_previewing and not getattr(job, "_recording_enabled", False):
+            status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
+                         icon="PAUSE" if is_preview_paused else "PLAY")
+        if is_previewing and getattr(job, "_recording_enabled", False):
+            if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):
+                status.label(text="Finishing recorded frames…", icon="TIME")
+            elif getattr(job, "_recording_showing_cache", False):
+                first = getattr(job, "_progress_start_frame", 1)
+                last = getattr(job, "_recording_committed_end", -1)
+                status.label(text=f"Recorded frames {first}–{last} · Paused", icon="CHECKMARK")
+                if getattr(job, "_recording_at_end", False):
+                    status.label(text="Resume starts a new recording")
+            else:
+                status.label(text="Recording preview to VDB", icon="REC")
+        domain = props.id_data
+        if not domain.visible_get(view_layer=bpy.context.view_layer):
+            status.label(text="Domain hidden: simulation can still run", icon="INFO")
+            status.label(text="Unhide the domain to see the preview")
+
+        _draw_capacity_warning(status, domain)
+        _draw_memory_usage(status, domain)
+
+        settings = controls.column(align=True)
+        settings.enabled = not is_baking
+        row = settings.row(align=True)
+        row.prop(props, "use_scene_frame_range", text="", icon="TIME")
+        if props.use_scene_frame_range:
+            row.prop(props, "warmup_frames")
         else:
-            status.label(text="Recording preview to VDB", icon="REC")
-    domain = props.id_data
-    if not domain.visible_get(view_layer=bpy.context.view_layer):
-        status.label(text="Domain hidden: simulation can still run", icon="INFO")
-        status.label(text="Unhide the domain to see the preview")
+            row.prop(props, "sim_start_frame", text="Start")
+            row.prop(props, "sim_end_frame", text="End")
+        grid_row = settings.row(align=True)
+        grid_row.prop(props, "resolution")
+        memory_field = grid_row.row(align=True)
+        memory_field.active = not props.simulation_memory_auto
+        memory_field.prop(props, "simulation_memory", text="VRAM (GB)")
+        auto = grid_row.row(align=True)
+        auto.ui_units_x = 2.2
+        auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
+        draw_budget_summary(settings, props, diagnostics.snapshot(domain))
+        settings.prop(props, "air_margin")
+        substeps_row = settings.row(align=True)
+        substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
+        # Cells per Step adds steps up to Max Sub-Steps: nothing to add at 1.
+        cells = substeps_row.row(align=True)
+        cells.active = props.num_sub_steps > 1
+        cells.prop(props, "adaptive_cfl")
 
-    _draw_capacity_warning(status, domain)
-    _draw_memory_usage(status, domain)
-
-    settings = controls.column(align=True)
-    settings.enabled = not is_baking
-    row = settings.row(align=True)
-    row.prop(props, "use_scene_frame_range", text="", icon="TIME")
-    if props.use_scene_frame_range:
-        row.prop(props, "warmup_frames")
-    else:
-        row.prop(props, "sim_start_frame", text="Start")
-        row.prop(props, "sim_end_frame", text="End")
-    grid_row = settings.row(align=True)
-    grid_row.prop(props, "resolution")
-    memory_field = grid_row.row(align=True)
-    memory_field.active = not props.simulation_memory_auto
-    memory_field.prop(props, "simulation_memory", text="VRAM (GB)")
-    auto = grid_row.row(align=True)
-    auto.ui_units_x = 2.2
-    auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
-    draw_budget_summary(settings, props, diagnostics.snapshot(domain))
-    settings.prop(props, "air_margin")
-    substeps_row = settings.row(align=True)
-    substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
-    # Cells per Step adds steps up to Max Sub-Steps: nothing to add at 1.
-    cells = substeps_row.row(align=True)
-    cells.active = props.num_sub_steps > 1
-    cells.prop(props, "adaptive_cfl")
-
-    appearance, appearance_open = _nested_foldout(
-        settings,
-        props,
-        "show_appearance",
-        "Appearance",
-    )
-    if appearance_open:
-        appearance.label(text="Smoke")
-        smoke = appearance.column(align=True)
-        smoke_row = smoke.row(align=True)
-        smoke_row.prop(props, "shader_smoke_density")
-        smoke_row.prop(props, "shader_anisotropy")
-        color = smoke.split(factor=0.2, align=True)
-        color.label(text="Color")
-        color.prop(props, "shader_smoke_color", text="")
-        appearance.separator()
-        flame_header = appearance.row(align=True)
-        flame_header.prop(props, "shader_flame_enabled")
-        if props.shader_flame_enabled:
-            flame_header.prop(props, "shader_look", text="")
-            _draw_fire_look(appearance.column(align=True), props)
-        if (flame_value(props, "scatter_glow", 0.0) > 0.0 and scene.render.engine == "CYCLES"
-                and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
-            # Cycles' unbiased volumes drop the glow in square patches
-            # (2026-11-06); Biased renders it correctly and faster.
-            hint = appearance.row(align=True)
-            hint.label(text="Scatter Glow shows square patches in unbiased Cycles volumes", icon="ERROR")
-            hint.operator("fumaris.use_biased_volumes", text="Use Biased")
-        if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
-            appearance.label(
-                text="Custom Volume Material overrides baked appearance",
-                icon="INFO",
-            )
-
-    output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
-    if output_open:
-        # One label column for every row, so labels line up and none truncate.
-        split = output.split(factor=0.2, align=True)
-        labels = split.column(align=True)
-        fields = split.column(align=True)
-        labels.label(text="Cache Slot")
-        slot = fields.row(align=True)
-        slot.prop(props, "cache_slot", text="")
-        slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
-        slot.operator("fumaris.cache_slot_restore_settings", icon="LOOP_BACK", text="")
-        slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
-        slot.operator("fumaris.add_sparks", icon="PARTICLES", text="")
-        slot.operator(
-            "fumaris.cache_protect",
-            icon="LOCKED" if slot_protected else "UNLOCKED",
-            text="",
-            depress=slot_protected,
+        appearance, appearance_open = _nested_foldout(
+            settings,
+            props,
+            "show_appearance",
+            "Appearance",
         )
-        labels.label(text="Directory")
-        fields.prop(props, "output_dir", text="")
-        labels.label(text="Prefix")
-        fields.prop(props, "output_prefix", text="")
-        labels.label(text="VDB")
-        vdb = fields.row(align=True)
-        vdb.prop(props, "vdb_compression", text="")
-        vdb.prop(props, "vdb_precision", text="")
-        labels.label(text="Material")
-        fields.prop(props, "volume_material", text="")
-        output.prop(props, "vdb_writers")
-        output.separator()
-        output.prop(props, "volume_selectable")
-        output.separator()
-        # Each grid: write it, and at which resolution.
-        channels = output.column(align=True)
-        for name in ("density", "temperature", "fuel", "burn", "velocity"):
-            row = channels.split(factor=0.6, align=True)
-            row.prop(props, f"export_{name}_vdb", text=name.title())
-            resolution = row.row(align=True)
-            resolution.active = getattr(props, f"export_{name}_vdb")
-            resolution.prop(props, f"export_{name}_resolution", text="")
-        row = channels.split(factor=0.6, align=True)
-        row.prop(props, "export_glow_vdb", text="Glow")
-        resolution = row.row(align=True)
-        resolution.active = props.export_glow_vdb
-        resolution.prop(props, "export_glow_resolution", text="")
-        if props.export_glow_vdb:
-            output.prop(props, "glow_radius")
-        if props.volume_material is None:
-            output.label(
-                text="Generated material always includes density and temperature",
-                icon="INFO",
+        if appearance_open:
+            appearance.label(text="Smoke")
+            smoke = appearance.column(align=True)
+            smoke_row = smoke.row(align=True)
+            smoke_row.prop(props, "shader_smoke_density")
+            smoke_row.prop(props, "shader_anisotropy")
+            color = smoke.split(factor=0.2, align=True)
+            color.label(text="Color")
+            color.prop(props, "shader_smoke_color", text="")
+            appearance.separator()
+            flame_header = appearance.row(align=True)
+            flame_header.prop(props, "shader_flame_enabled")
+            if props.shader_flame_enabled:
+                flame_header.prop(props, "shader_look", text="")
+                _draw_fire_look(appearance.column(align=True), props)
+            if (flame_value(props, "scatter_glow", 0.0) > 0.0 and scene.render.engine == "CYCLES"
+                    and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
+                # Cycles' unbiased volumes drop the glow in square patches
+                # (2026-11-06); Biased renders it correctly and faster.
+                hint = appearance.row(align=True)
+                hint.label(text="Scatter Glow shows square patches in unbiased Cycles volumes", icon="ERROR")
+                hint.operator("fumaris.use_biased_volumes", text="Use Biased")
+            if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
+                appearance.label(
+                    text="Custom Volume Material overrides baked appearance",
+                    icon="INFO",
+                )
+
+        output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
+        if output_open:
+            # One label column for every row, so labels line up and none truncate.
+            split = output.split(factor=0.2, align=True)
+            labels = split.column(align=True)
+            fields = split.column(align=True)
+            labels.label(text="Cache Slot")
+            slot = fields.row(align=True)
+            slot.prop(props, "cache_slot", text="")
+            slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
+            slot.operator("fumaris.cache_slot_restore_settings", icon="LOOP_BACK", text="")
+            slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
+            slot.operator("fumaris.add_sparks", icon="PARTICLES", text="")
+            slot.operator(
+                "fumaris.cache_protect",
+                icon="LOCKED" if slot_protected else "UNLOCKED",
+                text="",
+                depress=slot_protected,
             )
+            labels.label(text="Directory")
+            fields.prop(props, "output_dir", text="")
+            labels.label(text="Prefix")
+            fields.prop(props, "output_prefix", text="")
+            labels.label(text="VDB")
+            vdb = fields.row(align=True)
+            vdb.prop(props, "vdb_compression", text="")
+            vdb.prop(props, "vdb_precision", text="")
+            labels.label(text="Material")
+            fields.prop(props, "volume_material", text="")
+            output.prop(props, "vdb_writers")
+            output.separator()
+            output.prop(props, "volume_selectable")
+            output.separator()
+            # Each grid: write it, and at which resolution.
+            channels = output.column(align=True)
+            for name in ("density", "temperature", "fuel", "burn", "velocity"):
+                row = channels.split(factor=0.6, align=True)
+                row.prop(props, f"export_{name}_vdb", text=name.title())
+                resolution = row.row(align=True)
+                resolution.active = getattr(props, f"export_{name}_vdb")
+                resolution.prop(props, f"export_{name}_resolution", text="")
+            row = channels.split(factor=0.6, align=True)
+            row.prop(props, "export_glow_vdb", text="Glow")
+            resolution = row.row(align=True)
+            resolution.active = props.export_glow_vdb
+            resolution.prop(props, "export_glow_resolution", text="")
+            if props.export_glow_vdb:
+                output.prop(props, "glow_radius")
+            if props.volume_material is None:
+                output.label(
+                    text="Generated material always includes density and temperature",
+                    icon="INFO",
+                )
 
-    preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
-    if preview_open:
-        preview.prop(props, "preview_field_view")
+        preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
+        if preview_open:
+            preview.prop(props, "preview_field_view")
 
-        preview.label(text="Quality")
-        quality = preview.column(align=True)
-        sharpness = quality.row(align=True)
-        sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
-        sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
-        steps = quality.row(align=True)
-        steps.prop(props, "preview_step_size")
-        steps.prop(props, "preview_all_viewports", toggle=True)
-        rate = quality.row(align=True)
-        rate.prop(props, "preview_frame_rate")
-        if props.preview_frame_rate == "CUSTOM":
-            rate.prop(props, "preview_custom_fps")
+            preview.label(text="Quality")
+            quality = preview.column(align=True)
+            sharpness = quality.row(align=True)
+            sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
+            sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
+            steps = quality.row(align=True)
+            steps.prop(props, "preview_step_size")
+            steps.prop(props, "preview_all_viewports", toggle=True)
+            rate = quality.row(align=True)
+            rate.prop(props, "preview_frame_rate")
+            if props.preview_frame_rate == "CUSTOM":
+                rate.prop(props, "preview_custom_fps")
 
-        # Speed, Expansion and Fuel draw a field as fire: lighting does not apply.
-        if props.preview_field_view in {"look", "blocks"}:
-            preview.label(text="Lighting")
-            lighting = preview.column(align=True)
-            lighting.row(align=True).prop(props, "preview_lighting", expand=True)
-            if props.preview_lighting == "CUSTOM":
-                direction = lighting.row(align=True)
-                direction.prop(props, "preview_light_azimuth")
-                direction.prop(props, "preview_light_elevation")
-                custom = lighting.row(align=True)
-                custom.prop(props, "preview_light_strength")
-                custom.prop(props, "preview_custom_sky")
-            toggles = lighting.row(align=True)
-            toggles.prop(props, "preview_shadows", toggle=True)
-            toggles.prop(props, "preview_occlusion", toggle=True)
-            fire = lighting.row(align=True)
-            fire.enabled = props.shader_flame_enabled
-            fire.prop(props, "preview_fire_lighting", slider=True)
+            # Speed, Expansion and Fuel draw a field as fire: lighting does not apply.
+            if props.preview_field_view in {"look", "blocks"}:
+                preview.label(text="Lighting")
+                lighting = preview.column(align=True)
+                lighting.row(align=True).prop(props, "preview_lighting", expand=True)
+                if props.preview_lighting == "CUSTOM":
+                    direction = lighting.row(align=True)
+                    direction.prop(props, "preview_light_azimuth")
+                    direction.prop(props, "preview_light_elevation")
+                    custom = lighting.row(align=True)
+                    custom.prop(props, "preview_light_strength")
+                    custom.prop(props, "preview_custom_sky")
+                toggles = lighting.row(align=True)
+                toggles.prop(props, "preview_shadows", toggle=True)
+                toggles.prop(props, "preview_occlusion", toggle=True)
+                fire = lighting.row(align=True)
+                fire.enabled = props.shader_flame_enabled
+                fire.prop(props, "preview_fire_lighting", slider=True)
 
-        preview.label(text="Color")
-        color = preview.row(align=True)
-        color.prop(props, "preview_tone_mapping", text="")
-        color.prop(props, "preview_exposure_offset", slider=True)
-        preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
+            preview.label(text="Color")
+            color = preview.row(align=True)
+            color.prop(props, "preview_tone_mapping", text="")
+            color.prop(props, "preview_exposure_offset", slider=True)
+            preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
 
-    participants = layout.box()
-    participants.enabled = not is_baking
-    participants.label(text="Participants", icon="OUTLINER_COLLECTION")
-    participants = participants.column(align=True)
-    # Labels in a narrow column so the collection fields start close to them.
-    for name, label in (("emitter_collection", "Emitters Collection:"), ("collider_collection", "Collider Collection:"),
-                        ("effector_collection", "Effector Collection:"), ("outflow_collection", "Outflow Collection:")):
-        split = participants.split(factor=0.18, align=True)
-        split.label(text=label)
-        split.prop(props, name, text="")
-    participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
-    _draw_participant_list(participants, props)
+    participants_box = layout.box()
+    participants_box.enabled = not is_baking
+    if _section(participants_box, props, "show_panel_participants", "Participants", "OUTLINER_COLLECTION"):
+        participants = participants_box.column(align=True)
+        # Labels in a narrow column so the collection fields start close to them.
+        for name, label in (("emitter_collection", "Emitters Collection:"), ("collider_collection", "Collider Collection:"),
+                            ("effector_collection", "Effector Collection:"), ("outflow_collection", "Outflow Collection:")):
+            split = participants.split(factor=0.18, align=True)
+            split.label(text=label)
+            split.prop(props, name, text="")
+        participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
+        _draw_participant_list(participants, props)
 
     behavior_box = layout.box()
     behavior_box.enabled = not is_baking
-    behavior_box.label(text="Smoke Behavior", icon="MOD_FLUID")
-    behavior = behavior_box.column(align=True)
-    # One split for both rows so their X / Y / Z columns line up; the Gravity
-    # from Scene button sits just left of the fields (a blank slot for Wind).
-    for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
-        split = behavior.split(factor=0.12, align=True)
-        split.label(text=label)
-        right = split.row(align=True)
-        if button:
-            right.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
+    if _section(behavior_box, props, "show_panel_behavior", "Smoke Behavior", "MOD_FLUID"):
+        behavior = behavior_box.column(align=True)
+        # One split for both rows so their X / Y / Z columns line up; the Gravity
+        # from Scene button sits just left of the fields (a blank slot for Wind).
+        for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
+            split = behavior.split(factor=0.12, align=True)
+            split.label(text=label)
+            right = split.row(align=True)
+            if button:
+                right.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
+            else:
+                right.label(text="", icon="BLANK1")
+            right.prop(props, name, text="")
+        behavior.separator()
+        buoyancy = behavior.row(align=True)
+        temperature = buoyancy.row(align=True)
+        temperature.prop(props, "physical_buoyancy", text="")
+        if props.physical_buoyancy:
+            # The gas-law lift replaces the slider; shown greyed for reference.
+            value = temperature.row(align=True)
+            value.enabled = False
+            value.label(text=f"Physical Buoyancy {physical_buoyancy(props):.1f}")
         else:
-            right.label(text="", icon="BLANK1")
-        right.prop(props, name, text="")
-    behavior.separator()
-    buoyancy = behavior.row(align=True)
-    temperature = buoyancy.row(align=True)
-    temperature.prop(props, "physical_buoyancy", text="")
-    if props.physical_buoyancy:
-        # The gas-law lift replaces the slider; shown greyed for reference.
-        value = temperature.row(align=True)
-        value.enabled = False
-        value.label(text=f"Physical Buoyancy {physical_buoyancy(props):.1f}")
-    else:
-        temperature.prop(props, "buoyancy_per_temp")
-    buoyancy.prop(props, "buoyancy_per_smoke")
-    behavior.separator()
-    fade = behavior.row(align=True)
-    fade.prop(props, "dissipation")
-    fade.prop(props, "smoke_decay", text="Decay")
-    behavior.prop(props, "velocity_damping")
-    behavior.separator()
-    vorticity_row = behavior.row(align=True)
-    vorticity_row.prop(props, "vorticity")
-    mask = vorticity_row.row(align=True)
-    mask.active = props.vorticity > 0.0
-    mask.prop(props, "vorticity_mask", text="")
-    behavior.separator()
+            temperature.prop(props, "buoyancy_per_temp")
+        buoyancy.prop(props, "buoyancy_per_smoke")
+        behavior.separator()
+        fade = behavior.row(align=True)
+        fade.prop(props, "dissipation")
+        fade.prop(props, "smoke_decay", text="Decay")
+        behavior.prop(props, "velocity_damping")
+        behavior.separator()
+        vorticity_row = behavior.row(align=True)
+        vorticity_row.prop(props, "vorticity")
+        mask = vorticity_row.row(align=True)
+        mask.active = props.vorticity > 0.0
+        mask.prop(props, "vorticity_mask", text="")
+        behavior.separator()
 
-    # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
-    # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
-    stack, stack_open = _nested_foldout(behavior, props, "show_domain_detail_stack", "Detail & Shaping")
-    if stack_open:
-        detail_stack.draw(stack, props.id_data)
+        # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
+        # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
+        stack, stack_open = _nested_foldout(behavior, props, "show_domain_detail_stack", "Detail & Shaping")
+        if stack_open:
+            detail_stack.draw(stack, props.id_data)
 
-    combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
-    if combustion_open:
-        combustion.prop(props, "flame_temperature")
-        combustion.prop(props, "fuel_energy")
-        combustion.prop(props, "ignition_temperature_k")
-        combustion.separator()
-        times = combustion.row(align=True)
-        times.prop(props, "burn_time")
-        times.prop(props, "cooling_time")
-        combustion.prop(props, "temperature_diffusion")
-        combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
-        combustion.separator()
-        combustion.prop(props, "gas_expansion")
-        shaping = combustion.row(align=True)
-        shaping.prop(props, "wisp_cooling")
-        shaping.prop(props, "fuel_threshold")
-        air = combustion.row(align=True)
-        air.prop(props, "oxygen_limit")
-        air.prop(props, "soot_radiation")
-        oxygen = combustion.row(align=True)
-        oxygen.active = props.oxygen_limit > 0.0
-        oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
-        field = oxygen.row(align=True)
-        field.active = props.oxygen_field and props.oxygen_limit > 0.0
-        field.prop(props, "oxygen_use", text="Use")
-        field.prop(props, "oxygen_mixing", text="Mixing")
+        combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
+        if combustion_open:
+            combustion.prop(props, "flame_temperature")
+            combustion.prop(props, "fuel_energy")
+            combustion.prop(props, "ignition_temperature_k")
+            combustion.separator()
+            times = combustion.row(align=True)
+            times.prop(props, "burn_time")
+            times.prop(props, "cooling_time")
+            combustion.prop(props, "temperature_diffusion")
+            combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
+            combustion.separator()
+            combustion.prop(props, "gas_expansion")
+            shaping = combustion.row(align=True)
+            shaping.prop(props, "wisp_cooling")
+            shaping.prop(props, "fuel_threshold")
+            air = combustion.row(align=True)
+            air.prop(props, "oxygen_limit")
+            air.prop(props, "soot_radiation")
+            oxygen = combustion.row(align=True)
+            oxygen.active = props.oxygen_limit > 0.0
+            oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
+            field = oxygen.row(align=True)
+            field.active = props.oxygen_field and props.oxygen_limit > 0.0
+            field.prop(props, "oxygen_use", text="Use")
+            field.prop(props, "oxygen_mixing", text="Mixing")
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking

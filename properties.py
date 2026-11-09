@@ -2034,6 +2034,18 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
+    # Top-level panel foldouts (ui._section): open by default, so Play, Bake and
+    # each participant's main settings show on a new object; sub-sections fold.
+    show_panel_simulate: BoolProperty(name="Simulate", default=True)
+    show_panel_participants: BoolProperty(name="Participants", default=True)
+    show_panel_behavior: BoolProperty(name="Smoke Behavior", default=True)
+    show_panel_emitter: BoolProperty(name="Emitter", default=True)
+    show_panel_emitted_channels: BoolProperty(name="Emitted Channels", default=True)
+    show_panel_emitter_velocity: BoolProperty(name="Velocity", default=True)
+    show_panel_collider: BoolProperty(name="Collider", default=True)
+    show_panel_effector: BoolProperty(name="Effector", default=True)
+    show_panel_outflow: BoolProperty(name="Outflow", default=True)
+
     show_preview_display: BoolProperty(
         name="Preview Settings",
         default=False,

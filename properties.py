@@ -471,7 +471,7 @@ class FumarisSettings(PropertyGroup):
 
     resolution: IntProperty(
         name="Resolution",
-        description="Higher values create smaller smoke details but need more GPU memory and simulation time; increase Sparse Block Capacity if the smoke gets cut off",
+        description="Voxel size: 32 scene units divided by this (1024 is about 3 cm), whatever the domain object's size; the simulation has no box and covers only where smoke is. Higher values give finer detail but need more GPU memory (about 8 times the voxels at twice the value) and simulation time; raise VRAM if the smoke gets cut off",
         default=256,
         min=16,
         soft_max=4096,

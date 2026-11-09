@@ -494,8 +494,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         super()._submit_frame(context)
 
     def export_cache(self, context, directory, slot, first, last):
-        """Export Cache to VDB: the bridge writes the cached frames into a
-        new cache slot; its reply finishes it (_handle_worker_message)."""
+        """Save Version: the bridge writes the cached frames into a new
+        version; its reply finishes it (_handle_worker_message). Playing
+        pauses until it is written (_ready_to_submit)."""
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
             raise RuntimeError("The active Fumaris domain was deleted")
@@ -508,7 +509,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             "last": int(last),
         }
         self._export_pending = {"directory": directory, "slot": slot, "started": time.monotonic()}
-        diagnostics.set_status(self._diagnostic_key, f"Writing the preview cache to '{slot}'")
+        diagnostics.set_status(self._diagnostic_key, f"Saving version '{slot}'")
         self._worker.send_preview_cache_export(header)
 
     def _handle_worker_message(self, context, message_type, data, _payload):
@@ -523,7 +524,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             from .compare import forget_scan, write_note
             write_settings_snapshot(directory, domain, self._participants)
             scale = int(round(100 * float(getattr(self, "_resolution_scale", 1.0))))
-            write_note(directory, "preview cache" + (f" at {scale}%" if scale != 100 else ""))
+            write_note(directory, "from the preview" + (f" at {scale}%" if scale != 100 else ""))
             forget_scan()
         diagnostics.record(self._diagnostic_key, {"bridge_preview_cache_export_ms": float(data.get("export_ms", 0.0))})
         diagnostics.set_status(self._diagnostic_key, "Paused" if self._pause_requested else "Running")
@@ -879,7 +880,7 @@ def _slot_contents(domain):
 class FUMARIS_OT_bake_replace(Operator):
     bl_idname = "fumaris.bake_replace"
     bl_label = "Replace Existing Bake?"
-    bl_description = "Bake over the bake already in this cache slot"
+    bl_description = "Bake over the bake already in this version"
     bl_options = {"INTERNAL"}
 
     @classmethod
@@ -894,7 +895,7 @@ class FUMARIS_OT_bake_replace(Operator):
             event,
             title="Replace Existing Bake?",
             message=(
-                f"Cache slot '{domain.fumaris.cache_slot}' holds {frames} baked frames. "
+                f"Version '{domain.fumaris.cache_slot}' holds {frames} baked frames. "
                 "Baking deletes them first. Use New Slot under Output to keep them."
             ),
             confirm_text="Replace",
@@ -910,8 +911,8 @@ class FUMARIS_OT_bake_replace(Operator):
 
 class FUMARIS_OT_cache_slot_new(Operator):
     bl_idname = "fumaris.cache_slot_new"
-    bl_label = "New Slot"
-    bl_description = "Switch to the next unused version of this cache slot name, keeping the current bake on disk"
+    bl_label = "New Version"
+    bl_description = "Start a new, empty version (the next free name), keeping the current one on disk"
 
     @classmethod
     def poll(cls, context):
@@ -930,14 +931,14 @@ class FUMARIS_OT_cache_slot_new(Operator):
 
         previous = props.cache_slot
         props.cache_slot = next_slot_name(previous.strip() or "main", taken)
-        self.report({"INFO"}, f"Cache slot '{props.cache_slot}'. '{previous}' is kept on disk")
+        self.report({"INFO"}, f"New version '{props.cache_slot}'. '{previous}' is kept on disk")
         return {"FINISHED"}
 
 
 class FUMARIS_OT_cache_slot_restore_settings(Operator):
     bl_idname = "fumaris.cache_slot_restore_settings"
     bl_label = "Restore Settings from Slot"
-    bl_description = "Set the domain and its sources back to the settings this cache slot was baked with (sources are matched by name)"
+    bl_description = "Set the domain and its sources back to the settings this version was made with (sources are matched by name)"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -953,7 +954,7 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
         domain = _active_domain(context)
         data = read_settings_snapshot(output_directory_for_object(domain))
         if not data:
-            self.report({"ERROR"}, "This cache slot has no stored settings (baked before Fumaris 2.0)")
+            self.report({"ERROR"}, "This version has no stored settings (baked before Fumaris 2.0)")
             return {"CANCELLED"}
         changed, restored, missing = apply_settings_snapshot(domain, data, bpy.data.objects)
         message = f"Restored {changed} settings from '{domain.fumaris.cache_slot}' (baked {data.get('written', '?')})"
@@ -968,7 +969,7 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
 class FUMARIS_OT_cache_make_lighter(Operator):
     bl_idname = "fumaris.cache_make_lighter"
     bl_label = "Make Lighter Copy"
-    bl_description = "Copy this bake into a new cache slot at half the resolution, without the faintest smoke: files several times smaller for layout, previews and render tests. The original slot is kept"
+    bl_description = "Copy this bake into a new version at half the resolution, without the faintest smoke: files several times smaller for layout, previews and render tests. The original slot is kept"
 
     cull: bpy.props.FloatProperty(
         name="Drop Below",
@@ -1014,7 +1015,7 @@ class FUMARIS_OT_cache_make_lighter(Operator):
         finally:
             wm.progress_end()
         props.cache_slot = slot
-        self.report({"INFO"}, f"Cache slot '{slot}': {len(files)} frames, {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB")
+        self.report({"INFO"}, f"Version '{slot}': {len(files)} frames, {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB")
         return {"FINISHED"}
 
 
@@ -1162,16 +1163,13 @@ class FUMARIS_OT_preset_delete(Operator):
         from .presets import delete_preset
         props = context.object.fumaris
         delete_preset(props, self.name)
-        for side in ("a", "b"):
-            if getattr(props, f"compare_preset_{side}", None) == self.name:
-                setattr(props, f"compare_preset_{side}", "")
         return {"FINISHED"}
 
 
 class FUMARIS_OT_cache_protect(Operator):
     bl_idname = "fumaris.cache_protect"
     bl_label = "Protect"
-    bl_description = "Lock this cache slot: Bake and Delete are refused until it is unlocked"
+    bl_description = "Lock this version: Bake and Delete are refused until it is unlocked"
 
     @classmethod
     def poll(cls, context):
@@ -1188,7 +1186,7 @@ class FUMARIS_OT_cache_protect(Operator):
             return {"CANCELLED"}
         self.report(
             {"INFO"},
-            f"Cache slot '{domain.fumaris.cache_slot}' is "
+            f"Version '{domain.fumaris.cache_slot}' is "
             + ("protected" if protect else "no longer protected"),
         )
         return {"FINISHED"}
@@ -1197,7 +1195,7 @@ class FUMARIS_OT_cache_protect(Operator):
 class FUMARIS_OT_delete(Operator):
     bl_idname = "fumaris.delete"
     bl_label = "Delete Baked"
-    bl_description = "Delete this cache slot's baked VDB files, imported volumes, and live preview"
+    bl_description = "Delete this version's baked VDB files, imported volumes, and live preview"
 
     @classmethod
     def poll(cls, context):
@@ -1216,7 +1214,7 @@ class FUMARIS_OT_delete(Operator):
             event,
             title="Delete Bake?",
             message=(
-                f"Delete {frames} baked frames from cache slot "
+                f"Delete {frames} baked frames from version "
                 f"'{domain.fumaris.cache_slot}'? The files cannot be recovered."
             ),
             confirm_text="Delete",

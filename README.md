@@ -38,9 +38,10 @@ operating system.
    bindings, which can be changed in Fumaris preferences.
 3. **Pause** to look back: with **Cache Preview** on (under Play), the preview
    keeps the frames it simulates, so scrubbing or playing the timeline while
-   paused shows them again with the live camera and look. **Export Cache to
-   VDB** in Presets & Compare writes them as a version you can import, render
-   and compare.
+   paused shows them again with the live camera and look. **Save Version**
+   (below the toggle) keeps them as a version you can import, render in Cycles
+   and compare: in Presets & Compare, turn on the eye of two versions to see
+   them side by side and what changed between them.
 4. Use **Bake** for a final sequence at the domain's full resolution.
 
 Domain participant collections include nested child collections and select only

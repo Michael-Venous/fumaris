@@ -33,8 +33,8 @@ def require_unprotected(directory, action):
     if is_protected(directory):
         slot = os.path.basename(os.path.normpath(directory))
         raise RuntimeError(
-            f"Cache slot '{slot}' is protected. Turn off Protect under Output to {action}, "
-            "or use New Slot to keep it and bake a new version"
+            f"Version '{slot}' is protected. Turn off Protect (the lock under Output) to {action}, "
+            "or make a new version with + under Versions"
         )
 
 

@@ -33,9 +33,9 @@ Removed). This is a beta: please report scenes that look wrong.
   dark while crevices next to the flames glow).
 - **Preview cache** (**Cache Preview** under Play, off by default): the live preview keeps the frames it simulates
   (compressed, full detail), so a paused preview scrubs and plays them back
-  with the live camera and look, and **Export Cache to VDB** (Presets &
-  Compare) writes them as a
-  version that imports, renders and compares like a bake. Replaces Bake on
+  with the live camera and look, and **Save Version** (below the toggle, also
+  while playing) writes them as a version that imports, renders and compares
+  like a bake; the camera beside it saves a snapshot. Replaces Bake on
   Preview. A cached preview pauses at the end of its range. Balanced (the
   default) keeps as many frames as about a fifth of the frame time allows,
   with the copy spread evenly so playback stays smooth; Every Frame keeps all.
@@ -235,14 +235,14 @@ Removed). This is a beta: please report scenes that look wrong.
   throughout; the object's Fumaris role is labelled **Role**.
 - **Ground Fog** rolls into billows (a light Disturb layer) instead of
   spreading in regular rings.
-- **Presets & Compare** (top of the domain panel; a domain's presets live
-  here, sources keep their Presets menu): every cache slot is a version, listed
-  with its frames, size and a note; click one to make it current. Show another
-  slot as B beside the current bake (or instead of it), swap them, list the
-  settings that differ, or take B's settings. Keep a single frame, or a
-  paused preview's cache, as a version of its own. Snapshot the viewport (live preview
-  included) and put two snapshots side by side. Swap between two presets, or a
-  preset and your unsaved settings, with one click.
+- **Presets & Compare** (top of the domain panel): a Presets menu (apply,
+  save, delete) and **Versions**, the results saved for the domain (a bake, or
+  a live preview kept with Save Version), each with the settings that made it
+  and any snapshot images. The eye shows a version: with a second one shown,
+  it stands beside the domain and What Changed lists the settings that
+  differ. Right-click a version to load its settings, save them as a preset,
+  view its images, add a note or delete it. Versions are VDB volumes, so they
+  render in EEVEE and Cycles.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
 - Transport status (Live / Cached / Baked frames).

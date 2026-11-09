@@ -1,12 +1,12 @@
-"""Compare: versions of a domain's cache, A/B viewing, snapshots and preset swaps.
+"""Versions: saved results of a domain, shown and compared in the viewport.
 
-Every cache slot of a domain is a version: a folder of VDB frames and the
-settings they were baked with. The current slot is A. One other slot, B, can
-be shown in the viewport next to it (or instead of it), its settings listed
-against A's, or swapped in. A paused preview's cache (Export Cache to VDB)
-and single frames can be kept as versions of their own, so they import and
-compare like any bake. Snapshots are images of the viewport, kept in a slot's folder, for
-side-by-side stills. Two presets can be swapped in place to try a look.
+Every cache slot of a domain is a version: a folder of VDB frames (a bake, or
+a paused preview's cache saved with Save Version), the settings that made it,
+and any snapshot images. The current version is where bakes go. The eye on a
+version shows it; with a second version's eye on, the two stand side by side
+(the second moved beside the domain) and What Changed lists the settings that
+differ. Right-click a version (or its menu) to load its settings, save them as
+a preset, view its images or delete it.
 """
 import json
 import os
@@ -15,17 +15,22 @@ import time
 
 import bpy
 import mathutils
-from bpy.props import StringProperty
+from bpy.props import BoolProperty, StringProperty
 from bpy.types import Menu, Operator
 
 from .cache import (
+    GUARD_FILE,
+    SETTINGS_FILE,
     apply_settings_snapshot,
+    cache_lock,
     is_protected,
+    recover_cache_lock,
+    require_unprotected,
     next_slot_name,
     read_settings_snapshot,
     write_settings_snapshot,
 )
-from .importers import VOLUME_MARKER, _frame_files, _frame_number, import_sequence
+from .importers import VOLUME_MARKER, _frame_files, _frame_number, delete_generated_data, import_sequence
 from .runtime import active_job, active_mode
 from .utils import cache_slot_directory, output_directory_for_object, peek_output_directory_for_object
 
@@ -451,14 +456,7 @@ def _current_settings(domain):
     }
 
 
-# --- Keeping preview recordings and frames -----------------------------------
-
-def _link_or_copy(source, target):
-    try:
-        os.link(source, target)
-    except OSError:
-        shutil.copy2(source, target)
-
+# --- New versions ------------------------------------------------------------
 
 def _new_version(domain, base):
     prefix = _prefix(domain.fumaris)
@@ -480,20 +478,6 @@ def _participants_for_snapshot(domain):
     return [obj for obj in bpy.context.scene.objects
             if getattr(obj, "fumaris", None) is not None and obj != domain
             and obj.fumaris.smoke_object_type not in ("none", "domain")]
-
-
-def keep_frames(domain, files, source_prefix, base, note):
-    """Link (or copy) frame files into a new version; returns its slot name."""
-    slot, directory = _new_version(domain, base)
-    prefix = _prefix(domain.fumaris)
-    for path in files:
-        frame = _frame_number(path, source_prefix)
-        name = os.path.basename(path).replace(source_prefix, prefix, 1) if frame is not None else os.path.basename(path)
-        _link_or_copy(path, os.path.join(directory, name))
-    write_settings_snapshot(directory, domain, _participants_for_snapshot(domain))
-    write_note(directory, note)
-    forget_scan()
-    return slot
 
 
 # --- Snapshots ---------------------------------------------------------------
@@ -641,27 +625,127 @@ def show_image(context, image):
     return find()
 
 
-# --- Preset A/B --------------------------------------------------------------
+# --- Showing versions --------------------------------------------------------
 
-def _preset_text(props, side):
-    name = getattr(props, f"compare_preset_{side.lower()}")
-    return name or ("Current" if side == "A" else "Pick…")
+def _previewing(domain):
+    job = active_job()
+    return job is not None and getattr(job, "_domain_name", None) == domain.name and active_mode() == "previewing"
 
 
-def apply_preset_side(props, side):
-    """Apply preset A or B. A left empty means the settings before the first swap."""
-    from .presets import apply_data, apply_preset, capture
-    if props.compare_preset_active not in ("B",) and side == "B" and not props.compare_preset_a:
-        props.compare_stash = json.dumps(capture(props))
-    name = getattr(props, f"compare_preset_{side.lower()}")
-    if name:
-        count = apply_preset(props, name)
-    elif side == "A" and props.compare_stash:
-        count = apply_data(props, json.loads(props.compare_stash))
+def current_shown(domain):
+    """The current version's eye: its bake is visible (beside B when comparing)."""
+    if compare_volumes(domain):
+        return domain.fumaris.compare_view != "B"
+    current = _current_directory(domain)
+    return bool(current) and any(not obj.hide_viewport for obj in _slot_volumes(current))
+
+
+def compared_name(domain):
+    return domain.fumaris.compare_slot if compare_volumes(domain) else ""
+
+
+def toggle_version(context, domain, name):
+    """The eye on a version: show or hide it. Another version than the current
+    one is shown beside the current one (or alone when the current is hidden)."""
+    props = domain.fumaris
+    current = os.path.basename(_current_directory(domain) or "")
+    if name == current:
+        if compare_volumes(domain):
+            props.compare_view = "B" if props.compare_view != "B" else "SIDE"
+            return
+        volumes = _slot_volumes(_current_directory(domain))
+        if not volumes:
+            show_slot(context, domain)
+            return
+        shown = any(not obj.hide_viewport for obj in volumes)
+        for obj in volumes:
+            _set_shown(obj, not shown)
+        return
+    if compared_name(domain) == name:
+        clear_compare(domain)
+        props.compare_slot = ""
+        return
+    side = _previewing(domain) or current_shown(domain) or not _frame_files(_current_directory(domain), _prefix(props))
+    props["compare_view"] = 2 if side else 1   # SIDE or B, without the update
+    load_compare(domain, name)
+
+
+# --- What Changed -------------------------------------------------------------
+
+_changes_cache = {}
+
+
+def _settings_mtime(directory):
+    try:
+        return os.path.getmtime(os.path.join(directory, SETTINGS_FILE))
+    except OSError:
+        return 0.0
+
+
+def what_changed(domain):
+    """(title, lines) between what the current version shows and the compared
+    one: the live preview's settings while previewing (or when the current
+    version stored none), else the current version's stored settings."""
+    name = compared_name(domain)
+    if not name:
+        return "", []
+    props = domain.fumaris
+    a_dir = output_directory_for_object(domain)
+    b_dir = cache_slot_directory(domain, name)
+    live = _previewing(domain) or read_settings_snapshot(a_dir) is None
+    key = (domain.name, a_dir, b_dir, live, _settings_mtime(a_dir), _settings_mtime(b_dir))
+    now = time.monotonic()
+    cached = _changes_cache.get(domain.name)
+    if cached and cached[0] == key and now - cached[1] < _SCAN_SECONDS:
+        return cached[2]
+    b = read_settings_snapshot(b_dir)
+    if b is None:
+        result = (f"'{name}' has no stored settings", [])
     else:
-        raise RuntimeError(f"Pick a preset for {side}")
-    props.compare_preset_active = side
-    return count
+        a = _current_settings(domain) if live else read_settings_snapshot(a_dir)
+        title = f"{'Current settings' if live else props.cache_slot} → {name}"
+        result = (title, settings_differences(a, b, props))
+    _changes_cache[domain.name] = (key, now, result)
+    return result
+
+
+# --- Deleting a version -------------------------------------------------------
+
+def delete_version(domain, name):
+    """Delete a version's frames, images, settings and note (a protected one is refused)."""
+    props = domain.fumaris
+    directory = cache_slot_directory(domain, name)
+    require_unprotected(directory, "delete it")
+    if compared_name(domain) == name or props.compare_slot == name:
+        clear_compare(domain)
+        props.compare_slot = ""
+    recover_cache_lock(directory, owner_pid=os.getpid())
+    with cache_lock(directory):
+        delete_generated_data(directory, _prefix(props))
+        shutil.rmtree(os.path.join(directory, SNAPSHOT_DIRECTORY), ignore_errors=True)
+        for file in (SETTINGS_FILE, NOTE_FILE, STATS_FILE):
+            try:
+                os.remove(os.path.join(directory, file))
+            except OSError:
+                pass
+    # The lock's guard file outlives the lock on purpose (contenders lock the
+    # same file); with the version gone it has nothing left to guard.
+    for leftover in (GUARD_FILE,):
+        try:
+            os.remove(os.path.join(directory, leftover))
+        except OSError:
+            pass
+    try:
+        os.rmdir(directory)
+    except OSError:
+        pass
+    if name == props.cache_slot:
+        props.simulation_state = "idle"
+        props.baked_frames = 0
+        props.bake_elapsed = 0.0
+        props.bake_peak_vram_mb = 0.0
+        props.bake_peak_ram_mb = 0.0
+    forget_scan()
 
 
 # --- Operators ---------------------------------------------------------------
@@ -672,31 +756,33 @@ class _DomainOperator:
         return _domain(context) is not None and active_mode() != "baking"
 
 
+def _find_version(domain, name):
+    return next((version for version in list_versions(domain) if version["name"] == name), None)
+
+
 class FUMARIS_OT_version_use(_DomainOperator, Operator):
     bl_idname = "fumaris.version_use"
-    bl_label = "Use Version"
-    bl_description = "Make this cache slot the current one (A) and show its bake"
+    bl_label = "Make Current"
+    bl_description = "Make this the current version: new bakes go here"
 
     name: StringProperty()
 
     @classmethod
     def description(cls, context, properties):
         domain = _domain(context)
-        if domain is None:
+        version = _find_version(domain, properties.name) if domain else None
+        if version is None:
             return cls.bl_description
-        for version in list_versions(domain):
-            if version["name"] == properties.name:
-                parts = [f"Cache slot '{version['name']}': {version_summary(version, size=True)}"]
-                if version["modified"]:
-                    parts.append("Written " + time.strftime("%Y-%m-%d %H:%M", time.localtime(version["modified"])))
-                if version["snapshots"]:
-                    parts.append(f"{version['snapshots']} snapshot(s)")
-                if version["note"]:
-                    parts.append(version["note"])
-                if not version["settings"]:
-                    parts.append("No stored settings")
-                return ".\n".join(parts) + ".\nClick to make it the current slot"
-        return cls.bl_description
+        parts = [f"Version '{version['name']}': {version_summary(version, size=True)}"]
+        if version["modified"]:
+            parts.append("Written " + time.strftime("%Y-%m-%d %H:%M", time.localtime(version["modified"])))
+        if version["snapshots"]:
+            parts.append(f"{version['snapshots']} image(s)")
+        if version["note"]:
+            parts.append(version["note"])
+        if not version["settings"]:
+            parts.append("No stored settings")
+        return ".\n".join(parts) + ".\nClick to make it the current version (new bakes go there). Right-click for more"
 
     @classmethod
     def poll(cls, context):
@@ -713,101 +799,185 @@ class FUMARIS_OT_version_use(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_version_compare(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_compare"
-    bl_label = "Compare"
-    bl_description = "Compare this cache slot (B) with the current one (A) in the viewport"
+class FUMARIS_OT_version_show(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_show"
+    bl_label = "Show"
+    bl_description = "Show or hide this version in the viewport. With two shown, the second stands beside the domain"
 
     name: StringProperty()
 
     def execute(self, context):
         domain = _domain(context)
-        if domain.fumaris.compare_slot == self.name and compare_volumes(domain):
-            clear_compare(domain)
-            domain.fumaris.compare_slot = ""
-            return {"FINISHED"}
         try:
-            load_compare(domain, self.name)
+            toggle_version(context, domain, self.name)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         return {"FINISHED"}
 
 
-class FUMARIS_OT_compare_clear(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_clear"
-    bl_label = "Stop Comparing"
-    bl_description = "Hide B and put its volume back in place (its files are kept)"
+class FUMARIS_OT_version_menu(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_menu"
+    bl_label = "Version"
+    bl_description = "Load this version's settings, save them as a preset, view its images, compare or delete it"
+
+    name: StringProperty()
+
+    def invoke(self, context, _event):
+        name = self.name
+
+        def draw(menu, _context):
+            draw_version_menu(menu.layout, _domain(_context), name)
+        context.window_manager.popup_menu(draw, title=f"Version '{name}'", icon="FILE_FOLDER")
+        return {"FINISHED"}
 
     def execute(self, context):
-        domain = _domain(context)
-        clear_compare(domain)
-        domain.fumaris.compare_slot = ""
         return {"FINISHED"}
 
 
-class FUMARIS_OT_compare_swap(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_swap"
-    bl_label = "Swap A and B"
-    bl_description = "Make B the current cache slot and compare the old current slot as B"
+class FUMARIS_OT_version_load_settings(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_load_settings"
+    bl_label = "Load Settings"
+    bl_description = "Set the domain and its sources to the settings this version was made with (sources are matched by name)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: StringProperty()
 
     @classmethod
     def poll(cls, context):
-        domain = _domain(context)
-        return domain is not None and active_job() is None and bool(domain.fumaris.compare_slot)
+        return _domain(context) is not None and active_mode() != "baking"
 
     def execute(self, context):
         domain = _domain(context)
-        props = domain.fumaris
-        old = os.path.basename(output_directory_for_object(domain))
-        props.cache_slot = props.compare_slot
-        show_slot(context, domain)
-        try:
-            load_compare(domain, old)
-        except RuntimeError as error:
-            self.report({"WARNING"}, str(error))
-        forget_scan()
+        data = read_settings_snapshot(cache_slot_directory(domain, self.name))
+        if data is None:
+            self.report({"ERROR"}, f"'{self.name}' has no stored settings")
+            return {"CANCELLED"}
+        changed, _restored, missing = apply_settings_snapshot(domain, data, bpy.data.objects)
+        message = f"Loaded {changed} settings from '{self.name}'"
+        if missing:
+            self.report({"WARNING"}, message + f"; not found: {', '.join(missing[:4])}")
+        else:
+            self.report({"INFO"}, message)
         return {"FINISHED"}
 
 
-def _snapshot_pair(domain):
-    current = output_directory_for_object(domain)
-    slot = domain.fumaris.compare_slot
-    a = snapshots(current)
-    if slot:
-        b = snapshots(cache_slot_directory(domain, slot))
-        return (a[-1] if a else None), (b[-1] if b else None)
-    return (a[-1] if a else None), (a[-2] if len(a) > 1 else None)
+class FUMARIS_OT_version_save_preset(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_save_preset"
+    bl_label = "Save Settings as Preset"
+    bl_description = "Save the domain settings this version was made with as a preset, available in every file"
+
+    name: StringProperty()
+    preset: StringProperty(name="Preset Name")
+
+    def invoke(self, context, _event):
+        self.preset = self.name
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from .presets import save_preset_data
+        data = read_settings_snapshot(cache_slot_directory(_domain(context), self.name))
+        if data is None:
+            self.report({"ERROR"}, f"'{self.name}' has no stored settings")
+            return {"CANCELLED"}
+        _path, count = save_preset_data(data, self.preset or self.name)
+        self.report({"INFO"}, f"Saved preset '{self.preset}' ({count} settings)")
+        return {"FINISHED"}
 
 
-class FUMARIS_OT_compare_diff(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_diff"
-    bl_label = "Settings Differences"
-    bl_description = "List the settings that differ between A and B (as baked; A uses the current settings if it has none stored)"
+class FUMARIS_OT_version_image(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_image"
+    bl_label = "View Image"
+    bl_description = "Show this snapshot in an Image Editor"
+
+    path: StringProperty()
 
     @classmethod
     def poll(cls, context):
+        return _domain(context) is not None
+
+    def execute(self, context):
+        image = next((image for image in bpy.data.images
+                      if os.path.normpath(bpy.path.abspath(image.filepath)) == os.path.normpath(self.path)), None)
+        if image is None:
+            image = bpy.data.images.load(self.path, check_existing=True)
+        else:
+            image.reload()
+        if not show_image(context, image):
+            self.report({"INFO"}, f"Image '{image.name}' ({self.path})")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_version_images_side_by_side(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_images_side_by_side"
+    bl_label = "Image Beside the Current Version's"
+    bl_description = "Put this version's latest snapshot beside the current version's latest in an Image Editor"
+
+    name: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def execute(self, context):
         domain = _domain(context)
-        return domain is not None and bool(domain.fumaris.compare_slot)
+        current = output_directory_for_object(domain)
+        mine = snapshots(cache_slot_directory(domain, self.name))
+        theirs = snapshots(current)
+        if not mine or not theirs:
+            self.report({"ERROR"}, "Needs a snapshot in this version and in the current one")
+            return {"CANCELLED"}
+        pixels = side_by_side(load_png(theirs[-1]), load_png(mine[-1]))
+        root = os.path.join(os.path.dirname(current), ".compare")
+        os.makedirs(root, exist_ok=True)
+        path = os.path.join(root, f"{domain.fumaris.cache_slot}_vs_{self.name}.png")
+        save_png(pixels, path)
+        title = f"Fumaris {domain.fumaris.cache_slot} | {self.name}"
+        image = bpy.data.images.get(title)
+        if image is None:
+            image = bpy.data.images.load(path, check_existing=False)
+            image.name = title
+        else:
+            image.filepath = path
+            image.reload()
+        if not show_image(context, image):
+            self.report({"INFO"}, f"Image '{title}' ({path})")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_version_details(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_details"
+    bl_label = "Compare Details"
+    bl_description = "Every setting that differs from the current version, and measures of both at this frame (smoke voxels, extent, top, file size) and what each bake cost"
+
+    name: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
 
     def invoke(self, context, _event):
         domain = _domain(context)
         props = domain.fumaris
-        b = read_settings_snapshot(cache_slot_directory(domain, props.compare_slot))
+        b = read_settings_snapshot(cache_slot_directory(domain, self.name))
         if b is None:
-            self.report({"ERROR"}, f"'{props.compare_slot}' has no stored settings")
+            self.report({"ERROR"}, f"'{self.name}' has no stored settings")
             return {"CANCELLED"}
-        a = read_settings_snapshot(output_directory_for_object(domain))
-        source = "baked"
-        if a is None:
+        a_dir = output_directory_for_object(domain)
+        a = read_settings_snapshot(a_dir)
+        source = props.cache_slot
+        if a is None or _previewing(domain):
             a, source = _current_settings(domain), "current settings"
-        _last_diff["title"] = f"A '{props.cache_slot}' ({source})  vs  B '{props.compare_slot}'"
+        _last_diff["title"] = f"{source}  →  {self.name}"
         _last_diff["lines"] = settings_differences(a, b, props)
+        previous, props.compare_slot = props.compare_slot, self.name
         try:
             _last_diff["measures"] = measured_differences(domain, context.scene.frame_current)
         except Exception as error:
             print(f"Fumaris Compare: measures unavailable: {error}")
             _last_diff["measures"] = []
+        finally:
+            props.compare_slot = previous
         return context.window_manager.invoke_popup(self, width=520)
 
     def draw(self, _context):
@@ -837,36 +1007,10 @@ class FUMARIS_OT_compare_diff(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_compare_use_b_settings(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_use_b_settings"
-    bl_label = "Use B's Settings"
-    bl_description = "Set the domain and its sources to the settings B was baked with (sources are matched by name)"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        domain = _domain(context)
-        return domain is not None and active_job() is None and bool(domain.fumaris.compare_slot)
-
-    def execute(self, context):
-        domain = _domain(context)
-        data = read_settings_snapshot(cache_slot_directory(domain, domain.fumaris.compare_slot))
-        if data is None:
-            self.report({"ERROR"}, "B has no stored settings")
-            return {"CANCELLED"}
-        changed, _restored, missing = apply_settings_snapshot(domain, data, bpy.data.objects)
-        message = f"Applied {changed} settings from '{domain.fumaris.compare_slot}'"
-        if missing:
-            self.report({"WARNING"}, message + f"; not found: {', '.join(missing[:4])}")
-        else:
-            self.report({"INFO"}, message)
-        return {"FINISHED"}
-
-
 class FUMARIS_OT_version_note(_DomainOperator, Operator):
     bl_idname = "fumaris.version_note"
-    bl_label = "Version Note"
-    bl_description = "Describe this cache slot (shown in its tooltip and the version list)"
+    bl_label = "Note…"
+    bl_description = "Describe this version (shown beside its name)"
 
     name: StringProperty()
     note: StringProperty(name="Note")
@@ -881,6 +1025,37 @@ class FUMARIS_OT_version_note(_DomainOperator, Operator):
         forget_scan()
         return {"FINISHED"}
 
+
+class FUMARIS_OT_version_delete(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_delete"
+    bl_label = "Delete Version"
+    bl_description = "Delete this version's frames, images and stored settings. The files cannot be recovered"
+
+    name: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None and active_job() is None
+
+    def invoke(self, context, event):
+        version = _find_version(_domain(context), self.name)
+        detail = version_summary(version, size=True) if version else ""
+        return context.window_manager.invoke_confirm(
+            self, event, title="Delete Version?",
+            message=f"Delete version '{self.name}' ({detail})? The files cannot be recovered.",
+            confirm_text="Delete", icon="WARNING")
+
+    def execute(self, context):
+        try:
+            delete_version(_domain(context), self.name)
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Deleted version '{self.name}'")
+        return {"FINISHED"}
+
+
+# --- Saving the live preview ---------------------------------------------------
 
 def preview_cache(job=None):
     """The live preview's cache stats ({} without a preview or cache)."""
@@ -899,8 +1074,8 @@ def preview_cache(job=None):
 
 
 def start_cache_export(context, domain, base, first=None, last=None):
-    """Write the paused preview's cache (or frames first-last of it) into a
-    new cache slot; returns its name. The preview reports when it is done."""
+    """Write the live preview's cache (or frames first-last of it) into a
+    new version; returns its name. The preview reports when it is done."""
     job = active_job()
     cache = preview_cache(job)
     first = cache["first"] if first is None else first
@@ -910,74 +1085,64 @@ def start_cache_export(context, domain, base, first=None, last=None):
     return slot
 
 
-class FUMARIS_OT_preview_cache_export(_DomainOperator, Operator):
-    bl_idname = "fumaris.preview_cache_export"
-    bl_label = "Export Cache to VDB"
-    bl_description = "Write the frames the paused live preview has cached as VDB files, into a new cache slot (a version): they import, render and compare like a bake. Uses the Output settings (grids, resolutions, Glow), at the preview's resolution"
+def _preview_save_blocker(context):
+    """Why the live preview cannot be saved now (None: it can)."""
+    domain = _domain(context)
+    job = active_job()
+    if domain is None or job is None or active_mode() != "previewing":
+        return "Turn on Cache Preview, then play a live preview"
+    if not job._worker._session.get("preview_cache"):
+        return "This preview keeps no cache: turn on Cache Preview (under Play) and play again"
+    if getattr(job, "_export_pending", None):
+        return "Already saving"
+    if preview_cache(job).get("frames", 0) <= 0:
+        return "Nothing cached yet"
+    return None
+
+
+class FUMARIS_OT_version_save(_DomainOperator, Operator):
+    bl_idname = "fumaris.version_save"
+    bl_label = "Save Version"
+    bl_description = "Save the frames the live preview has cached as a new version: VDB files with the settings that made them, which import, render (Cycles included) and compare like a bake. Uses the Output settings (grids, resolutions, Glow), at the preview's resolution"
+
+    frame_only: BoolProperty(name="This Frame Only", default=False)
+
+    @classmethod
+    def description(cls, _context, properties):
+        if properties.frame_only:
+            return "Save only the current frame of the live preview's cache as a new version"
+        return cls.bl_description
 
     @classmethod
     def poll(cls, context):
-        domain = _domain(context)
-        job = active_job()
-        if domain is None or job is None or active_mode() != "previewing":
-            cls.poll_message_set("Turn on Cache Preview (under Play), play a live preview, then pause it"
-                                 if domain is not None and not domain.fumaris.preview_cache
-                                 else "Play a live preview, then pause it")
-            return False
-        if not job._worker._session.get("preview_cache"):
-            cls.poll_message_set("This preview keeps no cache: turn on Cache Preview (under Play) and play again")
-            return False
-        if not getattr(job, "_pause_requested", False):
-            cls.poll_message_set("Pause the live preview first")
-            return False
-        if getattr(job, "_export_pending", None):
-            cls.poll_message_set("Already writing the cache")
-            return False
-        if preview_cache(job).get("frames", 0) <= 0:
-            cls.poll_message_set("Nothing cached yet")
+        reason = _preview_save_blocker(context)
+        if reason:
+            cls.poll_message_set(reason)
             return False
         return True
 
     def execute(self, context):
         domain = _domain(context)
         cache = preview_cache()
-        base = f"{domain.fumaris.cache_slot.strip() or 'main'}_preview"
-        slot = start_cache_export(context, domain, base)
-        self.report({"INFO"}, f"Writing cached frames {cache['first']}-{cache['last']} to cache slot '{slot}'")
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_version_keep_frame(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_keep_frame"
-    bl_label = "Keep Frame"
-    bl_description = "Keep this frame of the current bake (or of the paused live preview's cache) as a one-frame cache slot, to compare stills"
-
-    def execute(self, context):
-        domain = _domain(context)
-        frame = context.scene.frame_current
-        base = f"{domain.fumaris.cache_slot.strip() or 'main'}_f{frame}"
-        cache = preview_cache()
-        job = active_job()
-        if (cache.get("frames", 0) > 0 and getattr(job, "_pause_requested", False)
-                and not getattr(job, "_export_pending", None) and cache["first"] <= frame <= cache["last"]):
-            slot = start_cache_export(context, domain, base, frame, frame)
-            self.report({"INFO"}, f"Writing frame {frame} of the preview cache to cache slot '{slot}'")
-            return {"FINISHED"}
-        directory = output_directory_for_object(domain)
-        prefix = _prefix(domain.fumaris)
-        files = [path for path in _frame_files(directory, prefix) if _frame_number(path, prefix) == frame]
-        if not files:
-            self.report({"ERROR"}, f"Frame {frame} is neither baked in this slot nor in a paused preview's cache")
-            return {"CANCELLED"}
-        slot = keep_frames(domain, files, prefix, base, f"frame {frame} of {domain.fumaris.cache_slot}")
-        self.report({"INFO"}, f"Kept frame {frame} as cache slot '{slot}'")
+        base = (domain.fumaris.cache_slot.strip() or "main") + "_preview"
+        if self.frame_only:
+            frame = context.scene.frame_current
+            if not cache["first"] <= frame <= cache["last"]:
+                self.report({"ERROR"}, f"Frame {frame} is not in the cache ({cache['first']}-{cache['last']})")
+                return {"CANCELLED"}
+            slot = start_cache_export(context, domain, f"{base}_f{frame}", frame, frame)
+            self.report({"INFO"}, f"Saving frame {frame} as version '{slot}'")
+        else:
+            slot = start_cache_export(context, domain, base)
+            self.report({"INFO"}, f"Saving cached frames {cache['first']}-{cache['last']} as version '{slot}'")
+        forget_scan()
         return {"FINISHED"}
 
 
 class FUMARIS_OT_snapshot(_DomainOperator, Operator):
     bl_idname = "fumaris.snapshot"
     bl_label = "Snapshot"
-    bl_description = "Save what the 3D Viewport shows (live preview included) as an image in the current cache slot, for side-by-side comparison"
+    bl_description = "Save what the 3D Viewport shows (the live preview included) as an image in the current version, with the settings if it has none stored"
 
     @classmethod
     def poll(cls, context):
@@ -990,208 +1155,161 @@ class FUMARIS_OT_snapshot(_DomainOperator, Operator):
         except Exception as error:
             self.report({"ERROR"}, f"Snapshot failed: {error}")
             return {"CANCELLED"}
-        folder = os.path.join(output_directory_for_object(domain), SNAPSHOT_DIRECTORY)
+        directory = output_directory_for_object(domain)
+        folder = os.path.join(directory, SNAPSHOT_DIRECTORY)
         os.makedirs(folder, exist_ok=True)
         path = os.path.join(folder, f"{time.strftime('%Y%m%d-%H%M%S')}_f{context.scene.frame_current:04d}.png")
         save_png(pixels, path)
+        if read_settings_snapshot(directory) is None:
+            write_settings_snapshot(directory, domain, _participants_for_snapshot(domain))
         forget_scan()
-        self.report({"INFO"}, f"Snapshot saved: {path}")
+        self.report({"INFO"}, f"Snapshot saved in version '{domain.fumaris.cache_slot}'")
         return {"FINISHED"}
 
 
-class FUMARIS_OT_compare_snapshots(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_snapshots"
-    bl_label = "Compare Snapshots"
-    bl_description = "Put the latest snapshot of A and of B (or A's last two, without B) side by side in an Image Editor"
+class FUMARIS_MT_save_version(Menu):
+    bl_label = "Save"
+    bl_idname = "FUMARIS_MT_save_version"
 
-    @classmethod
-    def poll(cls, context):
-        return _domain(context) is not None
-
-    def execute(self, context):
-        domain = _domain(context)
-        a, b = _snapshot_pair(domain)
-        if a is None or b is None:
-            self.report({"ERROR"}, "Needs a snapshot of A and of B (or two of A)")
-            return {"CANCELLED"}
-        pixels = side_by_side(load_png(a), load_png(b))
-        root = os.path.join(os.path.dirname(output_directory_for_object(domain)), ".compare")
-        os.makedirs(root, exist_ok=True)
-        name = f"{domain.fumaris.cache_slot}_vs_{domain.fumaris.compare_slot or 'earlier'}.png"
-        path = os.path.join(root, name)
-        save_png(pixels, path)
-        title = f"Fumaris A|B {domain.name}"
-        image = bpy.data.images.get(title)
-        if image is None:
-            image = bpy.data.images.load(path, check_existing=False)
-            image.name = title
-        else:
-            image.filepath = path
-            image.reload()
-        if not show_image(context, image):
-            self.report({"INFO"}, f"Image '{title}' ({path})")
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_compare_preset_pick(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_preset_pick"
-    bl_label = "Pick Preset"
-    bl_description = "Use this preset as A or B"
-
-    side: StringProperty()
-    name: StringProperty()
-
-    def execute(self, context):
-        props = _domain(context).fumaris
-        setattr(props, f"compare_preset_{self.side.lower()}", self.name)
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_compare_preset_apply(_DomainOperator, Operator):
-    bl_idname = "fumaris.compare_preset_apply"
-    bl_label = "Apply"
-    bl_description = "Apply preset A or B to the domain. A left as Current returns to the settings from before the first switch to B"
-    bl_options = {"REGISTER", "UNDO"}
-
-    side: StringProperty()
-
-    def execute(self, context):
-        props = _domain(context).fumaris
-        side = self.side or ("A" if props.compare_preset_active == "B" else "B")
-        try:
-            count = apply_preset_side(props, side)
-        except (OSError, ValueError, RuntimeError) as error:
-            self.report({"ERROR"}, str(error))
-            return {"CANCELLED"}
-        self.report({"INFO"}, f"{side}: {_preset_text(props, side)} ({count} settings)")
-        return {"FINISHED"}
-
-
-class _ComparePresetMenu:
-    side = "A"
-
-    def draw(self, context):
-        from .presets import list_presets
-        layout = self.layout
-        if self.side == "A":
-            layout.operator("fumaris.compare_preset_pick", text="Current").side = "A"
-        names = list_presets("domain")
-        if not names:
-            layout.label(text="No saved domain presets: save one with + above")
-        for name in names:
-            row = layout.row(align=True)
-            op = row.operator("fumaris.compare_preset_pick", text=name)
-            op.side = self.side
-            op.name = name
-            row.operator("fumaris.preset_delete", text="", icon="X").name = name
-
-
-class FUMARIS_MT_compare_preset_a(_ComparePresetMenu, Menu):
-    bl_label = "Preset A"
-    bl_idname = "FUMARIS_MT_compare_preset_a"
-    side = "A"
-
-
-class FUMARIS_MT_compare_preset_b(_ComparePresetMenu, Menu):
-    bl_label = "Preset B"
-    bl_idname = "FUMARIS_MT_compare_preset_b"
-    side = "B"
+    def draw(self, _context):
+        self.layout.operator("fumaris.version_save", text="Save This Frame Only", icon="IMAGE_PLANE").frame_only = True
 
 
 # --- Panel -------------------------------------------------------------------
+
+def draw_version_menu(layout, domain, name):
+    """A version's actions (its menu button and right-click)."""
+    if domain is None:
+        return
+    version = _find_version(domain, name)
+    current = os.path.basename(_current_directory(domain) or "")
+    if name != current:
+        layout.operator("fumaris.version_use", text="Make Current", icon="RADIOBUT_ON").name = name
+    settings = layout.column()
+    settings.enabled = bool(version and version["settings"])
+    settings.operator("fumaris.version_load_settings", icon="LOOP_BACK").name = name
+    settings.operator("fumaris.version_save_preset", icon="PRESET_NEW").name = name
+    if name != current:
+        settings.operator("fumaris.version_details", text="Compare Details…", icon="SEQ_SPLITVIEW").name = name
+    images = snapshots(cache_slot_directory(domain, name))
+    if images:
+        layout.separator()
+        for path in images[-8:][::-1]:
+            layout.operator("fumaris.version_image", text=os.path.basename(path), icon="IMAGE_DATA").path = path
+        if name != current:
+            layout.operator("fumaris.version_images_side_by_side", text="Image Beside the Current Version's",
+                            icon="IMAGE_REFERENCE").name = name
+    layout.separator()
+    layout.operator("fumaris.version_note", icon="GREASEPENCIL").name = name
+    layout.operator("fumaris.version_delete", text="Delete…", icon="TRASH").name = name
+
+
+def _button_context_menu(self, context):
+    """Right-click on a version's name or eye: its actions."""
+    op = getattr(context, "button_operator", None)
+    try:
+        identifier = op.bl_rna.identifier if op is not None else ""
+    except (AttributeError, ReferenceError):
+        return
+    if identifier not in {"FUMARIS_OT_version_use", "FUMARIS_OT_version_show", "FUMARIS_OT_version_menu"}:
+        return
+    domain = _domain(context)
+    if domain is None or not op.name:
+        return
+    self.layout.separator()
+    self.layout.label(text=f"Version '{op.name}'", icon="FILE_FOLDER")
+    draw_version_menu(self.layout, domain, op.name)
+
 
 def draw_compare(layout, domain, props):
     idle = active_job() is None
     column = layout.column(align=True)
 
-    # Presets: two to swap between, Current standing for unsaved settings.
-    header = column.row(align=True)
-    header.label(text="Presets")
-    header.operator("fumaris.compare_preset_apply", text="Swap", icon="ARROW_LEFTRIGHT").side = ""
-    header.operator("fumaris.preset_save", text="", icon="ADD")
-    for side in ("A", "B"):
-        row = column.row(align=True)
-        pick = row.split(factor=0.8, align=True)
-        pick.menu(f"FUMARIS_MT_compare_preset_{side.lower()}", text=f"{side}: {_preset_text(props, side)}")
-        op = pick.operator("fumaris.compare_preset_apply", text="Apply",
-                           depress=props.compare_preset_active == side)
-        op.side = side
+    # Presets: settings to reuse in any file.
+    row = column.row(align=True)
+    row.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")
+    row.operator("fumaris.preset_save", text="", icon="ADD")
 
-    # Versions: every cache slot of this domain.
+    # Versions: every saved result of this domain.
     column.separator(factor=0.8)
     header = column.row(align=True)
     header.label(text="Versions")
     new = header.row(align=True)
     new.enabled = idle
     new.operator("fumaris.cache_slot_new", text="", icon="ADD")
-    header.operator("fumaris.version_keep_frame", text="", icon="IMAGE_PLANE")
-    column.operator("fumaris.preview_cache_export", text="Export Cache to VDB", icon="EXPORT")
     versions = list_versions(domain)
     current = os.path.basename(_current_directory(domain) or "")
-    if not versions:
-        column.label(text="Nothing baked yet")
+    compared = compared_name(domain)
     for version in versions:
-        is_a = version["name"] == current
-        is_b = version["name"] == props.compare_slot and not is_a
-        split = column.split(factor=0.45, align=True)
+        name = version["name"]
+        is_current = name == current
+        row = column.row(align=True)
+        split = row.split(factor=0.6, align=True)
         use = split.row(align=True)
         use.enabled = idle
-        label = version["name"] + (f" — {version['note']}" if version["note"] else "")
+        label = name + (f" — {version['note']}" if version["note"] else "")
         use.operator("fumaris.version_use", text=label,
-                     icon="RADIOBUT_ON" if is_a else "RADIOBUT_OFF", depress=is_a).name = version["name"]
-        split = split.split(factor=0.62, align=True)
-        split.label(text=version_summary(version), icon="LOCKED" if version["protected"] else "BLANK1")
-        buttons = split.row(align=True)
-        b = buttons.row(align=True)
-        b.enabled = not is_a and version["frames"] > 0
-        b.operator("fumaris.version_compare", text="B", depress=is_b).name = version["name"]
-        buttons.operator("fumaris.version_note", text="", icon="GREASEPENCIL").name = version["name"]
+                     icon="RADIOBUT_ON" if is_current else "RADIOBUT_OFF", depress=is_current).name = name
+        split.label(text=version_summary(version),
+                    icon="LOCKED" if version["protected"] else ("IMAGE_DATA" if version["snapshots"] else "BLANK1"))
+        eye = row.row(align=True)
+        if is_current:
+            eye.enabled = version["frames"] > 0 and not _previewing(domain)
+            shown = eye.enabled and current_shown(domain)
+        else:
+            eye.enabled = version["frames"] > 0
+            shown = compared == name
+        eye.operator("fumaris.version_show", text="", icon="HIDE_OFF" if shown else "HIDE_ON",
+                     depress=shown).name = name
+        row.operator("fumaris.version_menu", text="", icon="DOWNARROW_HLT").name = name
+    if len(versions) == 1 and not versions[0]["frames"]:
+        column.label(text="Bake, or Save Version while previewing", icon="INFO")
 
-    # A against B.
-    if props.compare_slot:
+    # What Changed between the two shown.
+    if compared:
+        title, lines = what_changed(domain)
         column.separator(factor=0.8)
-        row = column.row(align=True)
-        row.label(text=f"A {current}  vs  B {props.compare_slot}", icon="SEQ_SPLITVIEW")
-        row.operator("fumaris.compare_clear", text="", icon="X")
-        column.row(align=True).prop(props, "compare_view", expand=True)
-        row = column.row(align=True)
-        row.operator("fumaris.compare_swap", text="Swap", icon="ARROW_LEFTRIGHT")
-        row.operator("fumaris.compare_diff", text="Diff", icon="PRESET")
-        row.operator("fumaris.compare_use_b_settings", text="Use B", icon="LOOP_BACK")
-        if not compare_volumes(domain):
-            column.label(text="Click B on a version to show it", icon="INFO")
-
-    # Stills.
-    column.separator(factor=0.8)
-    row = column.row(align=True)
-    row.operator("fumaris.snapshot", text="Snapshot", icon="RESTRICT_RENDER_OFF")
-    row.operator("fumaris.compare_snapshots", text="A|B Image", icon="IMAGE_REFERENCE")
+        box = column.box()
+        row = box.row(align=True)
+        row.prop(props, "show_compare_changes", text=f"What Changed ({len(lines)})" if lines else "What Changed",
+                 icon="DOWNARROW_HLT" if props.show_compare_changes else "RIGHTARROW", emboss=False)
+        row.operator("fumaris.version_details", text="", icon="ZOOM_IN").name = compared
+        if props.show_compare_changes:
+            box.label(text=title)
+            if not lines:
+                box.label(text="Same settings")
+            for setting, before, after in lines[:12]:
+                split = box.split(factor=0.5, align=True)
+                split.label(text=setting)
+                split.label(text=f"{before} → {after}")
+            if len(lines) > 12:
+                box.label(text=f"… and {len(lines) - 12} more (magnifier for all)")
 
 
 CLASSES = (
     FUMARIS_OT_version_use,
-    FUMARIS_OT_version_compare,
-    FUMARIS_OT_compare_clear,
-    FUMARIS_OT_compare_swap,
-    FUMARIS_OT_compare_diff,
-    FUMARIS_OT_compare_use_b_settings,
+    FUMARIS_OT_version_show,
+    FUMARIS_OT_version_menu,
+    FUMARIS_OT_version_load_settings,
+    FUMARIS_OT_version_save_preset,
+    FUMARIS_OT_version_image,
+    FUMARIS_OT_version_images_side_by_side,
+    FUMARIS_OT_version_details,
     FUMARIS_OT_version_note,
-    FUMARIS_OT_preview_cache_export,
-    FUMARIS_OT_version_keep_frame,
+    FUMARIS_OT_version_delete,
+    FUMARIS_OT_version_save,
     FUMARIS_OT_snapshot,
-    FUMARIS_OT_compare_snapshots,
-    FUMARIS_OT_compare_preset_pick,
-    FUMARIS_OT_compare_preset_apply,
-    FUMARIS_MT_compare_preset_a,
-    FUMARIS_MT_compare_preset_b,
+    FUMARIS_MT_save_version,
 )
 
 
 def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
+    bpy.types.UI_MT_button_context_menu.append(_button_context_menu)
 
 
 def unregister():
+    bpy.types.UI_MT_button_context_menu.remove(_button_context_menu)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

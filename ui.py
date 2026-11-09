@@ -566,11 +566,11 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     from .compare import preview_cache
     cache = preview_cache(job)
     if getattr(job, "_export_pending", None):
-        layout.label(text="Writing the preview cache to VDB…", icon="TIME")
+        layout.label(text="Saving the version…", icon="TIME")
     report = getattr(job, "_export_report", None)
     if report and not getattr(job, "_export_pending", None):
         frames, slot, _first, _last = report
-        layout.label(text=f"Exported {frames} frames to version '{slot}'", icon="CHECKMARK")
+        layout.label(text=f"Saved {frames} frames as version '{slot}'", icon="CHECKMARK")
     if not cache.get("frames"):
         return
     first, last = cache["first"], cache["last"]
@@ -636,7 +636,7 @@ def _draw_domain(layout, scene, props):
         delete.enabled = mode is None and not slot_protected
         delete.operator("fumaris.delete", icon="TRASH", text="Delete")
         if slot_protected:
-            controls.label(text=f"Cache slot '{props.cache_slot}' is protected", icon="LOCKED")
+            controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
 
         controls.separator(factor=0.6)
         header = controls.row(align=True)
@@ -667,6 +667,13 @@ def _draw_domain(layout, scene, props):
         bake_preview = record.row(align=True)
         bake_preview.enabled = mode is None
         bake_preview.prop(props, "preview_bake")
+        # A cached live preview can be kept as a version, and pictured.
+        if (is_previewing and job is not None and getattr(job, "_domain_name", None) == props.id_data.name
+                and job._worker._session.get("preview_cache")):
+            save = controls.row(align=True)
+            save.operator("fumaris.version_save", text="Save Version", icon="FILE_TICK")
+            save.menu("FUMARIS_MT_save_version", text="", icon="DOWNARROW_HLT")
+            save.operator("fumaris.snapshot", text="", icon="RESTRICT_RENDER_OFF")
         controls.separator(factor=0.5)
         # Keep transport rows together; all status text lives below their options.
         status = controls.column(align=True)
@@ -689,7 +696,7 @@ def _draw_domain(layout, scene, props):
             )
             if completed:
                 # Why Play is greyed out.
-                status.label(text="Delete the bake or pick a new cache slot to preview again")
+                status.label(text="Delete the bake or make a new version (+ under Versions) to preview again")
         elif is_previewing:
             status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                          icon="PAUSE" if is_preview_paused else "PLAY")
@@ -772,7 +779,7 @@ def _draw_domain(layout, scene, props):
             split = _label_split(output, 0.2, 0.3)
             labels = split.column(align=True)
             fields = split.column(align=True)
-            labels.label(text="Cache Slot")
+            labels.label(text="Version")
             slot = fields.row(align=True)
             slot.prop(props, "cache_slot", text="")
             slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
@@ -1028,7 +1035,7 @@ class FUMARIS_PT_main(Panel):
             header.enabled = active_mode() != "baking"
         header.label(text=obj.name, icon="OBJECT_DATA")
         header.prop(props, "smoke_object_type", text="Role")
-        # A domain's presets live in Presets & Compare (A/B swap, save, delete).
+        # A domain's presets live in Presets & Compare.
         if props.smoke_object_type not in {"none", "domain"}:
             presets = header.row(align=True)
             presets.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")

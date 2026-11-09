@@ -70,12 +70,23 @@ def capture(props):
     return data
 
 
-def save_preset(props, name):
-    data = capture(props)
+def _write(data, name):
     path = os.path.join(presets_directory(data["role"], create=True), _safe(name) + ".json")
     with open(path, "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1, sort_keys=True)
     return path, len(data["settings"])
+
+
+def save_preset(props, name):
+    return _write(capture(props), name)
+
+
+def save_preset_data(snapshot, name):
+    """A domain preset from a version's stored settings (cache.write_settings_snapshot)."""
+    settings = {key: value for key, value in snapshot.get("settings", {}).items() if _belongs(key, "domain")}
+    data = {"version": 2, "role": "domain", "settings": settings,
+            "detail_layers": snapshot.get("detail_layers", [])}
+    return _write(data, name)
 
 
 def load_preset(role, name):

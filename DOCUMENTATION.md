@@ -110,8 +110,8 @@ rerenders stay responsive. This is expected; press `Stop` to close the session
 and release its GPU working set.
 
 `Volume` mode raymarches the live sparse Flow grid and displays the resulting
-image over the 3D viewport. It writes no NanoVDB or OpenVDB output (Export
-Cache to VDB writes its cache on request, see Preview Cache). Moving
+image over the 3D viewport. It writes no NanoVDB or OpenVDB output (Save
+Version writes its cache on request, see Preview Cache). Moving
 the viewport or changing display settings rerenders the current Flow frame
 without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
@@ -241,37 +241,34 @@ slot and its imported volume. It is unavailable while a job is active.
 ## Presets & Compare
 
 The `Presets & Compare` section at the top of the domain panel holds the
-domain's presets and works with its cache slots as versions of the shot.
-Emitters, colliders, effectors and outflows keep a `Presets` menu at the top
-of their panel (apply, `+` to save, `X` to delete).
+domain's presets and its versions.
 
-- **Presets**: `+` saves the domain's settings as a preset, available in every
-  file; the A and B menus list the saved presets (`X` deletes one). Pick a
-  preset for A and for B and apply either, or
-  press `Swap` to flip between them. A left as `Current` stands for the
-  settings you had before first switching to B, so a preset can be tried and
-  undone with one click.
-- **Versions** lists every cache slot of the domain that holds frames,
-  snapshots or a lock: frame range, and in the tooltip size, date, snapshots
-  and note. Click a name to make it the current slot (A);
-  its bake is imported if it was not already. The pencil sets a note.
-  - `Keep Frame` (image button) keeps the current frame of the bake (files
-    hard-linked where the disk allows, so it costs no space), or of a paused
-    preview's cache, as a one-frame slot shown on every frame.
-  - `Export Cache to VDB` (below the Versions header) writes a paused
-    preview's cache as a slot of its own (see Preview Cache).
-- **B** on a version shows its bake as B. `Show` picks A only, B only, or Side
-  by Side (B moved along X beside the domain); `Swap` makes B current and the
-  old current B; `Diff` lists the settings that differ between the two bakes
-  (by the settings stored with each), and above them measures of both at the
-  current frame (smoke voxels, extent, top height, file size) and what each
-  bake cost (time, time per frame, peak VRAM and RAM; bakes from this version
-  on); `Use B` takes B's settings. The X stops
-  comparing and puts B's volume back. The live preview is not affected by
-  Show.
-- **Snapshot** saves what the 3D Viewport shows, live preview included, as a
-  PNG in the current slot's `snapshots` folder. `A|B Image` puts the latest
-  snapshot of A and of B (or A's last two) side by side in an Image Editor.
+- **Presets** are settings you can reuse in any file: the menu applies one
+  (`X` deletes it), `+` saves the domain's current settings as a new one.
+  Emitters, colliders, effectors and outflows keep a `Presets` menu at the top
+  of their own panel.
+- **Versions** are the results you saved for this domain: a bake, or a live
+  preview kept with **Save Version** (see Preview Cache). Each keeps the
+  settings that made it, its frames as VDB files (they import and render in
+  EEVEE and Cycles like any volume) and any snapshot images. The filled
+  circle marks the current version, where bakes go; click another name to make
+  it current. `+` starts a new empty version, keeping the others on disk. A
+  version's row shows its frames, a lock when protected, and a picture icon
+  when it holds snapshots.
+  - The **eye** shows or hides a version in the viewport. With the eye of a
+    second version on, it stands beside the domain, next to the current version
+    or the live preview; turn the current version's eye off to see the second
+    one in its place. **What Changed** then lists the settings that differ (the
+    magnifier opens every difference, with measures of both at this frame and
+    what each bake cost).
+  - **Right-click** a version (or use its menu button) to **Load Settings**
+    (the domain and its sources go back to the settings it was made with),
+    **Save Settings as Preset**, view its snapshot images (and put the latest
+    beside the current version's), add a **Note**, or **Delete** it.
+
+The live preview itself is drawn by Fumaris' own renderer and shows only in the
+viewport; a saved version is a VDB volume that Blender draws, so it looks the
+same in Solid, Material Preview and Rendered views, EEVEE or Cycles.
 
 ## Domain Settings
 
@@ -862,7 +859,7 @@ For a faster or more memory-efficient simulation:
 
 - Hardware coverage is limited and AMD GPUs are currently unqualified.
 - Geometry Nodes Volume emission is experimental.
-- The preview cache lasts until the preview stops; export it to keep it.
+- The preview cache lasts until the preview stops; Save Version keeps it.
   Cached frames are for looking back, not checkpoints: Resume always continues
   from the live frame.
 - Volume preview shading is intentionally simpler than a final Blender volume
@@ -965,19 +962,23 @@ The simulation empty stores settings; smoke can extend freely around it.
 With **Cache Preview** on (under Play; off by default, applies from the next
 Play), the live preview keeps the frames it simulates, compressed in system
 memory, at full detail (exactly what the preview drew). Without it the preview
-loops over its range and keeps nothing. While a cached preview is paused:
+loops over its range and keeps nothing. The cache lasts until the preview
+stops or starts over; Save Version keeps it.
 
-- Scrub or play the timeline (Blender's own playback) to see the cached frames
-  with the live camera, lighting and look. The status line shows the cached
-  range and the frame shown.
+- While the preview is paused, scrub or play the timeline (Blender's own
+  playback) to see the cached frames with the live camera, lighting and look.
+  The status line shows the cached range and the frame shown.
 - **Resume** returns to the live frame and continues the simulation from it.
   At the end of the range the preview pauses; Resume then starts over (a new
   cache).
-- **Export Cache to VDB** (Presets & Compare) writes the cached frames as VDB files into a new
-  cache slot (a version, see Presets & Compare), with the Output settings
-  (grids, resolutions, Glow) at the preview's resolution. It imports, renders
-  and compares like a bake. **Keep Frame** in Presets & Compare exports one
-  cached frame.
+- **Save Version** (below Cache Preview while a cached preview runs) writes the
+  cached frames as VDB files into a new version (see Presets & Compare), with
+  the settings that made them and the Output settings (grids, resolutions,
+  Glow) at the preview's resolution. It imports, renders and compares like a
+  bake. Its dropdown saves only the current frame. Saving while playing holds
+  the preview until the files are written.
+- The **camera** button beside it saves a snapshot: what the 3D Viewport shows,
+  live preview included, as an image in the current version.
 - **Stop** releases the cache with the simulation.
 
 Preferences > Preview Cache chooses how often frames are kept. Each kept frame

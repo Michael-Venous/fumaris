@@ -650,7 +650,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_cache: BoolProperty(
         name="Cache Preview",
-        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Export Cache to VDB (Presets & Compare) can write them as a version. The preview then pauses at the end of its range instead of looping. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",
+        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Version (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. The preview then pauses at the end of its range instead of looping. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",
         default=False,
     )
 
@@ -775,37 +775,37 @@ class FumarisSettings(PropertyGroup):
     )
 
     cache_slot: StringProperty(
-        name="Cache Slot",
-        description="Independent baked simulation slot. Each name keeps its own bake; switching shows that slot's bake and hides the others without deleting anything",
+        name="Version",
+        description="The current version: where bakes go. Each name keeps its own frames; switching shows that version and hides the others without deleting anything",
         default="main",
         update=_cache_slot_updated,
     )
 
-    # Compare section: a second cache slot (B) shown next to the current one
-    # (A), and two presets to swap between. UI state, never in presets.
+    # Versions: a second version shown with the current one (its eye on).
+    # UI state, never in presets.
     compare_slot: StringProperty(
-        name="Compare With",
-        description="Cache slot compared with the current one (B)",
+        name="Compared Version",
+        description="Version shown with the current one",
         default="",
     )
 
     compare_view: EnumProperty(
         name="Show",
-        description="Which bake the viewport shows while comparing",
+        description="What the viewport shows while a second version is shown (set by the versions' eyes)",
         items=(
-            ("A", "A", "Only the current cache slot"),
-            ("B", "B", "Only the compared cache slot"),
-            ("SIDE", "Side by Side", "Both, B moved beside the domain"),
+            ("A", "A", "Only the current version"),
+            ("B", "B", "Only the compared version"),
+            ("SIDE", "Side by Side", "Both, the compared one moved beside the domain"),
         ),
         default="SIDE",
         update=_compare_view_updated,
     )
 
-    compare_preset_a: StringProperty(name="Preset A", default="")
-    compare_preset_b: StringProperty(name="Preset B", default="")
-    compare_preset_active: StringProperty(default="", options={"HIDDEN"})
-    # Settings before the first A/B swap when A is "Current".
-    compare_stash: StringProperty(default="", options={"HIDDEN"})
+    show_compare_changes: BoolProperty(
+        name="What Changed",
+        description="List the settings that differ between the two versions shown",
+        default=True,
+    )
 
     cache_id: StringProperty(
         name="Cache ID",

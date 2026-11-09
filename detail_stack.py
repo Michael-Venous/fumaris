@@ -452,7 +452,7 @@ def draw(layout, domain):
     down = side.operator("fumaris.detail_layer_move", text="", icon="TRIA_DOWN")
     down.direction, down.domain_name = "DOWN", domain.name
     if not len(props.detail_layers):
-        layout.label(text="Add Disturb or Grain for detail, or a layer that scales a rate per cell", icon="INFO")
+        layout.label(text="Add Disturb or Grain with +", icon="INFO")
         return
     layer = props.detail_layers[min(props.detail_layers_index, len(props.detail_layers) - 1)]
     box = layout.column(align=True)

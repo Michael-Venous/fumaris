@@ -295,7 +295,7 @@ class FumarisSettings(PropertyGroup):
     )
 
     couple_rate_divergence: FloatProperty(
-        name="Divergence",
+        name="Expansion",
         description="Whether and how strongly the emitter applies its Expansion. With Maximum any positive value applies the Expansion exactly; with Blend the rate sets how far each step pulls toward it",
         default=2.0,
         min=0.0,
@@ -414,7 +414,7 @@ class FumarisSettings(PropertyGroup):
 
     # Simulation Settings
     velocity: FloatVectorProperty(
-        name="Initial Velocity",
+        name="Emission Velocity",
         description="Velocity the emitter blows its smoke with (in addition to its own motion), at the Velocity coupling rate",
         default=(0.0, 0.0, 0.0),
         size=3,

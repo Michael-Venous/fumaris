@@ -23,6 +23,21 @@ def _foldout(layout, props, property_name, label):
     return opened
 
 
+# Set per draw: the Properties editor is too narrow for two labelled values
+# side by side (Blender's default ~330 px truncated every pair's label).
+_NARROW = False
+NARROW_WIDTH = 440
+
+
+def _pair(layout):
+    """Two labelled values: side by side in a wide panel, stacked in a narrow one."""
+    return layout.column(align=True) if _NARROW else layout.row(align=True)
+
+
+def _label_split(layout, wide, narrow):
+    return layout.split(factor=narrow if _NARROW else wide, align=True)
+
+
 def _section(box, props, property_name, label, icon):
     """A top-level foldout: its arrow at the box edge (like Advanced), then the
     section's icon and title; folded sections show only this row."""
@@ -267,16 +282,11 @@ def _draw_emitter(layout, obj, props):
     opened = _foldout(box, props, "show_emitter_coupling", "Channel Coupling")
     column = box.column(align=True)
     if opened:
-        for channel in ("smoke", "temperature", "fuel", "burn"):
-            row = column.row(align=True)
+        # The rate gets the room: its label is the channel's name.
+        for channel in ("smoke", "temperature", "fuel", "burn", "velocity", "divergence"):
+            row = column.split(factor=0.64 if _NARROW else 0.6, align=True)
             row.prop(props, f"couple_rate_{channel}")
             row.prop(props, f"source_op_{channel}", text="")
-        row = column.row(align=True)
-        row.prop(props, "couple_rate_velocity")
-        row.prop(props, "source_op_velocity", text="")
-        row = column.row(align=True)
-        row.prop(props, "couple_rate_divergence")
-        row.prop(props, "source_op_divergence", text="")
 
     box = layout.box()
     opened = _foldout(box, props, "show_emitter_advanced", "Advanced")
@@ -320,7 +330,7 @@ def _draw_effector(layout, props):
     box = layout.box()
     if _section(box, props, "show_panel_effector", "Effector", "FORCE_FORCE"):
         box.prop(props, "participant_enabled")
-        box.prop(props, "effector_type")
+        box.prop(props, "effector_type", text="Type")
         strength_label = "Swirl" if props.effector_type == "vortex" else "Strength"
         box.prop(props, "effector_strength", text=strength_label)
         box.prop(props, "effector_radius")
@@ -529,23 +539,23 @@ def _draw_fire_look(fire, props):
     pyro = props.shader_look == "PYRO"
     key = {name: keys[1 if pyro else 0] for name, keys in FLAME_VALUE_KEYS.items()}
     fire.row(align=True).prop(props, "pyro_color" if pyro else "shader_color", expand=True)
-    exposure = fire.row(align=True)
+    exposure = _pair(fire)
     exposure.prop(props, key["brightness"])
     exposure.prop(props, key["glow_temperature"])
-    shape = fire.row(align=True)
+    shape = _pair(fire)
     shape.prop(props, key["contrast"])
     spread = shape.row(align=True)
     spread.active = pyro or props.shader_color == "BLACKBODY"
     spread.prop(props, "shader_thin_gas" if pyro else "shader_color_spread")
-    color = fire.row(align=True)
+    color = _pair(fire)
     color.prop(props, key["temperature_multiplier"])
     color.prop(props, key["flame_core"], text="Blue Core")
-    tint = fire.split(factor=0.25, align=True)
+    tint = _label_split(fire, 0.25, 0.35)
     tint.label(text="Flame Tint")
     tint.prop(props, key["flame_tint"], text="")
     fire.separator(factor=0.5)
     fire.prop(props, key["scatter_glow"])
-    glow = fire.row(align=True)
+    glow = _pair(fire)
     glow.enabled = getattr(props, key["scatter_glow"]) > 0.0
     glow.prop(props, key["glow_spread"], slider=True)
     glow.prop(props, key["glow_shadowing"], text="Shadowing")
@@ -612,7 +622,7 @@ def _draw_domain(layout, scene, props):
         preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
         controls.separator(factor=0.5)
         options = controls.row(align=True)
-        record = options.row(align=True)
+        record = _pair(options)
         record.enabled = mode is None
         record.prop(props, "bake_on_preview")
         record.prop(props, "preview_bake")
@@ -671,7 +681,11 @@ def _draw_domain(layout, scene, props):
             row.prop(props, "sim_start_frame", text="Start")
             row.prop(props, "sim_end_frame", text="End")
         grid_row = settings.row(align=True)
-        grid_row.prop(props, "resolution")
+        if _NARROW:
+            settings.prop(props, "resolution")
+            grid_row = settings.row(align=True)
+        else:
+            grid_row.prop(props, "resolution")
         memory_field = grid_row.row(align=True)
         memory_field.active = not props.simulation_memory_auto
         memory_field.prop(props, "simulation_memory", text="VRAM (GB)")
@@ -680,7 +694,7 @@ def _draw_domain(layout, scene, props):
         auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
         draw_budget_summary(settings, props, diagnostics.snapshot(domain))
         settings.prop(props, "air_margin")
-        substeps_row = settings.row(align=True)
+        substeps_row = _pair(settings)
         substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
         # Cells per Step adds steps up to Max Sub-Steps: nothing to add at 1.
         cells = substeps_row.row(align=True)
@@ -696,10 +710,10 @@ def _draw_domain(layout, scene, props):
         if appearance_open:
             appearance.label(text="Smoke")
             smoke = appearance.column(align=True)
-            smoke_row = smoke.row(align=True)
+            smoke_row = _pair(smoke)
             smoke_row.prop(props, "shader_smoke_density")
             smoke_row.prop(props, "shader_anisotropy")
-            color = smoke.split(factor=0.2, align=True)
+            color = _label_split(smoke, 0.2, 0.3)
             color.label(text="Color")
             color.prop(props, "shader_smoke_color", text="")
             appearance.separator()
@@ -712,19 +726,19 @@ def _draw_domain(layout, scene, props):
                     and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
                 # Cycles' unbiased volumes drop the glow in square patches
                 # (2026-11-06); Biased renders it correctly and faster.
-                hint = appearance.row(align=True)
-                hint.label(text="Scatter Glow shows square patches in unbiased Cycles volumes", icon="ERROR")
+                hint = _pair(appearance)
+                hint.label(text="Patchy Scatter Glow in unbiased Cycles", icon="ERROR")
                 hint.operator("fumaris.use_biased_volumes", text="Use Biased")
             if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
                 appearance.label(
-                    text="Custom Volume Material overrides baked appearance",
+                    text="Custom material overrides this",
                     icon="INFO",
                 )
 
         output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
         if output_open:
             # One label column for every row, so labels line up and none truncate.
-            split = output.split(factor=0.2, align=True)
+            split = _label_split(output, 0.2, 0.3)
             labels = split.column(align=True)
             fields = split.column(align=True)
             labels.label(text="Cache Slot")
@@ -750,7 +764,7 @@ def _draw_domain(layout, scene, props):
             vdb.prop(props, "vdb_precision", text="")
             labels.label(text="Material")
             fields.prop(props, "volume_material", text="")
-            output.prop(props, "vdb_writers")
+            output.prop(props, "vdb_writers", **({"text": "Writers"} if _NARROW else {}))
             output.separator()
             output.prop(props, "volume_selectable")
             output.separator()
@@ -771,7 +785,7 @@ def _draw_domain(layout, scene, props):
                 output.prop(props, "glow_radius")
             if props.volume_material is None:
                 output.label(
-                    text="Generated material always includes density and temperature",
+                    text="Density + temperature always written",
                     icon="INFO",
                 )
 
@@ -784,14 +798,14 @@ def _draw_domain(layout, scene, props):
             else:
                 preview.label(text="Quality")
                 quality = preview.column(align=True)
-                sharpness = quality.row(align=True)
+                sharpness = _pair(quality)
                 sharpness.prop(props, "preview_resolution_percent", text="Simulation", slider=True)
                 sharpness.prop(props, "preview_image_scale", text="Image", slider=True)
                 steps = quality.row(align=True)
                 steps.prop(props, "preview_step_size")
                 steps.prop(props, "preview_all_viewports", toggle=True)
                 rate = quality.row(align=True)
-                rate.prop(props, "preview_frame_rate")
+                rate.prop(props, "preview_frame_rate", **({"text": "FPS"} if _NARROW else {}))
                 if props.preview_frame_rate == "CUSTOM":
                     rate.prop(props, "preview_custom_fps")
 
@@ -801,10 +815,10 @@ def _draw_domain(layout, scene, props):
                     lighting = preview.column(align=True)
                     lighting.row(align=True).prop(props, "preview_lighting", expand=True)
                     if props.preview_lighting == "CUSTOM":
-                        direction = lighting.row(align=True)
+                        direction = _pair(lighting)
                         direction.prop(props, "preview_light_azimuth")
                         direction.prop(props, "preview_light_elevation")
-                        custom = lighting.row(align=True)
+                        custom = _pair(lighting)
                         custom.prop(props, "preview_light_strength")
                         custom.prop(props, "preview_custom_sky")
                     toggles = lighting.row(align=True)
@@ -818,16 +832,16 @@ def _draw_domain(layout, scene, props):
                 color = preview.row(align=True)
                 color.prop(props, "preview_tone_mapping", text="")
                 color.prop(props, "preview_exposure_offset", slider=True)
-            preview.label(text="Play/Pause keeps live Flow data in VRAM", icon="INFO")
+            preview.label(text="The preview keeps its VRAM until Stop", icon="INFO")
 
     participants_box = layout.box()
     participants_box.enabled = not is_baking
     if _section(participants_box, props, "show_panel_participants", "Participants", "OUTLINER_COLLECTION"):
         participants = participants_box.column(align=True)
         # Labels in a narrow column so the collection fields start close to them.
-        for name, label in (("emitter_collection", "Emitters Collection:"), ("collider_collection", "Collider Collection:"),
-                            ("effector_collection", "Effector Collection:"), ("outflow_collection", "Outflow Collection:")):
-            split = participants.split(factor=0.18, align=True)
+        for name, label in (("emitter_collection", "Emitters"), ("collider_collection", "Colliders"),
+                            ("effector_collection", "Effectors"), ("outflow_collection", "Outflows")):
+            split = _label_split(participants, 0.18, 0.3)
             split.label(text=label)
             split.prop(props, name, text="")
         participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
@@ -840,7 +854,7 @@ def _draw_domain(layout, scene, props):
         # One split for both rows so their X / Y / Z columns line up; the Gravity
         # from Scene button sits just left of the fields (a blank slot for Wind).
         for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
-            split = behavior.split(factor=0.12, align=True)
+            split = _label_split(behavior, 0.12, 0.22)
             split.label(text=label)
             right = split.row(align=True)
             if button:
@@ -849,7 +863,7 @@ def _draw_domain(layout, scene, props):
                 right.label(text="", icon="BLANK1")
             right.prop(props, name, text="")
         behavior.separator()
-        buoyancy = behavior.row(align=True)
+        buoyancy = _pair(behavior)
         temperature = buoyancy.row(align=True)
         temperature.prop(props, "physical_buoyancy", text="")
         if props.physical_buoyancy:
@@ -861,7 +875,7 @@ def _draw_domain(layout, scene, props):
             temperature.prop(props, "buoyancy_per_temp")
         buoyancy.prop(props, "buoyancy_per_smoke")
         behavior.separator()
-        fade = behavior.row(align=True)
+        fade = _pair(behavior)
         fade.prop(props, "dissipation")
         fade.prop(props, "smoke_decay", text="Decay")
         behavior.prop(props, "velocity_damping")
@@ -885,17 +899,17 @@ def _draw_domain(layout, scene, props):
             combustion.prop(props, "fuel_energy")
             combustion.prop(props, "ignition_temperature_k")
             combustion.separator()
-            times = combustion.row(align=True)
+            times = _pair(combustion)
             times.prop(props, "burn_time")
             times.prop(props, "cooling_time")
             combustion.prop(props, "temperature_diffusion")
             combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
             combustion.separator()
             combustion.prop(props, "gas_expansion")
-            shaping = combustion.row(align=True)
+            shaping = _pair(combustion)
             shaping.prop(props, "wisp_cooling")
             shaping.prop(props, "fuel_threshold")
-            air = combustion.row(align=True)
+            air = _pair(combustion)
             air.prop(props, "oxygen_limit")
             air.prop(props, "soot_radiation")
             oxygen = combustion.row(align=True)
@@ -916,17 +930,22 @@ def _draw_domain(layout, scene, props):
         advanced.separator()
         advanced.prop(props, "auto_cell_size")
         advanced.prop(props, "sparse_block_min_lifetime")
-        allocation = advanced.row(align=True)
+        allocation = _pair(advanced)
         allocation.prop(props, "allocation_smoke_threshold")
         allocation.prop(props, "allocation_speed_threshold")
         advanced.separator()
-        detail = advanced.row(align=True)
-        detail.prop(props, "smoke_detail", text="Smoke Detail")
+        detail = _pair(advanced)
+        if _NARROW:
+            choice = _label_split(detail, 0.4, 0.4)
+            choice.label(text="Smoke Detail")
+            choice.prop(props, "smoke_detail", text="")
+        else:
+            detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
         advanced.prop(props, "projection_filter", slider=True)
         advanced.separator()
         # The on/off switches, two by two.
-        grid = advanced.grid_flow(row_major=True, columns=2, even_columns=True, even_rows=True, align=True)
+        grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
         grid.prop(props, "full_resolution_velocity")
         grid.prop(props, "follow_object")
@@ -934,7 +953,7 @@ def _draw_domain(layout, scene, props):
         advanced.separator()
         if props.follow_object:
             advanced.prop(props, "carry_air", slider=True)
-        walls = advanced.row(align=True)
+        walls = _pair(advanced)
         walls.prop(props, "open_collider_wall")
         walls.prop(props, "closed_collider_margin")
         advanced.prop(props, "collider_face_flux")
@@ -956,6 +975,10 @@ class FUMARIS_PT_main(Panel):
         return context.object is not None
 
     def draw(self, context):
+        global _NARROW
+        region = context.region
+        scale = context.preferences.system.ui_scale or 1.0
+        _NARROW = region is not None and region.width / scale < NARROW_WIDTH
         layout = self.layout
         obj = context.object
         props = obj.fumaris

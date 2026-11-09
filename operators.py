@@ -56,6 +56,7 @@ from .preview import (
 from .utils import (
     cache_slot_directory,
     output_directory_for_object,
+    peek_output_directory_for_object,
     simulation_frame_range,
 )
 from .runtime import (
@@ -1093,7 +1094,9 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
         domain = _active_domain(context)
         if not domain or active_job():
             return False
-        return os.path.isfile(os.path.join(output_directory_for_object(domain), SETTINGS_FILE))
+        # Polls run while drawing: peek, never create the cache identity.
+        directory = peek_output_directory_for_object(domain)
+        return bool(directory) and os.path.isfile(os.path.join(directory, SETTINGS_FILE))
 
     def execute(self, context):
         domain = _active_domain(context)
@@ -1129,7 +1132,8 @@ class FUMARIS_OT_cache_make_lighter(Operator):
         domain = _active_domain(context)
         if not domain or active_job():
             return False
-        return bool(baked_frame_count(output_directory_for_object(domain), domain.fumaris.output_prefix or "fumaris_"))
+        directory = peek_output_directory_for_object(domain)
+        return bool(directory) and bool(baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"))
 
     def execute(self, context):
         from .lighter import make_lighter_copy

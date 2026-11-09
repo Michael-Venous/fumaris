@@ -222,6 +222,9 @@ Removed). This is a beta: please report scenes that look wrong.
   sources.
 - **User presets** for domains and sources, shared between files; applying
   one restores the whole saved state.
+- **Narrow panels**: at Blender's default Properties width, paired settings
+  stack one per row instead of cutting their names short; clearer tooltips
+  throughout; the object's Fumaris role is labelled **Role**.
 - **Ground Fog** rolls into billows (a light Disturb layer) instead of
   spreading in regular rings.
 - **Compare** (top of the domain panel): every cache slot is a version, listed
@@ -269,6 +272,9 @@ separate Turbulence Detail, Control Ramps and Soot Burn-off settings (Detail &
 Shaping layers).
 
 ### Fixes
+
+- A new domain's panel no longer logs errors from the Restore Settings and
+  Make Lighter Copy buttons (they wrote the cache identity while drawing).
 
 - A domain that had never simulated hid the panel below Play and Stop (on the
   domain and on its participants) until the first run.

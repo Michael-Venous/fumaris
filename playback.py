@@ -127,8 +127,13 @@ def recorded_volume(domain):
         return None
     import os
     from .importers import VOLUME_MARKER
-    from .utils import output_directory_for_object
-    root = os.path.normpath(output_directory_for_object(domain))
+    from .utils import peek_output_directory_for_object
+    # Drawn every redraw: peek, so a domain that never ran (no cache identity
+    # yet) writes nothing; it has no recording either.
+    root = peek_output_directory_for_object(domain)
+    if root is None:
+        return None
+    root = os.path.normpath(root)
     found = None
     for obj in bpy.data.objects:
         marker = obj.get(VOLUME_MARKER) if obj.type == 'VOLUME' else None

@@ -427,7 +427,7 @@ def _domain_state(props, resolution_scale=1.0):
         "export_glow_vdb": bool(getattr(props, "export_glow_vdb", True)),
         "export_density_vdb": bool(getattr(props, "export_density_vdb", True)) or generated_material,
         **{f"export_{name}_downsample": _EXPORT_DOWNSAMPLE.get(getattr(props, f"export_{name}_resolution", "FULL"), 1)
-           for name in ("density", "temperature", "fuel", "burn")},
+           for name in ("density", "temperature", "fuel", "burn", "glow")},
         "export_velocity_downsample": _velocity_downsample(props),
         "glow_radius": max(0.0, float(props.glow_radius)),
     }
@@ -1142,6 +1142,8 @@ def _primitive_surface_source(props, area, volume):
 
 # Flow NV_FLOW_EMITTER_OP_EXPANSION_RATE: Expansion is in 1/s, applied exactly.
 EXPANSION_RATE_OP = 1 << 16
+# NV_FLOW_EMITTER_OP_EXPANSION_BLEND: pull divergence toward Expansion at the coupling rate.
+EXPANSION_BLEND_OP = 1 << 18
 # NV_FLOW_EMITTER_OP_VELOCITY_ADD / _MAX for velocity x, y, z.
 VELOCITY_ADD_OPS = (1 << 8) | (1 << 9) | (1 << 10)
 VELOCITY_MAX_OPS = (1 << 12) | (1 << 13) | (1 << 14)
@@ -1159,8 +1161,14 @@ def _source_operations(props):
             value_ops |= 1 << (4 + channel)
         elif operation == "replace":
             replaced.append(name)
-    # Velocity, per axis (Flow's velocity-pass channels x, y, z; w is Expansion,
-    # stamped as an exact rate, so it has no operation).
+    # Expansion (velocity-pass w): exact by default; Blend pulls toward it at
+    # the coupling rate, Replace at an immediate one.
+    operation = getattr(props, "source_op_divergence", "max")
+    if operation in {"blend", "replace"}:
+        value_ops |= EXPANSION_BLEND_OP
+    if operation == "replace":
+        replaced.append("divergence")
+    # Velocity, per axis (Flow's velocity-pass channels x, y, z).
     operation = getattr(props, "source_op_velocity", "blend")
     if operation == "add":
         value_ops |= VELOCITY_ADD_OPS

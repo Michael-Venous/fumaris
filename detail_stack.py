@@ -24,7 +24,7 @@ LAYER_TYPES = (
     ("DISTURB", "Disturb",
      "Swirling pushes inside smoke and hot gas, of a set size: breakup and billows the base "
      "motion lacks. Add one large and one fine layer for detail at two scales",
-     "FORCE_TURBULENCE", "disturb", 100.0),
+     "FORCE_TURBULENCE", "disturb", 20.0),
     ("GRAIN", "Grain",
      "Small random kicks, one direction per block of Grain Size, renewed every frame: the "
      "gritty breakup of fast fronts",
@@ -127,7 +127,7 @@ class FumarisDetailLayer(PropertyGroup):
                             description="Disturb and Grain: push in scene units per second squared (about 50 "
                                         "is subtle, 300 strong on a fireball a few metres across). Shred and "
                                         "Soot Burn-off: rate per second")
-    size: FloatProperty(name="Size", default=0.5, min=0.001, soft_max=10.0, subtype="DISTANCE",
+    size: FloatProperty(name="Size", default=1.0, min=0.001, soft_max=10.0, subtype="DISTANCE",
                         description="Disturb: swirl size. Grain: block edge length. In scene units; use a "
                                     "few voxels or more")
     detail: IntProperty(name="Detail", default=1, min=1, max=6,

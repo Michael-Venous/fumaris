@@ -30,6 +30,13 @@ def _velocity_resolution_items(self, _context):
     return _EXPORT_RESOLUTION_ITEMS if getattr(self, "full_resolution_velocity", False) else _VELOCITY_RESOLUTION_ITEMS
 
 
+def _object_type_updated(self, _context):
+    # A domain is a bounding volume: show it as a wireframe so the smoke inside is visible.
+    obj = self.id_data
+    if self.smoke_object_type == "domain" and getattr(obj, "type", "") != "EMPTY":
+        obj.display_type = "WIRE"
+
+
 def _cache_slot_updated(self, _context):
     from .bake_state import sync_cache_slot
     sync_cache_slot(self.id_data)
@@ -107,6 +114,7 @@ class FumarisSettings(PropertyGroup):
             ("none", "None", "Exclude this object from Fumaris simulations"),
         ],
         default="none",
+        update=_object_type_updated,
     )
 
     participant_enabled: BoolProperty(
@@ -212,7 +220,7 @@ class FumarisSettings(PropertyGroup):
     emitter_temperature: FloatProperty(
         name="Emitter Temperature",
         description="Source temperature as a share of the domain's Flame Temperature: 1 is Flame Temperature",
-        default=2.0,
+        default=0.35,
         min=0.0,
         soft_max=5.0,
     )
@@ -281,7 +289,7 @@ class FumarisSettings(PropertyGroup):
 
     couple_rate_divergence: FloatProperty(
         name="Divergence",
-        description="Whether and how strongly the emitter applies its Expansion. Expansion is a rate (1/s) and is stamped exactly where the emitter couples, so it has no operation menu: the stronger of it and existing expansion (combustion, other emitters) applies, and repeated stamps do not stack",
+        description="Whether and how strongly the emitter applies its Expansion. With Maximum any positive value applies the Expansion exactly; with Blend the rate sets how far each step pulls toward it",
         default=2.0,
         min=0.0,
         soft_max=200.0,
@@ -290,7 +298,7 @@ class FumarisSettings(PropertyGroup):
     couple_rate_temperature: FloatProperty(
         name="Temperature",
         description="How quickly the emitter heats the gas in its shape. With Add it is the amount added per second (value × coupling); with Blend, Maximum and Replace, how fast the field reaches the value",
-        default=2.0,
+        default=10.0,
         min=0.0,
         soft_max=200.0,
     )
@@ -306,7 +314,7 @@ class FumarisSettings(PropertyGroup):
     couple_rate_burn: FloatProperty(
         name="Burn",
         description="How quickly the emitter applies its Burn to start combustion. With Add it is the amount added per second (value × coupling); with Blend, Maximum and Replace, how fast the field reaches the value",
-        default=0.0,
+        default=2.0,
         min=0.0,
         soft_max=200.0,
     )
@@ -319,8 +327,12 @@ class FumarisSettings(PropertyGroup):
         soft_max=200.0,
     )
 
-    # How each emitted channel is written into the simulation: Add (2026-11-08,
-    # user); velocity keeps Blend (Add would keep accelerating the air like a force).
+    # How each emitted channel is written into the simulation: smoke, fuel and
+    # burn Add (2026-11-08, user); velocity keeps Blend (Add would keep
+    # accelerating the air like a force). Temperature is Maximum at coupling 10
+    # (2026-11-09): the source holds its gas at Temperature (0.35 = 700 K, past
+    # the 500 K ignition in about 0.1 s) and burning makes the rest of the heat,
+    # so fire colour varies; Add heated lingering gas to Flame Temperature.
     source_op_smoke: EnumProperty(
         name="Smoke Operation",
         description="How this emitter writes smoke into the simulation",
@@ -332,7 +344,7 @@ class FumarisSettings(PropertyGroup):
         name="Temperature Operation",
         description="How this emitter writes temperature into the simulation",
         items=_SOURCE_OPERATIONS,
-        default="add",
+        default="max",
     )
 
     source_op_fuel: EnumProperty(
@@ -347,6 +359,17 @@ class FumarisSettings(PropertyGroup):
         description="How this emitter writes burn into the simulation",
         items=_SOURCE_OPERATIONS,
         default="add",
+    )
+
+    source_op_divergence: EnumProperty(
+        name="Expansion Operation",
+        description="How this emitter writes its Expansion into the simulation",
+        items=(
+            ("max", "Maximum", "Apply the Expansion exactly wherever the emitter couples, at any coupling, resolution and Sub-Steps; the stronger of it and existing expansion (combustion, other emitters) applies"),
+            ("blend", "Blend", "Pull the expansion toward the emitter's at the Divergence coupling rate each step: lower coupling expands more gently. Depends on Sub-Steps, as Blend does for other channels"),
+            ("replace", "Replace", "Set the expansion to the emitter's everywhere inside the emitter, replacing combustion's"),
+        ),
+        default="max",
     )
 
     source_op_velocity: EnumProperty(
@@ -1588,6 +1611,17 @@ class FumarisSettings(PropertyGroup):
         default=1,
     )
 
+    export_glow_resolution: EnumProperty(
+        name="Glow Resolution",
+        description="Detail the glow grids are written at. They are already a coarse, blurred grid that follows the fire's size; Half and Quarter make it 8 or 64 times smaller with the glow slightly softer",
+        items=(
+            ("FULL", "Full", "The glow's usual detail", 0),
+            ("HALF", "Half", "About 8 times fewer glow voxels", 1),
+            ("QUARTER", "Quarter", "About 64 times fewer glow voxels", 2),
+        ),
+        default="FULL",
+    )
+
     export_glow_vdb: BoolProperty(
         name="Export Glow VDB",
         description="Write the glow grid used by the material's Scatter Glow (light from nearby fire in cooler smoke). Needs temperature",
@@ -1715,7 +1749,7 @@ class FumarisSettings(PropertyGroup):
     shader_scatter_glow: FloatProperty(
         name="Scatter Glow",
         description="Fire light scattered into the surrounding smoke, so dark billows glow from inside near flames. Cycles barely carries emission through smoke on its own; this uses the baked glow grid (see Glow Radius under Output)",
-        default=2.0,
+        default=1.0,
         min=0.0,
         max=20.0,
         soft_max=4.0,
@@ -1773,6 +1807,17 @@ class FumarisSettings(PropertyGroup):
             ("PYRO", "Pyro", "Houdini Pyro-style: golden fire with soft glowing cells and dark soot in dense smoke; thin gas glows brighter, dense smoke darker (Thin Gas). Same Brightness, Full Glow and Contrast as Temperature. Needs a bake from Fumaris 2.0 (heat and soft density grids)"),
         ),
         default="TEMPERATURE",
+        update=_appearance_updated,
+    )
+
+    shader_color: EnumProperty(
+        name="Colour",
+        description="Temperature look: how fire is coloured",
+        items=(
+            ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold over 0.45-1 x Full Glow, as Houdini's Pyro shading (Colour Spread does not apply)", 0),
+            ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature (Blackbody Scale and Colour Spread shift it)", 1),
+        ),
+        default="BLACKBODY",
         update=_appearance_updated,
     )
 
@@ -1845,7 +1890,7 @@ class FumarisSettings(PropertyGroup):
     pyro_scatter_glow: FloatProperty(
         name="Scatter Glow",
         description="Pyro look: fire light scattered into the surrounding smoke (the baked glow grid, see Glow Radius under Output)",
-        default=2.0,
+        default=1.0,
         min=0.0,
         max=20.0,
         soft_max=4.0,
@@ -2001,7 +2046,7 @@ class FumarisSettings(PropertyGroup):
 
     show_appearance: BoolProperty(
         name="Appearance",
-        default=True,
+        default=False,
     )
 
     show_cache_location: BoolProperty(
@@ -2040,15 +2085,7 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    show_domain_turbulence: BoolProperty(
-        name="Turbulence Detail",
-        default=False,
-    )
 
-    show_domain_control_ramps: BoolProperty(
-        name="Control Ramps",
-        default=False,
-    )
 
     show_domain_combustion: BoolProperty(
         name="Combustion",

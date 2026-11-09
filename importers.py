@@ -36,9 +36,9 @@ NODE_WIEN_TERM = "Fumaris Wien Term"
 # emission closure, frames. 3: Colour Spread (colour shift is multiply-add).
 # 4: Density Remap (density read through a remap node, not the shader attribute).
 # 5-6: Pyro look. 7: Pyro Blue Core (each look has its own flame values).
-# 8: Pyro Colour (golden ramp or blackbody).
+# 8: Pyro Colour (golden ramp or blackbody). 9: Temperature look Colour too.
 # Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 8
+GRAPH_VERSION = 9
 NODE_DENSITY_REMAP = "Fumaris Density Remap"
 NODE_DENSITY_GAIN = "Fumaris Density Gain"
 GRAPH_VERSION_KEY = "fumaris_graph_version"
@@ -78,6 +78,9 @@ NODE_PYRO_CORE = "Fumaris Pyro Blue Core"
 # Pyro Colour: golden ramp (0) or real blackbody colour (1), and the blackbody's
 # colour temperature scale (camera shift x Blackbody Scale).
 NODE_PYRO_COLOR = "Fumaris Pyro Colour"
+# Temperature look Colour: blackbody (0) or the Pyro look's golden ramp (1).
+NODE_TEMPERATURE_COLOR = "Fumaris Temperature Colour"
+NODE_TEMPERATURE_COLOR_RANGE = "Fumaris Temperature Color Range"
 NODE_PYRO_BLACKBODY_SCALE = "Fumaris Pyro Blackbody Scale"
 PYRO_RAMP = ((0.0, (1.0, 0.1, 0.0)), (0.35, (1.0, 0.32, 0.02)), (0.65, (1.0, 0.58, 0.14)),
              (1.0, (1.0, 0.86, 0.52)))
@@ -293,6 +296,11 @@ def apply_generated_material_settings(material, settings):
     color_scale = nodes[NODE_PHYSICAL_COLOR_SCALE]
     color_scale.inputs[1].default_value = PHYSICAL_COLOR_SHIFT * look["multiplier"] * spread
     color_scale.inputs[2].default_value = PHYSICAL_COLOR_SHIFT * look["multiplier"] * look["reference"] * (1.0 - spread)
+    golden = str(_appearance_value(settings, "shader_color", "BLACKBODY")) == "GOLDEN"
+    nodes[NODE_TEMPERATURE_COLOR].inputs["Factor"].default_value = 1.0 if golden else 0.0
+    golden_range = nodes[NODE_TEMPERATURE_COLOR_RANGE]
+    golden_range.inputs["From Min"].default_value = PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"]
+    golden_range.inputs["From Max"].default_value = PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"]
     flame_tint = nodes.get(NODE_FLAME_TINT)
     if flame_tint is not None:
         [socket for socket in flame_tint.inputs if socket.type == "RGBA"][1].default_value = look["tint"]
@@ -457,7 +465,51 @@ def _build_generated_material(material, blue_core=False):
     links.new(volume_info.outputs["Temperature"], color_scale.inputs[0])
     links.new(color_scale.outputs[0], fire_blackbody.inputs["Temperature"])
     links.new(fire_blackbody.outputs["Color"], fire_saturation.inputs["Color"])
-    fire_color = fire_saturation.outputs["Color"]
+    # Colour: Golden, the Pyro look's ramp over 0.45-1 x Full Glow at unit luminance.
+    golden_range = nodes.new("ShaderNodeMapRange")
+    golden_range.name = NODE_TEMPERATURE_COLOR_RANGE
+    golden_range.label = "Golden Range"
+    golden_range.location = (-920, 0)
+    golden_range.parent = flame
+    golden_ramp = nodes.new("ShaderNodeValToRGB")
+    golden_ramp.location = (-740, 0)
+    golden_ramp.parent = flame
+    golden_elements = golden_ramp.color_ramp.elements
+    while len(golden_elements) < len(PYRO_RAMP):
+        golden_elements.new(0.5)
+    for element, (position, color) in zip(golden_elements, PYRO_RAMP):
+        element.position = position
+        element.color = (*color, 1.0)
+    golden_luminance = nodes.new("ShaderNodeRGBToBW")
+    golden_luminance.location = (-460, -120)
+    golden_luminance.parent = flame
+    golden_floor = math_node("MAXIMUM", (-280, -120), "Luminance Floor", flame)
+    golden_floor.inputs[1].default_value = 0.01
+    golden_unit = math_node("DIVIDE", (-100, -120), "1 / Luminance", flame)
+    golden_unit.inputs[0].default_value = 1.0
+    golden_color = nodes.new("ShaderNodeVectorMath")
+    golden_color.operation = "SCALE"
+    golden_color.label = "Golden at Unit Luminance"
+    golden_color.location = (-100, 0)
+    golden_color.parent = flame
+    color_mode = nodes.new("ShaderNodeMix")
+    color_mode.data_type = "RGBA"
+    color_mode.name = NODE_TEMPERATURE_COLOR
+    color_mode.label = "Colour: Blackbody / Golden"
+    color_mode.location = (-380, 180)
+    color_mode.parent = flame
+    color_mode.inputs["Factor"].default_value = 0.0
+    links.new(floor.outputs[0], golden_range.inputs["Value"])
+    links.new(_socket(golden_range.outputs, "Result"), golden_ramp.inputs["Fac"])
+    links.new(golden_ramp.outputs["Color"], golden_luminance.inputs["Color"])
+    links.new(golden_luminance.outputs["Val"], golden_floor.inputs[0])
+    links.new(golden_floor.outputs[0], golden_unit.inputs[1])
+    links.new(golden_ramp.outputs["Color"], golden_color.inputs[0])
+    links.new(golden_unit.outputs[0], golden_color.inputs["Scale"])
+    mode_inputs = [socket for socket in color_mode.inputs if socket.type == "RGBA"]
+    links.new(fire_saturation.outputs["Color"], mode_inputs[0])
+    links.new(golden_color.outputs[0], mode_inputs[1])
+    fire_color = [socket for socket in color_mode.outputs if socket.type == "RGBA"][0]
 
     fresh = None
     if blue_core:

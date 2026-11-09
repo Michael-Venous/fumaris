@@ -114,6 +114,8 @@ Removed). This is a beta: please report scenes that look wrong.
   closed meshes, spheres and boxes really blows the air out, closed meshes
   that grow or shrink push or pull the smoke, and open meshes act as fans.
   Point and particle emitters expand per second and push outward too.
+- **Expansion operation**: Maximum (exact, the default), Blend (pulls toward
+  Expansion at the Divergence coupling rate, for gentler pushes) or Replace.
 - **Influence Only**: an emitter can steer, heat or expand the smoke already
   there without adding any (also for points and particles).
 - **Velocity attribute** for mesh and Geometry Nodes mesh emitters.
@@ -126,13 +128,14 @@ Removed). This is a beta: please report scenes that look wrong.
 
 ### Look and material
 
-- **Temperature look**: Brightness, Full Glow, Contrast (flame width), Colour
+- **Temperature look**: Colour (Blackbody or the Pyro look's Golden ramp),
+  Brightness, Full Glow, Contrast (flame width), Colour
   Spread, Sharpness, Blue Core and Flame Tint; Anisotropy for forward
   scattering. The Burn look is removed. Appearance always drives the generated
   material, which is leaner (density, temperature and glow grids; fuel only
   for Blue Core).
 - **Scatter Glow**, Glow Spread and Glow Shadowing (bakes add small glow
-  grids; Glow Radius in Output). Fumaris shows a hint and a Use Biased button
+  grids; Glow Radius and Glow Resolution in Output). Fumaris shows a hint and a Use Biased button
   when Cycles' unbiased volumes would render the glow in square patches.
 - **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with its
   own flame controls (Brightness, Full Glow, Contrast, Blackbody Scale, Blue
@@ -241,9 +244,12 @@ Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
 raised; Trace brings 1 step much closer to a converged result), Simulation
 Memory 4 GB; even burning
 (Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
-Glow 2000 K, Brightness 2, Scatter Glow 2, Glow Shadowing 0.5, Blue Core 0,
-Smoke Density 1, smoke colour 0.45, Anisotropy 0.3. Emitters: Expansion 0.2,
-and smoke, heat, fuel and burn Add (velocity Blends).
+Glow 2000 K, Brightness 2, Scatter Glow 1, Glow Shadowing 0.5, Blue Core 0,
+Smoke Density 1, smoke colour 0.45, Anisotropy 0.3; Disturb layers 20 at 1 m.
+Domains show as a wireframe and start with every section folded. Emitters:
+Temperature 0.35 (700 K) held by Maximum at coupling 10, so fuel ignites
+within about 0.1 s and burning makes the rest of the heat; Expansion 0.2
+(Maximum); smoke, fuel and burn Add at coupling 2; velocity Blends at 8.
 
 ### Removed
 
@@ -255,6 +261,8 @@ Shaping layers).
 
 ### Fixes
 
+- A domain that had never simulated hid the panel below Play and Stop (on the
+  domain and on its participants) until the first run.
 - Fast moving colliders at high resolution no longer blow up the simulation
   (a car at Resolution 1400 reached 12,000 m/s at frame 89): the pressure
   solve's coarse levels keep every sealed pocket solvable.

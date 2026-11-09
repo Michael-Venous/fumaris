@@ -261,7 +261,9 @@ def _draw_emitter(layout, obj, props):
         row = column.row(align=True)
         row.prop(props, "couple_rate_velocity")
         row.prop(props, "source_op_velocity", text="")
-        column.prop(props, "couple_rate_divergence")
+        row = column.row(align=True)
+        row.prop(props, "couple_rate_divergence")
+        row.prop(props, "source_op_divergence", text="")
 
     box = layout.box()
     column, opened = _nested_foldout(box, props, "show_emitter_advanced", "Advanced")
@@ -512,14 +514,15 @@ def _draw_fire_look(fire, props):
     """The chosen Look's own controls: Temperature and Pyro keep separate values."""
     pyro = props.shader_look == "PYRO"
     key = {name: keys[1 if pyro else 0] for name, keys in FLAME_VALUE_KEYS.items()}
-    if pyro:
-        fire.row(align=True).prop(props, "pyro_color", expand=True)
+    fire.row(align=True).prop(props, "pyro_color" if pyro else "shader_color", expand=True)
     exposure = fire.row(align=True)
     exposure.prop(props, key["brightness"])
     exposure.prop(props, key["glow_temperature"])
     shape = fire.row(align=True)
     shape.prop(props, key["contrast"])
-    shape.prop(props, "shader_thin_gas" if pyro else "shader_color_spread")
+    spread = shape.row(align=True)
+    spread.active = pyro or props.shader_color == "BLACKBODY"
+    spread.prop(props, "shader_thin_gas" if pyro else "shader_color_spread")
     color = fire.row(align=True)
     color.prop(props, key["temperature_multiplier"])
     color.prop(props, key["flame_core"], text="Blue Core")
@@ -739,7 +742,11 @@ def _draw_domain(layout, scene, props):
             resolution = row.row(align=True)
             resolution.active = getattr(props, f"export_{name}_vdb")
             resolution.prop(props, f"export_{name}_resolution", text="")
-        output.prop(props, "export_glow_vdb")
+        row = channels.split(factor=0.6, align=True)
+        row.prop(props, "export_glow_vdb", text="Glow")
+        resolution = row.row(align=True)
+        resolution.active = props.export_glow_vdb
+        resolution.prop(props, "export_glow_resolution", text="")
         if props.export_glow_vdb:
             output.prop(props, "glow_radius")
         if props.volume_material is None:

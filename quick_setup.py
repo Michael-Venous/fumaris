@@ -32,6 +32,7 @@ PRESETS = {
         "domain": {"shader_flame_enabled": False},
         # Hot (Flame Temperature) smoke rises on its own heat.
         "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 2.0,
+                    "source_op_temperature": "add", "couple_rate_temperature": 2.0,
                     "emitter_fuel": 0.0, "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
     "FIRE": {
@@ -81,6 +82,7 @@ PRESETS = {
         "domain": {"shader_flame_enabled": False, "buoyancy_per_smoke": -0.4,
                    "shader_smoke_color": (0.8,) * 3},
         "emitter": {"emitter_smoke": 2.0, "emitter_temperature": 0.0,
+                    "source_op_temperature": "add", "couple_rate_temperature": 2.0,
                     "emitter_fuel": 0.0, "normal_velocity": 0.5, "emitter_divergence": 0.3},
         "ground": True,
     },
@@ -93,6 +95,7 @@ PRESETS = {
         "disturb": {"strength": 60.0, "detail": 1, "size_per_size": 0.5},
         # Warm exhaust (a quarter of Flame Temperature) pushed up at 4 m/s.
         "emitter": {"emitter_smoke": 4.0, "emitter_temperature": 0.25,
+                    "source_op_temperature": "add", "couple_rate_temperature": 2.0,
                     "emitter_fuel": 0.0, "normal_velocity": 0.0, "emitter_divergence": 0.0,
                     "velocity": (0.0, 0.0, 4.0), "couple_rate_velocity": 8.0},
     },

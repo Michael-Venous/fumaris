@@ -19,7 +19,6 @@ IMPORT_DIRECTORY = ".fumaris_import"
 VOLUME_MARKER = "fumaris_volume"
 VOLUME_PREFIX_MARKER = "fumaris_volume_prefix"
 GENERATED_MATERIAL_MARKER = "fumaris_generated_material"
-PREVIEW_OWNER_MARKER = "fumaris_preview_owner"
 
 NODE_VOLUME_SHADER = "Fumaris Volume Shader"
 # Blue Core only (built when Blue Core > 0): fuel near ignition turns blue.
@@ -120,36 +119,6 @@ def restore_generated_volumes(directory, prefix, states):
         if len(state) > 2:
             obj.hide_render = state[2]
         obj.update_tag()
-
-
-def hide_recorded_previews(owner, except_volume=None):
-    """Only one recorded take for this domain should be displayed at a time."""
-    states = []
-    for obj in bpy.data.objects:
-        if obj == except_volume or obj.get(PREVIEW_OWNER_MARKER) != owner:
-            continue
-        states.append((obj.name, bool(obj.hide_viewport), bool(obj.hide_render)))
-        obj.hide_viewport = obj.hide_render = True
-        obj.update_tag()
-    return states
-
-
-def replace_recorded_previews(owner, volume):
-    """Replace prior display objects, retaining their recorded files on disk."""
-    for obj in list(bpy.data.objects):
-        if (obj != volume and obj.type == "VOLUME"
-                and obj.get(PREVIEW_OWNER_MARKER) == owner
-                and obj.get(VOLUME_MARKER)):
-            _remove_generated_volume_object(obj)
-
-
-def restore_recorded_previews(states):
-    for name, viewport, render in states or ():
-        obj = bpy.data.objects.get(name)
-        if obj is not None:
-            obj.hide_viewport = viewport
-            obj.hide_render = render
-            obj.update_tag()
 
 
 def baked_frame_count(directory, prefix=PREFIX):

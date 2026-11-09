@@ -28,6 +28,7 @@ from .protocol import (
     CANCELLED,
     FAILED,
     FRAME,
+    PREVIEW_CACHE_EXPORT,
     PREVIEW_RENDER,
     SESSION_BEGIN,
     SESSION_END,
@@ -77,7 +78,12 @@ class BridgeWorker:
         self._requests.put_nowait((PREVIEW_RENDER, preview, bytes(payload)))
 
     def send_cache_flush(self):
+        """Acknowledged (CACHE_FLUSHED) once every queued VDB file is written."""
         self._requests.put_nowait((CACHE_FLUSH, {}, b""))
+
+    def send_preview_cache_export(self, header):
+        """Write the preview cache's frames as VDB files (PREVIEW_CACHE_EXPORTED)."""
+        self._requests.put_nowait((PREVIEW_CACHE_EXPORT, header, b""))
 
     def end_session(self):
         self._requests.put_nowait((SESSION_END, {}, b""))

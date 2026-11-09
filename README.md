@@ -36,18 +36,19 @@ operating system.
 2. Press **Play** and adjust the simulation. **Shift–Alt–Space** plays,
    pauses, or resumes; **Shift–Alt–X** stops. The controls show your current
    bindings, which can be changed in Fumaris preferences.
-3. Optionally enable **Bake on Preview** before starting. It records VDBs at
-   preview resolution and imports them on pause or stop. Recording adds export
-   and disk costs; leave it off for the fastest iteration.
+3. **Pause** to look back: the preview caches every frame it simulates, so
+   scrubbing or playing the timeline while paused shows them again with the
+   live camera and look. **Export Cache to VDB** writes them as a version you
+   can import, render and compare.
 4. Use **Bake** for a final sequence at the domain's full resolution.
 
 Domain participant collections include nested child collections and select only
 objects with the matching role. Geometry Nodes, particle, collection, mesh,
 primitive, and volume emission workflows are described in the manual.
 
-Live preview uses a volume overlay with approximate shading. With Bake on Preview
-off it is temporary; with it on, recorded volumes use Blender's scene shading
-when imported. Only one Fumaris preview or bake runs at a time.
+Live preview uses a volume overlay with approximate shading; its cache lasts
+until the preview stops (export it to keep it). Only one Fumaris preview or bake
+runs at a time.
 
 The simulation empty is a settings reference, not a hard smoke
 boundary. If **Simulation capacity reached** appears, increase **Simulation

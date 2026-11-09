@@ -110,8 +110,8 @@ rerenders stay responsive. This is expected; press `Stop` to close the session
 and release its GPU working set.
 
 `Volume` mode raymarches the live sparse Flow grid and displays the resulting
-image over the 3D viewport. With Bake on Preview off, it does not create NanoVDB
-or OpenVDB output. Moving
+image over the 3D viewport. It writes no NanoVDB or OpenVDB output (Export
+Cache to VDB writes its cache on request, see Preview Cache). Moving
 the viewport or changing display settings rerenders the current Flow frame
 without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
@@ -218,11 +218,10 @@ Under `Output`:
   - The lock button (`Protect`) locks the current slot. While it is locked,
     Bake and Delete are refused and the Simulate box says so. The lock is a
     small file in the slot's folder, so it also holds if another scene points
-    at the same folder. Preview recordings can still be added to a locked
-    slot; they never overwrite a bake.
+    at the same folder.
 - Bake clears the current slot before writing. If the slot already holds a
-  bake, the Bake button asks first. Delete asks before removing a bake or
-  recorded preview takes, and removes only the current slot's files. Scripts
+  bake, the Bake button asks first. Delete asks before removing a bake, and
+  removes only the current slot's files. Scripts
   that call the operators directly are not asked, but a locked slot still
   refuses them.
 - Assign a material to apply it automatically to the imported volume.
@@ -253,15 +252,14 @@ of their panel (apply, `+` to save, `X` to delete).
   settings you had before first switching to B, so a preset can be tried and
   undone with one click.
 - **Versions** lists every cache slot of the domain that holds frames,
-  recordings, snapshots or a lock: frame range, and in the tooltip size, date,
-  recordings, snapshots and note. Click a name to make it the current slot (A);
+  snapshots or a lock: frame range, and in the tooltip size, date, snapshots
+  and note. Click a name to make it the current slot (A);
   its bake is imported if it was not already. The pencil sets a note.
-  - `Keep Frame` (image button) keeps the current frame of the bake, or of the
-    latest preview recording, as a one-frame slot shown on every frame.
-  - `Keep Recording` (record button) keeps the latest Bake on Preview
-    recording as a slot of its own, so it can be compared, imported and
-    rendered like a bake. Files are hard-linked where the disk allows, so
-    keeping costs no space.
+  - `Keep Frame` (image button) keeps the current frame of the bake (files
+    hard-linked where the disk allows, so it costs no space), or of a paused
+    preview's cache, as a one-frame slot shown on every frame.
+  - `Export Cache to VDB` (export button) writes a paused preview's cache as a
+    slot of its own (see Preview Cache).
 - **B** on a version shows its bake as B. `Show` picks A only, B only, or Side
   by Side (B moved along X beside the domain); `Swap` makes B current and the
   old current B; `Diff` lists the settings that differ between the two bakes
@@ -844,8 +842,8 @@ can cause the renderer to reject or miss a volume frame.
 
 ## Performance Guidance
 
-Preview with Bake on Preview off is normally much faster than Bake because it reads back one
-viewport-sized RGBA image. Bake must read complete grids from the GPU,
+Preview is normally much faster than Bake because it reads back one
+viewport-sized RGBA image (and its cache, compressed in the background). Bake must read complete grids from the GPU,
 convert NanoVDB to OpenVDB, and write them to disk.
 
 For a faster or more memory-efficient simulation:
@@ -864,8 +862,9 @@ For a faster or more memory-efficient simulation:
 
 - Hardware coverage is limited and AMD GPUs are currently unqualified.
 - Geometry Nodes Volume emission is experimental.
-- Unrecorded preview is temporary. Bake on Preview preserves VDB playback, but
-  recorded VDBs are not solver checkpoints for resuming from arbitrary frames.
+- The preview cache lasts until the preview stops; export it to keep it.
+  Cached frames are for looking back, not checkpoints: Resume always continues
+  from the live frame.
 - Volume preview shading is intentionally simpler than a final Blender volume
   material. Scene Occlusion uses viewport depth, so transparent objects occlude
   as if solid.
@@ -952,50 +951,47 @@ collections. The new simulation object is an axes empty, with no physical domain
 Presets start from the defaults of a new domain and change only what makes the
 effect. Rising Smoke emits continuously without fuel; Steady Fire emits smoke and
 fuel that burns out within half a second, so flames stay a few source widths tall.
-Explosion emits a burst of fuel for 4 frames, then disables its source, with a
-100-frame range; strong buoyancy and Disturb lift it into a billowing cap.
+Explosion emits a burst of fuel for 8 frames, then vents warm soot that fades
+out over 80 frames (the stem), with a 120-frame range; strong buoyancy and
+Disturb lift it into a billowing mushroom cloud on that stem.
 Ground Fog emits cold smoke that is heavier than air, and adds a collider floor
 just under the source for it to spread over. Chimney Smoke blows warm smoke
 straight up at 4 m/s.
 Ranges start at the scene's Start Frame. These are editable starting points.
 The simulation empty stores settings; smoke can extend freely around it.
 
-### Bake on Preview
+### Preview Cache
 
-Enable **Bake on Preview** beside the preview controls before pressing Play. It records VDBs into a new take while the fast Flow overlay is displayed.
-This uses **Preview Resolution**, including any reduction below 100%, and the
-configured output channels/compression. Export, readback, conversion and writing
-add work even though writing is asynchronous. The option is off by default.
+The live preview keeps every frame it simulates, compressed in system memory,
+at full detail (exactly what the preview drew). While the preview is paused:
 
-- **Pause** lets an in-flight frame finish, waits for complete VDB files, and
-  imports the recorded sequence. The live simulation stays in GPU memory.
-- **Resume** hides the imported take and continues from the live simulation's
-  next frame. Scrubbing a recorded frame while paused does not rewind that state.
-- **Stop** finishes accepted work, imports the committed frames, and releases the
-  live simulation. Wait for finalization to finish before closing Blender.
-- At the end of the range, recording pauses. Resume starts a new take, preserving
-  the previous files rather than overwriting them in a loop.
-- Changes that require restarting the sparse grid finalize the old take and
-  start a new one. Other live edits affect subsequent frames in that take; the
-  recording preserves what you actually previewed, not a promise that the final
-  settings alone can reproduce its history.
+- Scrub or play the timeline (Blender's own playback) to see the cached frames
+  with the live camera, lighting and look. The status line shows the cached
+  range and the frame shown.
+- **Resume** returns to the live frame and continues the simulation from it.
+  At the end of the range the preview pauses; Resume then starts over (a new
+  cache).
+- **Export Cache to VDB** writes the cached frames as VDB files into a new
+  cache slot (a version, see Presets & Compare), with the Output settings
+  (grids, resolutions, Glow) at the preview's resolution. It imports, renders
+  and compares like a bake. **Keep Frame** in Presets & Compare exports one
+  cached frame.
+- **Stop** releases the cache with the simulation.
 
-Imported VDBs use Blender materials and lighting, so they may look different
-from the live overlay. Only one of the recorded take and live overlay is shown
-at once. Publishing a new take replaces the previous preview Volume object;
-older take files remain on disk. Preview takes live below the domain cache in `preview_takes`; they do
-not overwrite the final bake. **Delete** clears this domain's generated bake and
-owned preview recordings. Interrupted writes may leave completed files for
-recovery; no partial file is presented as a committed frame.
-
-`Bake on Preview` records the interactive preview; the preview buttons sit
-under the Preview Controls heading, below the bake buttons.
+Preferences > Preview Cache chooses how often frames are kept: **Balanced**
+(the default) keeps every frame of small and medium scenes and, for very large
+ones (over about 0.4 GB a frame), every few frames, so the preview stays fast
+(copying a frame to system memory costs about 40 ms of GPU time per GB);
+**Every Frame** always keeps every frame; **Off** keeps none. RAM sets how much
+memory the cache may use (0: a quarter of the RAM, 1 to 16 GB). When it is full, every other frame of the
+older half is dropped, so the whole range stays reachable at a coarser step;
+scrubbing to a dropped frame shows the nearest earlier one.
 
 ### Capacity warning and defaults
 
 A capacity warning appears beside the simulation controls even when Diagnostics
-is collapsed. At full capacity smoke may be cut off: increase **Sparse Block
-Capacity** or lower **Resolution**, then restart. A full-capacity warning remains
+is collapsed. At full capacity smoke may be cut off: increase **VRAM**
+(Simulation Memory) or lower **Resolution**, then restart. A full-capacity warning remains
 for that run because freeing blocks later does not recover missing smoke. A new
 run or Delete clears it. Diagnostics sits below Advanced on the panel's darker background;
 its exact appearance follows your Blender theme.

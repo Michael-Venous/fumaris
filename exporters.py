@@ -82,6 +82,18 @@ def simulation_memory_mb(props):
     return float(props.simulation_memory) * 1024.0
 
 
+def _preview_cache_mode():
+    from .utils import get_addon_preferences
+    return getattr(get_addon_preferences(), "preview_cache_mode", "BALANCED")
+
+
+def _preview_cache_budget_mb():
+    """Preview Cache RAM (preferences) in MB; 0 lets the bridge choose."""
+    from .utils import get_addon_preferences
+    prefs = get_addon_preferences()
+    return max(0.0, float(getattr(prefs, "preview_cache_memory_gb", 0.0) or 0.0)) * 1024.0
+
+
 def build_session(
     context,
     start_frame=None,
@@ -117,6 +129,14 @@ def build_session(
                    _VDB_WRITERS.get(getattr(domain.fumaris, "vdb_writers", "BALANCED"), (6, 0)))),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
+        # Preview cache: a live preview keeps its frames for scrubbing.
+        "preview_cache": bool(preview_enabled and not write_vdb) and _preview_cache_mode() != "OFF",
+        "preview_cache_every_frame": _preview_cache_mode() == "EVERY",
+        "preview_cache_budget_mb": _preview_cache_budget_mb(),
+        # Velocity compresses poorly: kept only for velocity export and the
+        # velocity-based preview views.
+        "preview_cache_velocity": bool(getattr(domain.fumaris, "export_velocity_vdb", False)
+                                       or getattr(domain.fumaris, "preview_field_view", "look") in {"speed", "expansion"}),
         "flow_profile_enabled": os.environ.get("FUMARIS_FLOW_PROFILE", "").strip().lower()
         in {"1", "true", "yes", "on"},
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),

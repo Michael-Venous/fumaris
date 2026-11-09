@@ -31,6 +31,11 @@ Removed). This is a beta: please report scenes that look wrong.
 - **Scatter Glow**: fire light spreads into the smoke around it, with Glow
   Spread (a long, soft falloff) and Glow Shadowing (dense outer billows stay
   dark while crevices next to the flames glow).
+- **Preview cache**: the live preview keeps every frame it simulates
+  (compressed, full detail), so a paused preview scrubs and plays them back
+  with the live camera and look, and **Export Cache to VDB** writes them as a
+  version that imports, renders and compares like a bake. Replaces Bake on
+  Preview. The preview now pauses at the end of its range.
 - **Simulation Memory** replaces Sparse Block Capacity: set GB (or Auto, 80%
   of free GPU memory); it is allocated up front, so GPU memory stays flat.
 
@@ -231,14 +236,14 @@ Removed). This is a beta: please report scenes that look wrong.
   here, sources keep their Presets menu): every cache slot is a version, listed
   with its frames, size and a note; click one to make it current. Show another
   slot as B beside the current bake (or instead of it), swap them, list the
-  settings that differ, or take B's settings. Keep a preview recording or a
-  single frame as a version of its own. Snapshot the viewport (live preview
+  settings that differ, or take B's settings. Keep a single frame, or a
+  paused preview's cache, as a version of its own. Snapshot the viewport (live preview
   included) and put two snapshots side by side. Swap between two presets, or a
   preset and your unsaved settings, with one click.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
-- Transport status (Live / Recorded frames) and **Scrub Recording**.
-- **Preview While Baking** (next to Bake on Preview): watch the live preview
+- Transport status (Live / Cached / Baked frames).
+- **Preview While Baking**: watch the live preview
   while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving
   domain, colliders and memory (Simulation Speed and Trace Steps first, then
@@ -267,6 +272,7 @@ within about 0.1 s and burning makes the rest of the heat; Expansion 0.2
 
 ### Removed
 
+Bake on Preview and Scrub Recording (the preview cache replaces them),
 Classic combustion and the Burn look, Upres, Small Sparse Blocks, Sparse
 Block Capacity, Ray Steps (Step Size), the Adaptive toggle (Cells per Step 0),
 Shadow Min Light and Light Scattering, the per-cell Expansion, and the

@@ -648,11 +648,6 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
-    bake_on_preview: BoolProperty(
-        name="Bake on Preview",
-        description="Record VDB frames while previewing and import the recorded sequence when paused or stopped. Uses preview resolution and adds export time and disk usage. Enable before Play",
-        default=False,
-    )
 
 
     simulation_memory: FloatProperty(

@@ -561,6 +561,31 @@ def _draw_fire_look(fire, props):
     glow.prop(props, key["glow_shadowing"], text="Shadowing")
 
 
+def _draw_preview_cache_status(layout, scene, job, paused):
+    """Preview cache: what can be scrubbed, what is shown, an export's result."""
+    from .compare import preview_cache
+    cache = preview_cache(job)
+    if getattr(job, "_export_pending", None):
+        layout.label(text="Writing the preview cache to VDB…", icon="TIME")
+    report = getattr(job, "_export_report", None)
+    if report and not getattr(job, "_export_pending", None):
+        frames, slot, _first, _last = report
+        layout.label(text=f"Exported {frames} frames to version '{slot}'", icon="CHECKMARK")
+    if not cache.get("frames"):
+        return
+    first, last = cache["first"], cache["last"]
+    size = cache.get("bytes", 0)
+    size_text = f"{size / 1e9:.1f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
+    live = getattr(job, "_live_frame", None)
+    if paused and live is not None and first <= scene.frame_current < live:
+        shown = cache.get("shown", -1)
+        layout.label(text=f"Showing cached frame {shown if shown >= 0 else scene.frame_current} (live {live})",
+                     icon="SEQUENCE")
+    elif paused and getattr(job, "_loop_reset_pending", False):
+        layout.label(text="At the end: Resume starts over", icon="INFO")
+    layout.label(text=f"Cache {first}–{last} · {size_text}", icon="DISK_DRIVE")
+
+
 def _draw_domain(layout, scene, props):
     job = active_job()
     mode = active_mode()
@@ -603,7 +628,7 @@ def _draw_domain(layout, scene, props):
         controls.separator(factor=0.6)
         header = controls.row(align=True)
         header.label(text="Preview Controls")
-        if is_previewing:
+        if is_previewing and not _NARROW:
             header.label(text="Viewport preview approximates the Cycles render")
         preview = controls.row(align=True)
         play = preview.row(align=True)
@@ -617,15 +642,17 @@ def _draw_domain(layout, scene, props):
             text="Resume" if is_preview_paused else "Pause",
         )
         preview_stop = preview.row(align=True)
-        # A preview that is still starting (or paused, or finishing a recording) can always be stopped.
+        # A preview that is still starting (or paused) can always be stopped.
         preview_stop.enabled = job is not None and not is_baking
         preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
         controls.separator(factor=0.5)
         options = controls.row(align=True)
         record = _pair(options)
-        record.enabled = mode is None
-        record.prop(props, "bake_on_preview")
-        record.prop(props, "preview_bake")
+        export = record.row(align=True)
+        export.operator("fumaris.preview_cache_export", text="Export Cache to VDB", icon="EXPORT")
+        bake_preview = record.row(align=True)
+        bake_preview.enabled = mode is None
+        bake_preview.prop(props, "preview_bake")
         controls.separator(factor=0.5)
         # Keep transport rows together; all status text lives below their options.
         status = controls.column(align=True)
@@ -649,20 +676,10 @@ def _draw_domain(layout, scene, props):
             if completed:
                 # Why Play is greyed out.
                 status.label(text="Delete the bake or pick a new cache slot to preview again")
-        elif is_previewing and not getattr(job, "_recording_enabled", False):
+        elif is_previewing:
             status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                          icon="PAUSE" if is_preview_paused else "PLAY")
-        if is_previewing and getattr(job, "_recording_enabled", False):
-            if getattr(job, "_recording_flush_pending", False) or getattr(job, "_recording_stop_requested", False):
-                status.label(text="Finishing recorded frames…", icon="TIME")
-            elif getattr(job, "_recording_showing_cache", False):
-                first = getattr(job, "_progress_start_frame", 1)
-                last = getattr(job, "_recording_committed_end", -1)
-                status.label(text=f"Recorded frames {first}–{last} · Paused", icon="CHECKMARK")
-                if getattr(job, "_recording_at_end", False):
-                    status.label(text="Resume starts a new recording")
-            else:
-                status.label(text="Recording preview to VDB", icon="REC")
+            _draw_preview_cache_status(status, scene, job, is_preview_paused)
         domain = props.id_data
         if not domain.visible_get(view_layer=bpy.context.view_layer):
             status.label(text="Domain hidden: simulation can still run", icon="INFO")

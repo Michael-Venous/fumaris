@@ -22,7 +22,6 @@ from .cache import (
     apply_settings_snapshot,
     is_protected,
     next_slot_name,
-    owned_preview_takes,
     read_settings_snapshot,
     write_settings_snapshot,
 )
@@ -217,10 +216,9 @@ def list_versions(domain, *, fresh=False):
                 continue
             size += stat.st_size
             modified = max(modified, stat.st_mtime)
-        takes = sum(1 for _take in owned_preview_takes(path))
         images = snapshots(path)
         protected = is_protected(path)
-        if path != current and not (files or takes or images or protected):
+        if path != current and not (files or images or protected):
             continue
         versions.append({
             "name": name,
@@ -230,7 +228,6 @@ def list_versions(domain, *, fresh=False):
             "last": _frame_number(files[-1], prefix) if files else None,
             "bytes": size,
             "modified": modified,
-            "takes": takes,
             "snapshots": len(images),
             "protected": protected,
             "note": read_note(path),
@@ -468,8 +465,7 @@ def _new_version(domain, base):
 
     def taken(slot):
         directory = cache_slot_directory(domain, slot)
-        return bool(is_protected(directory) or _frame_files(directory, prefix)
-                    or os.path.isdir(os.path.join(directory, "preview_takes")))
+        return bool(is_protected(directory) or _frame_files(directory, prefix))
 
     slot = base if not taken(base) else next_slot_name(base, taken)
     directory = cache_slot_directory(domain, slot)
@@ -484,20 +480,6 @@ def _participants_for_snapshot(domain):
     return [obj for obj in bpy.context.scene.objects
             if getattr(obj, "fumaris", None) is not None and obj != domain
             and obj.fumaris.smoke_object_type not in ("none", "domain")]
-
-
-def latest_take(directory):
-    """(take folder, its committed frame files) of the newest recording with frames."""
-    best = None
-    for take, manifest in owned_preview_takes(directory):
-        prefix = manifest["session"]["output_prefix"]
-        files = _frame_files(take, prefix)
-        last = manifest.get("committed_last_frame")
-        if isinstance(last, int) and last >= 0:
-            files = [path for path in files if _frame_number(path, prefix) <= last]
-        if files:
-            best = (take, prefix, files)
-    return best
 
 
 def keep_frames(domain, files, source_prefix, base, note):
@@ -707,8 +689,6 @@ class FUMARIS_OT_version_use(_DomainOperator, Operator):
                 parts = [f"Cache slot '{version['name']}': {version_summary(version, size=True)}"]
                 if version["modified"]:
                     parts.append("Written " + time.strftime("%Y-%m-%d %H:%M", time.localtime(version["modified"])))
-                if version["takes"]:
-                    parts.append(f"{version['takes']} preview recording(s)")
                 if version["snapshots"]:
                     parts.append(f"{version['snapshots']} snapshot(s)")
                 if version["note"]:
@@ -902,55 +882,85 @@ class FUMARIS_OT_version_note(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_version_keep_recording(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_keep_recording"
-    bl_label = "Keep Recording"
-    bl_description = "Keep the latest preview recording (Bake on Preview) as a cache slot of its own, so it can be compared, imported and rendered like a bake. Files are linked, not copied, where the disk allows"
+def preview_cache(job=None):
+    """The live preview's cache stats ({} without a preview or cache)."""
+    job = job if job is not None else active_job()
+    if job is None or active_mode() != "previewing":
+        return {}
+    cache = getattr(job, "_preview_cache", None) or {}
+    try:
+        return {key: int(value) for key, value in cache.items()}
+    except (TypeError, ValueError):
+        return {}
+
+
+def start_cache_export(context, domain, base, first=None, last=None):
+    """Write the paused preview's cache (or frames first-last of it) into a
+    new cache slot; returns its name. The preview reports when it is done."""
+    job = active_job()
+    cache = preview_cache(job)
+    first = cache["first"] if first is None else first
+    last = cache["last"] if last is None else last
+    slot, directory = _new_version(domain, base)
+    job.export_cache(context, directory, slot, first, last)
+    return slot
+
+
+class FUMARIS_OT_preview_cache_export(_DomainOperator, Operator):
+    bl_idname = "fumaris.preview_cache_export"
+    bl_label = "Export Cache to VDB"
+    bl_description = "Write the frames the paused live preview has cached as VDB files, into a new cache slot (a version): they import, render and compare like a bake. Uses the Output settings (grids, resolutions, Glow), at the preview's resolution"
 
     @classmethod
     def poll(cls, context):
         domain = _domain(context)
-        if domain is None or active_mode() == "baking":
-            return False
         job = active_job()
-        return job is None or bool(getattr(job, "_pause_requested", False))
+        if domain is None or job is None or active_mode() != "previewing":
+            cls.poll_message_set("Play a live preview, then pause it")
+            return False
+        if not getattr(job, "_pause_requested", False):
+            cls.poll_message_set("Pause the live preview first")
+            return False
+        if getattr(job, "_export_pending", None):
+            cls.poll_message_set("Already writing the cache")
+            return False
+        if preview_cache(job).get("frames", 0) <= 0:
+            cls.poll_message_set("Nothing cached yet")
+            return False
+        return True
 
     def execute(self, context):
         domain = _domain(context)
-        found = latest_take(output_directory_for_object(domain))
-        if found is None:
-            self.report({"ERROR"}, "No preview recording with frames in this slot (turn on Bake on Preview and play)")
-            return {"CANCELLED"}
-        take, prefix, files = found
-        base = f"{domain.fumaris.cache_slot.strip() or 'main'}_rec"
-        slot = keep_frames(domain, files, prefix, base,
-                           "recording")
-        self.report({"INFO"}, f"Kept {len(files)} recorded frames as cache slot '{slot}'")
+        cache = preview_cache()
+        base = f"{domain.fumaris.cache_slot.strip() or 'main'}_preview"
+        slot = start_cache_export(context, domain, base)
+        self.report({"INFO"}, f"Writing cached frames {cache['first']}-{cache['last']} to cache slot '{slot}'")
         return {"FINISHED"}
 
 
 class FUMARIS_OT_version_keep_frame(_DomainOperator, Operator):
     bl_idname = "fumaris.version_keep_frame"
     bl_label = "Keep Frame"
-    bl_description = "Keep this frame of the current bake (or of the latest preview recording) as a one-frame cache slot, to compare stills"
+    bl_description = "Keep this frame of the current bake (or of the paused live preview's cache) as a one-frame cache slot, to compare stills"
 
     def execute(self, context):
         domain = _domain(context)
         frame = context.scene.frame_current
+        base = f"{domain.fumaris.cache_slot.strip() or 'main'}_f{frame}"
+        cache = preview_cache()
+        job = active_job()
+        if (cache.get("frames", 0) > 0 and getattr(job, "_pause_requested", False)
+                and not getattr(job, "_export_pending", None) and cache["first"] <= frame <= cache["last"]):
+            slot = start_cache_export(context, domain, base, frame, frame)
+            self.report({"INFO"}, f"Writing frame {frame} of the preview cache to cache slot '{slot}'")
+            return {"FINISHED"}
         directory = output_directory_for_object(domain)
         prefix = _prefix(domain.fumaris)
         files = [path for path in _frame_files(directory, prefix) if _frame_number(path, prefix) == frame]
-        source_prefix = prefix
         if not files:
-            found = latest_take(directory)
-            if found:
-                take, source_prefix, take_files = found
-                files = [path for path in take_files if _frame_number(path, source_prefix) == frame]
-        if not files:
-            self.report({"ERROR"}, f"Frame {frame} is not baked or recorded in this slot")
+            self.report({"ERROR"}, f"Frame {frame} is neither baked in this slot nor in a paused preview's cache")
             return {"CANCELLED"}
-        base = f"{domain.fumaris.cache_slot.strip() or 'main'}_f{frame}"
-        slot = keep_frames(domain, files, source_prefix, base, f"frame {frame} of {domain.fumaris.cache_slot}")
+        slot = keep_frames(domain, files, prefix, base, f"frame {frame} of {domain.fumaris.cache_slot}")
         self.report({"INFO"}, f"Kept frame {frame} as cache slot '{slot}'")
         return {"FINISHED"}
 
@@ -1106,7 +1116,7 @@ def draw_compare(layout, domain, props):
     new.enabled = idle
     new.operator("fumaris.cache_slot_new", text="", icon="ADD")
     header.operator("fumaris.version_keep_frame", text="", icon="IMAGE_PLANE")
-    header.operator("fumaris.version_keep_recording", text="", icon="REC")
+    header.operator("fumaris.preview_cache_export", text="", icon="EXPORT")
     versions = list_versions(domain)
     current = os.path.basename(_current_directory(domain) or "")
     if not versions:
@@ -1157,7 +1167,7 @@ CLASSES = (
     FUMARIS_OT_compare_diff,
     FUMARIS_OT_compare_use_b_settings,
     FUMARIS_OT_version_note,
-    FUMARIS_OT_version_keep_recording,
+    FUMARIS_OT_preview_cache_export,
     FUMARIS_OT_version_keep_frame,
     FUMARIS_OT_snapshot,
     FUMARIS_OT_compare_snapshots,

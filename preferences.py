@@ -1,5 +1,5 @@
 import bpy
-from bpy.props import StringProperty, EnumProperty
+from bpy.props import EnumProperty, FloatProperty, StringProperty
 
 from .utils import runtime_validation_error, executable_path, process_environment
 from .devices import discover_devices
@@ -77,6 +77,23 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         description="GPU for new Preview and Bake jobs; saved in Blender preferences",
     )
 
+    preview_cache_mode: EnumProperty(
+        name="Preview Cache",
+        description="Whether the live preview keeps its frames, so a paused preview can scrub, play back and export them",
+        items=(
+            ("BALANCED", "Balanced", "Every frame of small and medium scenes; very large ones (over ~0.4 GB a frame) every few frames, so the preview stays fast. Copying a frame costs about 40 ms of GPU time per GB"),
+            ("EVERY", "Every Frame", "Every frame, whatever the cost: very large scenes preview slower"),
+            ("OFF", "Off", "No cache: nothing to scrub or export"),
+        ),
+        default="BALANCED",
+    )
+
+    preview_cache_memory_gb: FloatProperty(
+        name="Preview Cache RAM",
+        description="System memory the live preview keeps its frames in, so a paused preview can scrub and play back what it simulated (compressed, full detail). 0 uses a quarter of the RAM, 1 to 16 GB. When full, every other older frame is dropped",
+        default=0.0, min=0.0, soft_max=64.0, step=100, precision=1, unit="NONE",
+    )
+
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "executable_path")
@@ -85,6 +102,11 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         row.prop(self, "simulation_gpu")
         row.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
         box.label(text="Applies to the next Preview or Bake. Save Preferences to keep this choice.")
+        cache = layout.row(align=True)
+        cache.prop(self, "preview_cache_mode")
+        memory = cache.row(align=True)
+        memory.enabled = self.preview_cache_mode != "OFF"
+        memory.prop(self, "preview_cache_memory_gb", text="RAM (GB, 0 = Auto)")
         if not _devices:
             box.label(text="Refresh GPUs to list available devices", icon='INFO')
         if self.gpu_device_uuid and _devices and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):

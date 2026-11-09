@@ -574,16 +574,29 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     if not cache.get("frames"):
         return
     first, last = cache["first"], cache["last"]
-    size = cache.get("bytes", 0)
-    size_text = f"{size / 1e9:.1f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
+
+    def size_text(size):
+        return f"{size / 1e9:.1f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
+
     live = getattr(job, "_live_frame", None)
     if paused and live is not None and first <= scene.frame_current < live:
         shown = cache.get("shown", -1)
         layout.label(text=f"Showing cached frame {shown if shown >= 0 else scene.frame_current} (live {live})",
                      icon="SEQUENCE")
+    elif paused and live is not None and scene.frame_current < first:
+        layout.label(text=f"Frame {scene.frame_current} is no longer cached (oldest kept: {first})", icon="INFO")
     elif paused and getattr(job, "_loop_reset_pending", False):
         layout.label(text="At the end: Resume starts over", icon="INFO")
-    layout.label(text=f"Cache {first}–{last} · {size_text}", icon="DISK_DRIVE")
+    frames = cache["frames"]
+    every = "" if frames >= last - first + 1 else f" ({frames} frames)"
+    layout.label(text=f"Cache {first}–{last}{every} · {size_text(cache.get('bytes', 0))} of "
+                      f"{size_text(cache.get('budget', 0))}", icon="DISK_DRIVE")
+    if cache.get("low_memory"):
+        row = layout.row()
+        row.alert = True
+        row.label(text="System RAM is low: the cache keeps fewer frames", icon="ERROR")
+    elif cache.get("dropped"):
+        layout.label(text="Cache full: older frames dropped (Preferences > Preview Cache RAM)", icon="INFO")
 
 
 def _draw_domain(layout, scene, props):

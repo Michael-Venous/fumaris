@@ -986,10 +986,15 @@ PCIe 4.0 x16 link and several times that on a narrower one (a card in an x4
 slot). **Balanced** (the default) measures the link and spends about a fifth of
 the frame time on the copy, spread evenly over the frames that follow a kept
 one, so playback stays smooth: small scenes keep most frames, large ones every
-few. **Every Frame** always keeps every frame, whatever the cost. RAM sets how much
-memory the cache may use (0: a quarter of the RAM, 1 to 16 GB). When it is full, every other frame of the
-older half is dropped, so the whole range stays reachable at a coarser step;
-scrubbing to a dropped frame shows the nearest earlier one.
+few. **Every Frame** always keeps every frame, whatever the cost. RAM sets the most
+memory the cache may use (0: a quarter of the RAM, from 1 to 16 GB; set more to
+keep more frames, for example 20 on a 32 GB machine). When it is full the oldest
+frames are dropped, so the cache holds the most recent part of the preview; the
+status line shows the range it still holds and its size against the limit.
+Whatever RAM is set to, the cache also drops its oldest frames when the system
+runs short of free memory, leaving 2 GB or an eighth of the RAM (whichever is
+more) for Blender and other programs; the status line then says System RAM is
+low. Frames Balanced skipped show the nearest earlier cached frame.
 
 ### Capacity warning and defaults
 

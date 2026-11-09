@@ -89,7 +89,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     preview_cache_memory_gb: FloatProperty(
         name="Preview Cache RAM",
-        description="System memory the live preview keeps its frames in, so a paused preview can scrub and play back what it simulated (compressed, full detail). 0 uses a quarter of the RAM, 1 to 16 GB. When full, every other older frame is dropped",
+        description="Most system memory a cached live preview keeps its frames in (compressed, full detail). 0 uses a quarter of the RAM, from 1 to 16 GB. When it is full the oldest frames are dropped, so the cache holds the most recent part of the preview. Whatever this is set to, the cache also drops its oldest frames when the system is short of free memory (it leaves 2 GB or an eighth of the RAM, whichever is more, free)",
         default=0.0, min=0.0, soft_max=64.0, step=100, precision=1, unit="NONE",
     )
 

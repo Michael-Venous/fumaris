@@ -4,6 +4,7 @@ import bpy
 from bpy.app.handlers import persistent
 from bpy.props import (
     BoolProperty,
+    CollectionProperty,
     EnumProperty,
     FloatProperty,
     FloatVectorProperty,
@@ -13,6 +14,7 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
+from .detail_stack import FumarisDetailLayer, STACK_VERSION as DETAIL_STACK_VERSION, migrate as _migrate_detail_stack
 from .memory_auto import auto_toggled
 from .utils import FLAME_VALUE_KEYS
 
@@ -92,6 +94,9 @@ def _object_type_updated(self, _context):
     if (self.smoke_object_type == "domain" and not self.use_scene_frame_range
             and self.sim_start_frame == 1 and self.sim_end_frame == 250):
         self.use_scene_frame_range = True
+    if self.smoke_object_type == "domain" and self.detail_stack_version == 0:
+        # New domains start with the Detail & Shaping stack (nothing to migrate).
+        self.detail_stack_version = DETAIL_STACK_VERSION
     if self.smoke_object_type == "domain" and self.combustion_version == 0:
         self.combustion_version = COMBUSTION_VERSION
         # Defaults pass 2026-11-07 (user, from the Cube.002 setup): fire that
@@ -2164,6 +2169,13 @@ class FumarisSettings(PropertyGroup):
         options={"HIDDEN"},
     )
 
+    # Detail & Shaping stack (detail_stack.py): replaces Turbulence Detail,
+    # Control Ramps and Soot Burn-off, whose properties remain only as inputs.
+    detail_layers: CollectionProperty(type=FumarisDetailLayer)
+    detail_layers_index: IntProperty(name="Active Layer", default=0)
+    detail_stack_version: IntProperty(default=0, options={"HIDDEN"})
+    show_domain_detail_stack: BoolProperty(name="Detail & Shaping", default=False)
+
     combustion_version: IntProperty(
         default=0,
         options={"HIDDEN"},
@@ -2377,6 +2389,9 @@ def _migrate_temperature_mapping():
                 elif halved:
                     props.export_velocity_resolution = "QUARTER"
                 del props["export_velocity_half_res"]
+        if props is not None and props.smoke_object_type == "domain":
+            # 2.0: Turbulence Detail, Control Ramps and Soot Burn-off became layers.
+            _migrate_detail_stack(props)
         if (props is not None and props.smoke_object_type == "domain"
                 and props.substep_settings_version < SUBSTEP_SETTINGS_VERSION):
             # The Adaptive toggle became Cells per Step 0.
@@ -2430,6 +2445,9 @@ def register():
         bpy.utils.unregister_class(FumarisSettings)
     except RuntimeError:
         pass
+    from . import detail_stack
+    detail_stack.unregister_properties()
+    detail_stack.register_properties()
     bpy.utils.register_class(FumarisSettings)
     bpy.types.Object.fumaris = PointerProperty(type=FumarisSettings)
     _remove_handler_named(
@@ -2451,3 +2469,5 @@ def unregister():
         bpy.utils.unregister_class(FumarisSettings)
     except RuntimeError:
         pass
+    from . import detail_stack
+    detail_stack.unregister_properties()

@@ -14,6 +14,7 @@ try:
 except ImportError:
     np = None
 
+from . import detail_stack
 from .diagnostics import console_log
 from .memory_auto import AUTO_FRACTION
 from .collection_export import collection_mesh_arrays, collection_point_arrays
@@ -398,16 +399,9 @@ def _domain_state(props, resolution_scale=1.0):
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
         "vorticity": props.vorticity,
         "vorticity_mask": props.vorticity_mask,
-        "disturb": props.disturb,
-        "disturb_size": props.disturb_size,
-        "disturb_octaves": int(getattr(props, "disturb_detail", 1)),
-        "shred": props.shred,
-        "grain": props.grain,
-        "grain_size": props.grain_size,
-        "grain_edge": props.grain_edge,
-        "grain_min_speed": props.grain_min_speed,
-        "grain_layers": int(props.grain_layers),
-        "disturb_min_speed": props.disturb_min_speed,
+        # Detail & Shaping stack (detail_stack.py); the bridge reads the old
+        # single Disturb/Grain/ramp keys only when this is absent.
+        "detail_layers": detail_stack.export_layers(props),
         "wisp_cooling": props.wisp_cooling,
         "fuel_threshold": props.fuel_threshold,
         "advection_reflection": props.advection_reflection,
@@ -415,13 +409,7 @@ def _domain_state(props, resolution_scale=1.0):
         "soot_radiation": props.soot_radiation,
         "temperature_diffusion": props.temperature_diffusion,
         "trace_steps": int(getattr(props, "trace_steps", 0)),
-        "soot_burn_off": float(getattr(props, "soot_burn_off", 0.0)),
-        "soot_burn_needs_air": bool(getattr(props, "soot_burn_needs_air", False)),
         "collider_face_flux": bool(getattr(props, "collider_face_flux", False)),
-        **{key: value for name in ("vorticity", "disturb", "grain", "dissipation", "cooling")
-           for key, value in ((f"{name}_scale_by", getattr(props, f"{name}_scale_by", "uniform")),
-                              (f"{name}_scale_range", list(getattr(props, f"{name}_scale_range", (0.0, 1.0)))),
-                              (f"{name}_scale_values", list(getattr(props, f"{name}_scale_values", (1.0, 1.0)))))},
         "oxygen_limit": props.oxygen_limit,
         "oxygen_field": bool(props.oxygen_field),
         "oxygen_use": float(props.oxygen_use),

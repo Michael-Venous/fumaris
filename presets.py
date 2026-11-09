@@ -12,6 +12,7 @@ import re
 
 import bpy
 
+from . import detail_stack
 from .cache import _rna_values
 
 # Settings that belong to sources rather than the domain (one property group
@@ -61,9 +62,12 @@ def _safe(name):
 def save_preset(props, name):
     role = preset_role(props)
     values = {key: value for key, value in _rna_values(props).items() if _belongs(key, role)}
+    data = {"version": 2, "role": role, "settings": values}
+    if role == "domain":
+        data["detail_layers"] = detail_stack.to_list(props)
     path = os.path.join(presets_directory(role, create=True), _safe(name) + ".json")
     with open(path, "w", encoding="utf-8") as stream:
-        json.dump({"version": 2, "role": role, "settings": values}, stream, indent=1, sort_keys=True)
+        json.dump(data, stream, indent=1, sort_keys=True)
     return path, len(values)
 
 
@@ -103,6 +107,14 @@ def apply_preset(props, name):
             # Older preset: a dynamic enum has no default value to set; reset it.
             props.property_unset(key)
             applied += 1
+    if role == "domain":
+        # The Detail & Shaping stack; a preset from before it rebuilds the stack
+        # from its Disturb, Grain, ramp and Soot Burn-off settings.
+        layers = data["detail_layers"] if "detail_layers" in data else detail_stack.legacy_layers(
+            {key: settings[key] for key in detail_stack.LEGACY_DEFAULTS if key in settings})
+        detail_stack.from_list(props, layers)
+        detail_stack.reset_legacy(props)
+        applied += 1
     return applied
 
 

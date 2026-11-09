@@ -2,6 +2,7 @@ import bpy
 import textwrap
 from bpy.types import Panel
 
+from . import detail_stack
 from .runtime import active_job, active_mode
 from . import diagnostics
 from .exporters import simulation_memory_mb
@@ -852,47 +853,11 @@ def _draw_domain(layout, scene, props):
     mask.prop(props, "vorticity_mask", text="")
     behavior.separator()
 
-    turbulence, turbulence_open = _nested_foldout(behavior, props, "show_domain_turbulence", "Turbulence Detail")
-    if turbulence_open:
-        turbulence.label(text="Disturb")
-        disturb_row = turbulence.row(align=True)
-        disturb_row.prop(props, "disturb")
-        size = disturb_row.row(align=True)
-        size.active = props.disturb > 0.0
-        size.prop(props, "disturb_size", text="Size")
-        detail = turbulence.row(align=True)
-        detail.active = props.disturb > 0.0
-        detail.prop(props, "disturb_detail", text="Detail")
-        detail.prop(props, "disturb_min_speed", text="Min Speed")
-        turbulence.separator()
-        turbulence.label(text="Grain")
-        grain_row = turbulence.row(align=True)
-        grain_row.prop(props, "grain")
-        grain_size = grain_row.row(align=True)
-        grain_size.active = props.grain > 0.0
-        grain_size.prop(props, "grain_size", text="Size")
-        grain_edge = turbulence.row(align=True)
-        grain_edge.active = props.grain > 0.0
-        grain_edge.prop(props, "grain_edge", text="Edges Only")
-        grain_extra = turbulence.row(align=True)
-        grain_extra.active = props.grain > 0.0
-        grain_extra.prop(props, "grain_min_speed", text="Min Speed")
-        grain_extra.prop(props, "grain_layers", text="Layers")
-        turbulence.separator()
-        turbulence.prop(props, "shred")
-
-    ramps, ramps_open = _nested_foldout(behavior, props, "show_domain_control_ramps", "Control Ramps")
-    if ramps_open:
-        # One row per force or rate: what scales it, over which range, by how much.
-        for name, label in (("vorticity", "Vorticity"), ("disturb", "Disturb"), ("grain", "Grain"),
-                            ("dissipation", "Dissipation"), ("cooling", "Cooling")):
-            split = ramps.split(factor=0.3, align=True)
-            split.label(text=label)
-            right = split.row(align=True)
-            right.prop(props, f"{name}_scale_by", text="")
-            if getattr(props, f"{name}_scale_by") != "uniform":
-                right.prop(props, f"{name}_scale_range", text="")
-                right.prop(props, f"{name}_scale_values", text="")
+    # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
+    # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
+    stack, stack_open = _nested_foldout(behavior, props, "show_domain_detail_stack", "Detail & Shaping")
+    if stack_open:
+        detail_stack.draw(stack, props.id_data)
 
     combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
     if combustion_open:
@@ -913,11 +878,6 @@ def _draw_domain(layout, scene, props):
         air = combustion.row(align=True)
         air.prop(props, "oxygen_limit")
         air.prop(props, "soot_radiation")
-        burnoff = combustion.row(align=True)
-        burnoff.prop(props, "soot_burn_off")
-        needs_air = burnoff.row(align=True)
-        needs_air.active = props.soot_burn_off > 0.0
-        needs_air.prop(props, "soot_burn_needs_air", toggle=True)
         oxygen = combustion.row(align=True)
         oxygen.active = props.oxygen_limit > 0.0
         oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)

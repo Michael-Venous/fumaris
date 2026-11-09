@@ -83,9 +83,15 @@ replaced (see Removed). This is a beta: please report scenes that look wrong.
 - **Vorticity** is weakened in proportion below Resolution 512, so coarse
   grids rise and spread like fine ones, and it no longer keeps pumping energy
   into the gas after a fire dies. **Vorticity Mask** chooses where it acts.
-- **Turbulence Detail**: Disturb (with Detail octaves and Min Speed), Grain
+- **Detail & Shaping** (Smoke Behavior): a stack of layers, applied in order.
+  Disturb (swirls of a set size, with Detail octaves and Min Speed), Grain
   (blocky kicks that break up fast fronts; Size, Edges Only, Min Speed,
-  Layers) and Shred. Clear air skips their noise.
+  Layers) and Shred add motion; Vorticity, Dissipation and Cooling layers
+  scale those rates per cell; Soot Burn-off thins smoke where gas is hot.
+  Stack several (a large and a fine Disturb), and give each up to four
+  masks: Temperature, Speed, Smoke, Fuel, Burn, Air Left or Noise, combined
+  by Multiply, Minimum, Maximum, Add, Subtract or Replace. Clear air skips
+  the noise.
 - **Preserve Turbulence** (Advanced, advection–reflection) keeps more swirling
   energy; off for new domains.
 - **Smoke Detail** (Advanced): Sharp carries smoke with cubic interpolation
@@ -287,6 +293,9 @@ changed, saved scenes simulate differently:
   look; generated materials rebuild when opened.
 - New domains start with 1 Sub-Step, and new emitters Add what they emit;
   saved domains and emitters keep their values.
+- Turbulence Detail, Control Ramps and Soot Burn-off became Detail & Shaping
+  layers: saved scenes, presets and takes convert on load and simulate the
+  same (to within rounding).
 
 ## 1.3.1 — 2026-10-26
 

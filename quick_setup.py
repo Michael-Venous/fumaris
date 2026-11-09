@@ -7,6 +7,7 @@ import bpy
 from bpy.props import EnumProperty
 from mathutils import Vector
 
+from . import detail_stack
 from .runtime import active_job
 
 
@@ -373,6 +374,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
             # Disturb's size is in world units: scale it to the sources so
             # large explosions get large billows (0.1 m did nothing at 20 m).
             props.disturb_size = max(0.05, preset["disturb_size_per_size"] * max(maximum - minimum))
+        # Presets name Disturb by its old settings: it becomes a Detail & Shaping layer.
+        detail_stack.adopt_legacy(props, replace=True)
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:

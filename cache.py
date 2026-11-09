@@ -311,11 +311,13 @@ def _rna_values(props):
 
 def write_settings_snapshot(directory, domain, participants=()):
     """Write the domain's and its participants' settings for this bake."""
+    from . import detail_stack
     data = {
         "version": 1,
         "written": time.strftime("%Y-%m-%d %H:%M:%S"),
         "domain": domain.name,
         "settings": _rna_values(domain.fumaris),
+        "detail_layers": detail_stack.to_list(domain.fumaris),
         "participants": {},
     }
     for participant in participants:
@@ -380,7 +382,17 @@ def apply_settings_snapshot(domain, data, objects):
 
     Returns (changed settings, participants restored, participants missing).
     """
+    from . import detail_stack
     changed = _apply_values(domain.fumaris, data.get("settings", {}))
+    # The Detail & Shaping stack; takes from before it rebuild it from their
+    # Disturb, Grain, ramp and Soot Burn-off settings.
+    if "detail_layers" in data:
+        if detail_stack.to_list(domain.fumaris) != data["detail_layers"]:
+            detail_stack.from_list(domain.fumaris, data["detail_layers"])
+            changed += 1
+        detail_stack.reset_legacy(domain.fumaris)
+    else:
+        changed += detail_stack.adopt_legacy(domain.fumaris, replace=True)
     restored, missing = 0, []
     for name, values in data.get("participants", {}).items():
         obj = objects.get(name)

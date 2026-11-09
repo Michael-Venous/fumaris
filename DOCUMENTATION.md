@@ -978,11 +978,14 @@ at full detail (exactly what the preview drew). While the preview is paused:
   cached frame.
 - **Stop** releases the cache with the simulation.
 
-Preferences > Preview Cache chooses how often frames are kept: **Balanced**
-(the default) keeps every frame of small and medium scenes and, for very large
-ones (over about 0.4 GB a frame), every few frames, so the preview stays fast
-(copying a frame to system memory costs about 40 ms of GPU time per GB);
-**Every Frame** always keeps every frame; **Off** keeps none. RAM sets how much
+Preferences > Preview Cache chooses how often frames are kept. Each kept frame
+is copied from the GPU to system memory, which takes about 40 ms per GB on a
+PCIe 4.0 x16 link and several times that on a narrower one (a card in an x4
+slot). **Balanced** (the default) measures the link and spends about a fifth of
+the frame time on the copy, spread evenly over the frames that follow a kept
+one, so playback stays smooth: small scenes keep most frames, large ones every
+few. **Every Frame** always keeps every frame, whatever the cost; **Off** keeps
+none. RAM sets how much
 memory the cache may use (0: a quarter of the RAM, 1 to 16 GB). When it is full, every other frame of the
 older half is dropped, so the whole range stays reachable at a coarser step;
 scrubbing to a dropped frame shows the nearest earlier one.

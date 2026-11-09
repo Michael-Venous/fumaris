@@ -81,8 +81,8 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         name="Preview Cache",
         description="Whether the live preview keeps its frames, so a paused preview can scrub, play back and export them",
         items=(
-            ("BALANCED", "Balanced", "Every frame of small and medium scenes; very large ones (over ~0.4 GB a frame) every few frames, so the preview stays fast. Copying a frame costs about 40 ms of GPU time per GB"),
-            ("EVERY", "Every Frame", "Every frame, whatever the cost: very large scenes preview slower"),
+            ("BALANCED", "Balanced", "As many frames as copying them to system memory allows in about a fifth of the frame time, spread evenly so playback stays smooth: small scenes keep most frames, large ones every few (fewer on slower PCIe links)"),
+            ("EVERY", "Every Frame", "Every frame, whatever the cost: copying a frame takes about 40 ms per GB on a PCIe 4.0 x16 link and several times that on narrower ones, so large scenes preview slower"),
             ("OFF", "Off", "No cache: nothing to scrub or export"),
         ),
         default="BALANCED",

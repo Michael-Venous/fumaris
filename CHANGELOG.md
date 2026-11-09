@@ -31,11 +31,13 @@ Removed). This is a beta: please report scenes that look wrong.
 - **Scatter Glow**: fire light spreads into the smoke around it, with Glow
   Spread (a long, soft falloff) and Glow Shadowing (dense outer billows stay
   dark while crevices next to the flames glow).
-- **Preview cache**: the live preview keeps every frame it simulates
+- **Preview cache**: the live preview keeps the frames it simulates
   (compressed, full detail), so a paused preview scrubs and plays them back
   with the live camera and look, and **Export Cache to VDB** writes them as a
   version that imports, renders and compares like a bake. Replaces Bake on
-  Preview. The preview now pauses at the end of its range.
+  Preview. The preview now pauses at the end of its range. Balanced (the
+  default) keeps as many frames as about a fifth of the frame time allows,
+  with the copy spread evenly so playback stays smooth; Every Frame keeps all.
 - **Simulation Memory** replaces Sparse Block Capacity: set GB (or Auto, 80%
   of free GPU memory); it is allocated up front, so GPU memory stays flat.
 

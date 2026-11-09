@@ -80,20 +80,38 @@ def apply_preset(props, name):
     path = os.path.join(presets_directory(role), _safe(name) + ".json")
     with open(path, encoding="utf-8") as stream:
         data = json.load(stream)
-    settings = dict(data.get("settings", {}))
+    saved = data.get("settings", {})
+    settings = dict(saved)
     for key in _rna_values(props):
         if _belongs(key, role) and key not in settings:
             settings[key] = _default(props.bl_rna.properties[key])
     applied = 0
+    retry = []
     for key, value in settings.items():
         if not _belongs(key, role) or not hasattr(props, key):
             continue
-        try:
-            setattr(props, key, set(value) if isinstance(getattr(props, key), set) else value)
+        if _set(props, key, value):
             applied += 1
-        except (TypeError, ValueError, AttributeError):
-            continue
+        else:
+            retry.append((key, value))
+    # Choices that depend on another setting (Velocity Resolution offers Full
+    # only with Full-Resolution Velocity) are accepted once it is applied.
+    for key, value in retry:
+        if _set(props, key, value):
+            applied += 1
+        elif key not in saved:
+            # Older preset: a dynamic enum has no default value to set; reset it.
+            props.property_unset(key)
+            applied += 1
     return applied
+
+
+def _set(props, key, value):
+    try:
+        setattr(props, key, set(value) if isinstance(getattr(props, key), set) else value)
+        return True
+    except (TypeError, ValueError, AttributeError):
+        return False
 
 
 def delete_preset(props, name):

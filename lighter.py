@@ -17,17 +17,73 @@ except ImportError:  # outside Blender
     openvdb = None
 
 
-def _dense(grid, vector):
-    low, high = grid.evalActiveVoxelBoundingBox()
-    if any(h < l for l, h in zip(low, high)):
-        return None, None
-    # Align to even indices so pairs of voxels map to one coarse voxel.
+# Largest dense array one grid region is copied into. A sparse frame (two
+# puffs far apart) has a huge bounding box: it is split into active regions.
+BLOCK_BYTES = 256 << 20
+
+
+def _even_box(low, high):
+    """Align to even indices so pairs of voxels map to one coarse voxel."""
     low = tuple((value // 2) * 2 for value in low)
     shape = [h - l + 1 for l, h in zip(low, high)]
-    shape = [s + (s % 2) for s in shape]
-    array = np.zeros(tuple(shape) + ((3,) if vector else ()), np.float32)
+    return low, tuple(s + (s % 2) for s in shape)
+
+
+def _active_box(grid):
+    low, high = grid.evalActiveVoxelBoundingBox()
+    if any(h < l for l, h in zip(low, high)):
+        return None
+    return _even_box(low, high)
+
+
+def _fits(box, vector):
+    return box is None or np.prod(box[1], dtype=np.float64) * 4 * (3 if vector else 1) <= BLOCK_BYTES
+
+
+def _dense(grid, vector):
+    box = _active_box(grid)
+    if box is None:
+        return None, None
+    low, shape = box
+    array = np.zeros(shape + ((3,) if vector else ()), np.float32)
     grid.copyToArray(array, ijk=low)
     return array, low
+
+
+def _regions(grid, vector):
+    """(grid, low, shape) regions covering the active voxels, each within BLOCK_BYTES.
+
+    Halves are split at even indices, so no coarse voxel spans two regions; each
+    half is a copy with the other side deactivated, shrunk to its active box.
+    """
+    stack = [(grid, _active_box(grid))]
+    while stack:
+        part, box = stack.pop()
+        if box is None:
+            continue
+        low, shape = box
+        if _fits(box, vector) or max(shape) <= 2:
+            yield part, low, shape
+            continue
+        axis = int(np.argmax(shape))
+        middle = low[axis] + shape[axis] // 2
+        # Cut on the coarsest node boundary inside the box (OpenVDB nodes span
+        # 4096, 128 and 8 voxels): a fill face through nodes allocates a plane of them.
+        for step in (4096, 128, 8, 2):
+            split = (middle // step) * step
+            if low[axis] < split < low[axis] + shape[axis]:
+                break
+        cut_low = [(l // 4096) * 4096 for l in low]
+        cut_high = [((l + s + 4095) // 4096) * 4096 - 1 for l, s in zip(low, shape)]
+        for keep_low in (True, False):
+            half = part.deepCopy()
+            other_low, other_high = list(cut_low), list(cut_high)
+            if keep_low:
+                other_low[axis] = split
+            else:
+                other_high[axis] = split - 1
+            half.fill(tuple(other_low), tuple(other_high), half.background, active=False)
+            stack.append((half, _active_box(half)))
 
 
 def _downsample(array):
@@ -51,22 +107,38 @@ def lighten_file(source, target, cull=0.01):
     grids, metadata = openvdb.readAll(source)
     density = next((g for g in grids if g.name == "density"), None)
     fine_size = density.transform.voxelSize()[0] if density is not None else None
+    density_box = _active_box(density) if density is not None else None
     mask = None
-    if density is not None:
+    if density is not None and _fits(density_box, False):
         values, low = _dense(density, False)
         if values is not None:
             coarse = _downsample(values)
             mask = (coarse >= cull, tuple(v // 2 for v in low))
-    out = []
-    for grid in grids:
+    out = {}
+    culled_density = None
+    # Density first: grids too large for one array are culled by its coarse copy.
+    for grid in sorted(grids, key=lambda g: g.name != "density"):
         vector = "Vec3" in type(grid).__name__
         size = grid.transform.voxelSize()[0]
         if fine_size is not None and size > fine_size * 1.5 and grid.name != "velocity":
-            out.append(grid)  # already coarse (glow)
+            out[id(grid)] = grid  # already coarse (glow)
+            continue
+        box = _active_box(grid)
+        if not _fits(box, vector):
+            # The single-array rules: a grid on density's voxels is culled where
+            # density is (only if their boxes match); others by their own values.
+            masked = density_box is not None and abs(size - fine_size) < 1e-6 * fine_size
+            if grid.name == "density":
+                masked = False
+            out[id(grid)] = _lighten_regions(
+                grid, vector, cull, culled_density if masked and box == density_box else None,
+                not masked and not vector and grid.name in ("density", "fuel", "flame"))
+            if grid.name == "density":
+                culled_density = out[id(grid)]
             continue
         values, low = _dense(grid, vector)
         if values is None:
-            out.append(grid)
+            out[id(grid)] = grid
             continue
         coarse = _downsample(values)
         coarse_low = tuple(v // 2 for v in low)
@@ -86,11 +158,45 @@ def lighten_file(source, target, cull=0.01):
         result.copyFromArray(np.ascontiguousarray(coarse), ijk=coarse_low,
                              tolerance=(0.0, 0.0, 0.0) if vector else 0.0)
         result.saveFloatAsHalf = True
-        out.append(result)
+        out[id(grid)] = result
+        if grid.name == "density":
+            culled_density = result
     temporary = target + ".tmp"
-    openvdb.write(temporary, grids=out, metadata=metadata)
+    openvdb.write(temporary, grids=[out[id(grid)] for grid in grids], metadata=metadata)
     os.replace(temporary, target)
     return os.path.getsize(target)
+
+
+def _lighten_regions(grid, vector, cull, culled_density, threshold):
+    """As lighten_file's single array, region by region (same values).
+
+    `culled_density` (already culled, same voxels) stands in for the density
+    mask; without it, `threshold` culls the grid by its own values.
+    """
+    result = type(grid)()
+    result.name = grid.name
+    result.gridClass = grid.gridClass
+    result.transform = _coarse_transform(grid)
+    for part, low, shape in _regions(grid, vector):
+        values = np.zeros(shape + ((3,) if vector else ()), np.float32)
+        part.copyToArray(values, ijk=low)
+        coarse = _downsample(values)
+        del values
+        coarse_low = tuple(v // 2 for v in low)
+        if culled_density is not None:
+            kept = np.zeros(coarse.shape[:3], np.float32)
+            culled_density.copyToArray(kept, ijk=coarse_low)
+            keep = kept >= cull
+            if vector:
+                coarse[~keep] = 0.0
+            else:
+                coarse = np.where(keep, coarse, 0.0).astype(np.float32)
+        elif threshold:
+            coarse = np.where(coarse >= cull, coarse, 0.0).astype(np.float32)
+        result.copyFromArray(np.ascontiguousarray(coarse), ijk=coarse_low,
+                             tolerance=(0.0, 0.0, 0.0) if vector else 0.0)
+    result.saveFloatAsHalf = True
+    return result
 
 
 def make_lighter_copy(source_dir, target_dir, files, cull=0.01, progress=None):

@@ -342,23 +342,37 @@ def read_settings_snapshot(directory):
 
 def _apply_values(props, values):
     changed = 0
+    retry = []
     for name, value in values.items():
         if name in _SNAPSHOT_SKIP or not hasattr(props, name):
             continue
-        try:
-            current = getattr(props, name)
-            if hasattr(current, "__len__") and not isinstance(current, str) and not isinstance(value, str):
-                if isinstance(current, set):
-                    value = set(value)
-                elif list(current) == list(value):
-                    continue
-            elif current == value:
-                continue
-            setattr(props, name, value)
-            changed += 1
-        except (TypeError, ValueError, AttributeError):
-            continue
+        result = _apply_value(props, name, value)
+        if result is None:
+            retry.append((name, value))
+        else:
+            changed += result
+    # Choices that depend on another setting (Velocity Resolution offers Full
+    # only with Full-Resolution Velocity) are accepted once it is applied.
+    for name, value in retry:
+        changed += _apply_value(props, name, value) or 0
     return changed
+
+
+def _apply_value(props, name, value):
+    """1 if changed, 0 if already equal, None if rejected."""
+    try:
+        current = getattr(props, name)
+        if hasattr(current, "__len__") and not isinstance(current, str) and not isinstance(value, str):
+            if isinstance(current, set):
+                value = set(value)
+            elif list(current) == list(value):
+                return 0
+        elif current == value:
+            return 0
+        setattr(props, name, value)
+        return 1
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def apply_settings_snapshot(domain, data, objects):

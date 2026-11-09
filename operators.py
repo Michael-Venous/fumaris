@@ -216,6 +216,12 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         props.bake_elapsed = time.monotonic() - self._started_at
         props.bake_peak_vram_mb = self._peak_vram_bytes / (1024.0 * 1024.0)
         props.bake_peak_ram_mb = self._peak_ram_bytes / (1024.0 * 1024.0)
+        # Kept with the bake, so Compare can set two versions' costs side by side.
+        try:
+            from .compare import write_bake_stats
+            write_bake_stats(self._directory, props)
+        except OSError as error:
+            console_log(f"Fumaris could not store bake statistics: {error}")
 
 
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):

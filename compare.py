@@ -33,6 +33,7 @@ from .utils import cache_slot_directory, output_directory_for_object, peek_outpu
 # On the volume showing slot B: the name of the domain it is compared for.
 COMPARE_MARKER = "fumaris_compare_b"
 NOTE_FILE = ".fumaris_version.json"
+STATS_FILE = ".fumaris_bake_stats.json"
 SNAPSHOT_DIRECTORY = "snapshots"
 # Side by side: B sits this many domain widths along X.
 SIDE_OFFSET = 1.15
@@ -41,7 +42,7 @@ SIDE_OFFSET = 1.15
 SNAPSHOT_BACKGROUND = 0.235
 _SCAN_SECONDS = 2.0
 _scan_cache = {}
-_last_diff = {"title": "", "lines": []}
+_last_diff = {"title": "", "lines": [], "measures": []}
 
 
 def _prefix(props):
@@ -90,6 +91,94 @@ def write_note(directory, note, **extra):
     data["note"] = note
     with open(path, "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1)
+
+
+def write_bake_stats(directory, props):
+    frames = _frame_files(directory, _prefix(props))
+    data = {
+        "frames": len(frames),
+        "seconds": round(float(props.bake_elapsed), 2),
+        "peak_vram_mb": round(float(props.bake_peak_vram_mb), 1),
+        "peak_ram_mb": round(float(props.bake_peak_ram_mb), 1),
+        "resolution": int(props.resolution),
+        "written": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    with open(os.path.join(directory, STATS_FILE), "w", encoding="utf-8") as stream:
+        json.dump(data, stream, indent=1)
+
+
+def read_bake_stats(directory):
+    try:
+        with open(os.path.join(directory, STATS_FILE), encoding="utf-8") as stream:
+            return json.load(stream)
+    except (OSError, ValueError):
+        return {}
+
+
+def frame_measures(directory, prefix, frame):
+    """Cheap measures of one frame from the VDB header: smoke voxels, extent, top, file size."""
+    files = [path for path in _frame_files(directory, prefix) if _frame_number(path, prefix) == frame]
+    if not files:
+        return None
+    path = files[0]
+    out = {"file": os.path.getsize(path)}
+    try:
+        import openvdb
+        grids = {grid.name: grid for grid in openvdb.readAllGridMetadata(path)}
+    except Exception:
+        return out
+    grid = grids.get("density")
+    if grid is None:
+        return out
+    meta = grid.metadata if hasattr(grid, "metadata") else {}
+    count = meta.get("file_voxel_count")
+    low, high = meta.get("file_bbox_min"), meta.get("file_bbox_max")
+    if count is not None:
+        out["voxels"] = int(count)
+    if low is not None and high is not None and all(h >= l for l, h in zip(low, high)):
+        try:
+            a = grid.transform.indexToWorld(tuple(float(v) for v in low))
+            b = grid.transform.indexToWorld(tuple(float(v) + 1.0 for v in high))
+            out["size"] = tuple(abs(y - x) for x, y in zip(a, b))
+            out["top"] = max(a[2], b[2])
+        except Exception:
+            pass
+    return out
+
+
+def measured_differences(domain, frame):
+    """Rows (measure, A, B) for the current frame and the two bakes' costs."""
+    props = domain.fumaris
+    prefix = _prefix(props)
+    a_dir = output_directory_for_object(domain)
+    b_dir = cache_slot_directory(domain, props.compare_slot)
+    rows = []
+    a, b = frame_measures(a_dir, prefix, frame), frame_measures(b_dir, prefix, frame)
+    if a or b:
+        a, b = a or {}, b or {}
+
+        def row(label, key, fmt):
+            if key in a or key in b:
+                rows.append((f"{label} (frame {frame})",
+                             fmt(a[key]) if key in a else "-", fmt(b[key]) if key in b else "-"))
+        row("Smoke voxels", "voxels", lambda v: f"{v / 1e6:.2f} M" if v >= 100000 else f"{v:,}")
+        row("Extent", "size", lambda v: " x ".join(f"{x:.1f}" for x in v) + " m")
+        row("Top", "top", lambda v: f"{v:.2f} m")
+        row("File", "file", _size_text)
+    sa, sb = read_bake_stats(a_dir), read_bake_stats(b_dir)
+    for label, key, fmt in (("Bake time", "seconds", lambda v: f"{v:.0f} s"),
+                            ("Time per frame", None, None),
+                            ("Peak VRAM", "peak_vram_mb", lambda v: f"{v / 1024:.2f} GB"),
+                            ("Peak RAM", "peak_ram_mb", lambda v: f"{v / 1024:.1f} GB")):
+        if key is None:
+            per = [f"{s['seconds'] / s['frames'] * 1000:.0f} ms" if s.get("frames") and s.get("seconds") else "-"
+                   for s in (sa, sb)]
+            if per != ["-", "-"]:
+                rows.append((label, *per))
+            continue
+        if key in sa or key in sb:
+            rows.append((label, fmt(sa[key]) if key in sa else "-", fmt(sb[key]) if key in sb else "-"))
+    return rows
 
 
 def list_versions(domain, *, fresh=False):
@@ -734,11 +823,24 @@ class FUMARIS_OT_compare_diff(_DomainOperator, Operator):
             a, source = _current_settings(domain), "current settings"
         _last_diff["title"] = f"A '{props.cache_slot}' ({source})  vs  B '{props.compare_slot}'"
         _last_diff["lines"] = settings_differences(a, b, props)
+        try:
+            _last_diff["measures"] = measured_differences(domain, context.scene.frame_current)
+        except Exception as error:
+            print(f"Fumaris Compare: measures unavailable: {error}")
+            _last_diff["measures"] = []
         return context.window_manager.invoke_popup(self, width=520)
 
     def draw(self, _context):
         layout = self.layout
         layout.label(text=_last_diff["title"], icon="SEQ_SPLITVIEW")
+        measures = _last_diff.get("measures") or []
+        if measures:
+            grid = layout.grid_flow(row_major=True, columns=3, even_columns=False, align=True)
+            for name, a, b in measures:
+                grid.label(text=name)
+                grid.label(text=a)
+                grid.label(text=b)
+            layout.separator()
         lines = _last_diff["lines"]
         if not lines:
             layout.label(text="Same settings")

@@ -261,7 +261,10 @@ cache slots as versions of the shot.
 - **B** on a version shows its bake as B. `Show` picks A only, B only, or Side
   by Side (B moved along X beside the domain); `Swap` makes B current and the
   old current B; `Diff` lists the settings that differ between the two bakes
-  (by the settings stored with each); `Use B` takes B's settings. The X stops
+  (by the settings stored with each), and above them measures of both at the
+  current frame (smoke voxels, extent, top height, file size) and what each
+  bake cost (time, time per frame, peak VRAM and RAM; bakes from this version
+  on); `Use B` takes B's settings. The X stops
   comparing and puts B's volume back. The live preview is not affected by
   Show.
 - **Snapshot** saves what the 3D Viewport shows, live preview included, as a

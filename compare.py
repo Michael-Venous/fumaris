@@ -888,10 +888,14 @@ def preview_cache(job=None):
     if job is None or active_mode() != "previewing":
         return {}
     cache = getattr(job, "_preview_cache", None) or {}
-    try:
-        return {key: int(value) for key, value in cache.items()}
-    except (TypeError, ValueError):
-        return {}
+    out = {}
+    for key, value in cache.items():
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        out[key] = int(number) if number.is_integer() else number
+    return out
 
 
 def start_cache_export(context, domain, base, first=None, last=None):

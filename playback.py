@@ -28,7 +28,7 @@ def preview_description(context, action):
         action = ('resume' if getattr(job, '_pause_requested', False) else 'pause') if job else 'play'
     descriptions = {
         'play': 'Start the live preview from the simulation start frame. Its frames are cached, so a paused preview can scrub and play them back.',
-        'pause': 'Pause the preview, keeping its simulation ready to resume; with Cache Preview on, scrub or play the timeline to see the cached frames, or Save Version.',
+        'pause': 'Pause the preview, keeping its simulation ready to resume; with Cache Preview on, scrub or play the timeline to see the cached frames, or Save Sequence.',
         'resume': 'Resume the preview from its live frame (after the last frame: from the start).',
         'stop': 'Stop the preview, releasing its simulation memory and its cache.',
     }

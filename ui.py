@@ -639,10 +639,6 @@ def _draw_domain(layout, scene, props):
             controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
 
         controls.separator(factor=0.6)
-        header = controls.row(align=True)
-        header.label(text="Preview Controls")
-        if is_previewing and not _NARROW:
-            header.label(text="Viewport preview approximates the Cycles render")
         preview = controls.row(align=True)
         play = preview.row(align=True)
         play.enabled = mode is None and props.simulation_state != "baked"
@@ -670,10 +666,12 @@ def _draw_domain(layout, scene, props):
         # A cached live preview can be kept as a version, and pictured.
         if (is_previewing and job is not None and getattr(job, "_domain_name", None) == props.id_data.name
                 and job._worker._session.get("preview_cache")):
+            # "Save" is dropped when narrow, so the three names stay whole.
+            word = "" if _NARROW else "Save "
             save = controls.row(align=True)
-            save.operator("fumaris.version_save", text="Save Version", icon="FILE_TICK")
-            save.menu("FUMARIS_MT_save_version", text="", icon="DOWNARROW_HLT")
-            save.operator("fumaris.snapshot", text="", icon="RESTRICT_RENDER_OFF")
+            save.operator("fumaris.version_save", text=word + "Sequence", icon="SEQUENCE")
+            save.operator("fumaris.version_save", text=word + "Frame", icon="IMAGE_PLANE").frame_only = True
+            save.operator("fumaris.snapshot", text=word + "Snapshot", icon="RESTRICT_RENDER_OFF")
         controls.separator(factor=0.5)
         # Keep transport rows together; all status text lives below their options.
         status = controls.column(align=True)

@@ -494,7 +494,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         super()._submit_frame(context)
 
     def export_cache(self, context, directory, slot, first, last):
-        """Save Version: the bridge writes the cached frames into a new
+        """Save Sequence / Save Frame: the bridge writes the cached frames into a new
         version; its reply finishes it (_handle_worker_message). Playing
         pauses until it is written (_ready_to_submit)."""
         domain = bpy.data.objects.get(self._domain_name)
@@ -524,7 +524,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             from .compare import forget_scan, write_note
             write_settings_snapshot(directory, domain, self._participants)
             scale = int(round(100 * float(getattr(self, "_resolution_scale", 1.0))))
-            write_note(directory, "from the preview" + (f" at {scale}%" if scale != 100 else ""))
+            first, last = int(data.get("first", -1)), int(data.get("last", -1))
+            what = f"frame {first} from the preview" if first == last and first >= 0 else "from the preview"
+            write_note(directory, what + (f" at {scale}%" if scale != 100 else ""))
             forget_scan()
         diagnostics.record(self._diagnostic_key, {"bridge_preview_cache_export_ms": float(data.get("export_ms", 0.0))})
         diagnostics.set_status(self._diagnostic_key, "Paused" if self._pause_requested else "Running")

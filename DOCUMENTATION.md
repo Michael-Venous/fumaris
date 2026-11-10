@@ -111,7 +111,7 @@ and release its GPU working set.
 
 `Volume` mode raymarches the live sparse Flow grid and displays the resulting
 image over the 3D viewport. It writes no NanoVDB or OpenVDB output (Save
-Version writes its cache on request, see Preview Cache). Moving
+Sequence writes its cache on request, see Preview Cache). Moving
 the viewport or changing display settings rerenders the current Flow frame
 without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
@@ -248,7 +248,7 @@ domain's presets and its versions.
   Emitters, colliders, effectors and outflows keep a `Presets` menu at the top
   of their own panel.
 - **Versions** are the results you saved for this domain: a bake, or a live
-  preview kept with **Save Version** (see Preview Cache). Each keeps the
+  preview kept with **Save Sequence** or **Save Frame** (see Preview Cache). Each keeps the
   settings that made it, its frames as VDB files (they import and render in
   EEVEE and Cycles like any volume) and any snapshot images. The filled
   circle marks the current version, where bakes go; click another name to make
@@ -859,7 +859,7 @@ For a faster or more memory-efficient simulation:
 
 - Hardware coverage is limited and AMD GPUs are currently unqualified.
 - Geometry Nodes Volume emission is experimental.
-- The preview cache lasts until the preview stops; Save Version keeps it.
+- The preview cache lasts until the preview stops; Save Sequence keeps it.
   Cached frames are for looking back, not checkpoints: Resume always continues
   from the live frame.
 - Volume preview shading is intentionally simpler than a final Blender volume
@@ -963,7 +963,7 @@ With **Cache Preview** on (under Play; off by default, applies from the next
 Play), the live preview keeps the frames it simulates, compressed in system
 memory, at full detail (exactly what the preview drew). Without it the preview
 loops over its range and keeps nothing. The cache lasts until the preview
-stops or starts over; Save Version keeps it.
+stops or starts over; Save Sequence keeps it.
 
 - While the preview is paused, scrub or play the timeline (Blender's own
   playback) to see the cached frames with the live camera, lighting and look.
@@ -971,14 +971,15 @@ stops or starts over; Save Version keeps it.
 - **Resume** returns to the live frame and continues the simulation from it.
   At the end of the range the preview pauses; Resume then starts over (a new
   cache).
-- **Save Version** (below Cache Preview while a cached preview runs) writes the
-  cached frames as VDB files into a new version (see Presets & Compare), with
-  the settings that made them and the Output settings (grids, resolutions,
-  Glow) at the preview's resolution. It imports, renders and compares like a
-  bake. Its dropdown saves only the current frame. Saving while playing holds
-  the preview until the files are written.
-- The **camera** button beside it saves a snapshot: what the 3D Viewport shows,
-  live preview included, as an image in the current version.
+- While a cached preview runs, three buttons sit below Cache Preview:
+  **Save Sequence** writes the cached frames as VDB files into a new version
+  (see Presets & Compare), with the settings that made them and the Output
+  settings (grids, resolutions, Glow) at the preview's resolution; it imports,
+  renders and compares like a bake. **Save Frame** saves only the frame the
+  preview shows (the live one, or the cached frame at or before it). **Save
+  Snapshot** saves what the 3D Viewport shows, live preview included, as an
+  image in the current version. Saving while playing holds the preview until
+  the files are written.
 - **Stop** releases the cache with the simulation.
 
 Preferences > Preview Cache chooses how often frames are kept. Each kept frame

@@ -33,9 +33,9 @@ Removed). This is a beta: please report scenes that look wrong.
   dark while crevices next to the flames glow).
 - **Preview cache** (**Cache Preview** under Play, off by default): the live preview keeps the frames it simulates
   (compressed, full detail), so a paused preview scrubs and plays them back
-  with the live camera and look, and **Save Version** (below the toggle, also
-  while playing) writes them as a version that imports, renders and compares
-  like a bake; the camera beside it saves a snapshot. Replaces Bake on
+  with the live camera and look, and **Save Sequence** or **Save Frame** (below the toggle, also
+  while playing) write them as a version that imports, renders and compares
+  like a bake; **Save Snapshot** saves an image. Replaces Bake on
   Preview. A cached preview pauses at the end of its range. Balanced (the
   default) keeps as many frames as about a fifth of the frame time allows,
   with the copy spread evenly so playback stays smooth; Every Frame keeps all.
@@ -237,7 +237,7 @@ Removed). This is a beta: please report scenes that look wrong.
   spreading in regular rings.
 - **Presets & Compare** (top of the domain panel): a Presets menu (apply,
   save, delete) and **Versions**, the results saved for the domain (a bake, or
-  a live preview kept with Save Version), each with the settings that made it
+  a live preview kept with Save Sequence or Save Frame), each with the settings that made it
   and any snapshot images. The eye shows a version: with a second one shown,
   it stands beside the domain and What Changed lists the settings that
   differ. Right-click a version to load its settings, save them as a preset,

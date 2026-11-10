@@ -1,7 +1,7 @@
 """Versions: saved results of a domain, shown and compared in the viewport.
 
 Every cache slot of a domain is a version: a folder of VDB frames (a bake, or
-a paused preview's cache saved with Save Version), the settings that made it,
+a live preview saved with Save Sequence or Save Frame), the settings that made it,
 and any snapshot images. The current version is where bakes go. The eye on a
 version shows it; with a second version's eye on, the two stand side by side
 (the second moved beside the domain) and What Changed lists the settings that
@@ -16,7 +16,7 @@ import time
 import bpy
 import mathutils
 from bpy.props import BoolProperty, StringProperty
-from bpy.types import Menu, Operator
+from bpy.types import Operator
 
 from .cache import (
     GUARD_FILE,
@@ -1102,7 +1102,7 @@ def _preview_save_blocker(context):
 
 class FUMARIS_OT_version_save(_DomainOperator, Operator):
     bl_idname = "fumaris.version_save"
-    bl_label = "Save Version"
+    bl_label = "Save Sequence"
     bl_description = "Save the frames the live preview has cached as a new version: VDB files with the settings that made them, which import, render (Cycles included) and compare like a bake. Uses the Output settings (grids, resolutions, Glow), at the preview's resolution"
 
     frame_only: BoolProperty(name="This Frame Only", default=False)
@@ -1110,7 +1110,7 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
     @classmethod
     def description(cls, _context, properties):
         if properties.frame_only:
-            return "Save only the current frame of the live preview's cache as a new version"
+            return "Save the frame the live preview shows as a new one-frame version (VDB files with the settings that made it)"
         return cls.bl_description
 
     @classmethod
@@ -1126,9 +1126,12 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
         cache = preview_cache()
         base = (domain.fumaris.cache_slot.strip() or "main") + "_preview"
         if self.frame_only:
+            # The frame the preview shows: the live one, or the cached frame at
+            # or before it (Balanced skips some; the live frame's copy may
+            # still be on its way, so the bridge finishes it first).
             frame = context.scene.frame_current
-            if not cache["first"] <= frame <= cache["last"]:
-                self.report({"ERROR"}, f"Frame {frame} is not in the cache ({cache['first']}-{cache['last']})")
+            if frame < cache["first"]:
+                self.report({"ERROR"}, f"Frame {frame} is no longer cached (oldest kept: {cache['first']})")
                 return {"CANCELLED"}
             slot = start_cache_export(context, domain, f"{base}_f{frame}", frame, frame)
             self.report({"INFO"}, f"Saving frame {frame} as version '{slot}'")
@@ -1141,7 +1144,7 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
 
 class FUMARIS_OT_snapshot(_DomainOperator, Operator):
     bl_idname = "fumaris.snapshot"
-    bl_label = "Snapshot"
+    bl_label = "Save Snapshot"
     bl_description = "Save what the 3D Viewport shows (the live preview included) as an image in the current version, with the settings if it has none stored"
 
     @classmethod
@@ -1165,14 +1168,6 @@ class FUMARIS_OT_snapshot(_DomainOperator, Operator):
         forget_scan()
         self.report({"INFO"}, f"Snapshot saved in version '{domain.fumaris.cache_slot}'")
         return {"FINISHED"}
-
-
-class FUMARIS_MT_save_version(Menu):
-    bl_label = "Save"
-    bl_idname = "FUMARIS_MT_save_version"
-
-    def draw(self, _context):
-        self.layout.operator("fumaris.version_save", text="Save This Frame Only", icon="IMAGE_PLANE").frame_only = True
 
 
 # --- Panel -------------------------------------------------------------------
@@ -1263,7 +1258,7 @@ def draw_compare(layout, domain, props):
                      depress=shown).name = name
         row.operator("fumaris.version_menu", text="", icon="DOWNARROW_HLT").name = name
     if len(versions) == 1 and not versions[0]["frames"]:
-        column.label(text="Bake, or Save Version while previewing", icon="INFO")
+        column.label(text="Bake, or Save Sequence while previewing", icon="INFO")
 
     # What Changed between the two shown.
     if compared:
@@ -1299,7 +1294,6 @@ CLASSES = (
     FUMARIS_OT_version_delete,
     FUMARIS_OT_version_save,
     FUMARIS_OT_snapshot,
-    FUMARIS_MT_save_version,
 )
 
 

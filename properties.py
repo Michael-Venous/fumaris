@@ -650,7 +650,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_cache: BoolProperty(
         name="Cache Preview",
-        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Version (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. The preview then pauses at the end of its range instead of looping. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",
+        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Sequence or Save Frame (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. The preview then pauses at the end of its range instead of looping. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",
         default=False,
     )
 

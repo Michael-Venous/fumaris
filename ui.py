@@ -722,6 +722,7 @@ def _draw_domain(layout, scene, props):
                          icon="PAUSE" if is_preview_paused else "PLAY")
             if (is_preview_paused and getattr(job, "_loop_reset_pending", False)
                     and not job._worker._session.get("preview_cache")):
+                # (A cached preview says so with its cache status.)
                 _wrapped(status, "At the end: Resume starts over", "INFO")
             _draw_preview_cache_status(status, scene, job, is_preview_paused)
         domain = props.id_data
@@ -736,9 +737,7 @@ def _draw_domain(layout, scene, props):
         settings.enabled = not is_baking
         row = settings.row(align=True)
         row.prop(props, "use_scene_frame_range", text="", icon="TIME")
-        loop = row.row(align=True)
-        loop.enabled = not props.preview_cache   # a cached preview always pauses at the end
-        loop.prop(props, "preview_loop", text="", icon="LOOP_FORWARDS")
+        row.prop(props, "preview_loop", text="", icon="LOOP_FORWARDS")
         if props.use_scene_frame_range:
             row.prop(props, "warmup_frames")
         else:

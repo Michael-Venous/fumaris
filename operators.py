@@ -675,9 +675,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
             return self._cancelled(context, {"message": "The active Fumaris domain was deleted"})
-        if not self._worker._session.get("preview_cache") and domain.fumaris.preview_loop:
-            # No cache to keep and Loop on: loop, unless paused (Resume then
-            # starts over). Loop off, or a cache to keep: pause at the end.
+        if domain.fumaris.preview_loop:
+            # Loop on: start over (a cached preview begins a new cache),
+            # unless paused (Resume then starts over). Loop off: pause on the
+            # last frame, keeping any cache to scrub, play back or save.
             if getattr(self, "_pause_requested", False):
                 self._submitted = False
                 self._loop_reset_pending = True

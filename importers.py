@@ -16,6 +16,8 @@ from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, is_pyro_lo
 PREFIX = "fumaris_"
 _FRAME_DIGITS = re.compile(r"-?[0-9]+")
 IMPORT_DIRECTORY = ".fumaris_import"
+# On a version's volume shown with its eye: slot switches leave it alone.
+SHOWN_MARKER = "fumaris_version_shown"
 VOLUME_MARKER = "fumaris_volume"
 VOLUME_PREFIX_MARKER = "fumaris_volume_prefix"
 GENERATED_MATERIAL_MARKER = "fumaris_generated_material"
@@ -136,8 +138,8 @@ def show_only_slot_volumes(root, current):
     current = os.path.normpath(current)
     for obj in bpy.data.objects:
         marker = obj.get(VOLUME_MARKER)
-        if not marker:
-            continue
+        if not marker or obj.get(SHOWN_MARKER):
+            continue  # not a slot's bake, or shown with its eye in Versions
         marker = os.path.normpath(marker)
         if not marker.startswith(root):
             continue

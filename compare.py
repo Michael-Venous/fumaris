@@ -1,12 +1,16 @@
-"""Versions: saved results of a domain, shown and compared in the viewport.
+"""Versions: what a domain has saved, listed in the Versions section.
 
-Every cache slot of a domain is a version: a folder of VDB frames (a bake, or
-a live preview saved with Save Sequence or Save Frame), the settings that made it,
-and any snapshot images. The current version is where bakes go. The eye on a
-version shows it; with a second version's eye on, the two stand side by side
-(the second moved beside the domain) and What Changed lists the settings that
-differ. Right-click a version (or its menu) to load its settings, save them as
-a preset, view its images or delete it.
+Two kinds of entry share one list:
+- VDB versions: a cache slot folder of VDB frames (a bake, or a live preview
+  kept with Save Sequence or Save Frame), with the settings that made it.
+- Snapshots: viewport images (Save Snapshot), each with the settings of the
+  moment it was taken.
+
+Bakes are pinned and listed first; any entry can be pinned or unpinned. The
+domain's current slot is where Bake writes: Bake replaces a pinned version or
+starts a new one (operators.FUMARIS_OT_bake asks which). The eye shows a VDB
+version in the scene; View Changes lists its settings against the current
+ones and can load them.
 """
 import json
 import os
@@ -28,9 +32,18 @@ from .cache import (
     require_unprotected,
     next_slot_name,
     read_settings_snapshot,
+    settings_snapshot_data,
     write_settings_snapshot,
 )
-from .importers import VOLUME_MARKER, _frame_files, _frame_number, delete_generated_data, import_sequence
+from .importers import (
+    SHOWN_MARKER,
+    VOLUME_MARKER,
+    _frame_files,
+    _frame_number,
+    _remove_generated_volume_object,
+    delete_generated_data,
+    import_sequence,
+)
 from .runtime import active_job, active_mode
 from .utils import cache_slot_directory, output_directory_for_object, peek_output_directory_for_object
 
@@ -39,6 +52,8 @@ COMPARE_MARKER = "fumaris_compare_b"
 NOTE_FILE = ".fumaris_version.json"
 STATS_FILE = ".fumaris_bake_stats.json"
 SNAPSHOT_DIRECTORY = "snapshots"
+# Snapshots (Save Snapshot) beside the versions, each PNG with a .json of its settings.
+SNAPSHOT_ROOT = ".snapshots"
 # Side by side: B sits this many domain widths along X.
 SIDE_OFFSET = 1.15
 # Background behind the live preview where no scene image is available
@@ -95,6 +110,27 @@ def write_note(directory, note, **extra):
     data["note"] = note
     with open(path, "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1)
+
+
+def read_meta(directory):
+    try:
+        with open(os.path.join(directory, NOTE_FILE), encoding="utf-8") as stream:
+            data = json.load(stream)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def read_pinned(directory):
+    """Pinned: stored, or a bake (it kept bake statistics) when never set."""
+    data = read_meta(directory)
+    if "pinned" in data:
+        return bool(data["pinned"])
+    return os.path.isfile(os.path.join(directory, STATS_FILE))
+
+
+def write_pinned(directory, pinned):
+    write_note(directory, read_note(directory), pinned=bool(pinned))
 
 
 def write_bake_stats(directory, props):
@@ -206,8 +242,6 @@ def list_versions(domain, *, fresh=False):
                            if entry.is_dir(follow_symlinks=False) and not entry.name.startswith("."))
     except OSError:
         names = []
-    if os.path.basename(current) not in names:
-        names.append(os.path.basename(current))
     versions = []
     for name in names:
         path = os.path.join(root, name)
@@ -223,7 +257,7 @@ def list_versions(domain, *, fresh=False):
             modified = max(modified, stat.st_mtime)
         images = snapshots(path)
         protected = is_protected(path)
-        if path != current and not (files or images or protected):
+        if not (files or images or protected):
             continue
         versions.append({
             "name": name,
@@ -237,6 +271,8 @@ def list_versions(domain, *, fresh=False):
             "protected": protected,
             "note": read_note(path),
             "settings": read_settings_snapshot(path) is not None,
+            "pinned": read_pinned(path),
+            "kind": "vdb",
         })
     _scan_cache[key] = (now, versions)
     return versions
@@ -458,6 +494,16 @@ def _current_settings(domain):
 
 # --- New versions ------------------------------------------------------------
 
+def free_slot_name(base, taken):
+    """base, then base_2, base_3, ..."""
+    if not taken(base):
+        return base
+    number = 2
+    while taken(f"{base}_{number}"):
+        number += 1
+    return f"{base}_{number}"
+
+
 def _new_version(domain, base):
     prefix = _prefix(domain.fumaris)
 
@@ -465,7 +511,7 @@ def _new_version(domain, base):
         directory = cache_slot_directory(domain, slot)
         return bool(is_protected(directory) or _frame_files(directory, prefix))
 
-    slot = base if not taken(base) else next_slot_name(base, taken)
+    slot = free_slot_name(base, taken)
     directory = cache_slot_directory(domain, slot)
     os.makedirs(directory, exist_ok=True)
     return slot, directory
@@ -625,98 +671,173 @@ def show_image(context, image):
     return find()
 
 
-# --- Showing versions --------------------------------------------------------
+# --- Entries: VDB versions and snapshots --------------------------------------
 
-def _previewing(domain):
-    job = active_job()
-    return job is not None and getattr(job, "_domain_name", None) == domain.name and active_mode() == "previewing"
-
-
-def current_shown(domain):
-    """The current version's eye: its bake is visible (beside B when comparing)."""
-    if compare_volumes(domain):
-        return domain.fumaris.compare_view != "B"
-    current = _current_directory(domain)
-    return bool(current) and any(not obj.hide_viewport for obj in _slot_volumes(current))
+def snapshot_root(domain, *, create=False):
+    current = output_directory_for_object(domain) if create else peek_output_directory_for_object(domain)
+    if not current:
+        return None
+    path = os.path.join(os.path.dirname(current), SNAPSHOT_ROOT)
+    if create:
+        os.makedirs(path, exist_ok=True)
+    return path
 
 
-def compared_name(domain):
-    return domain.fumaris.compare_slot if compare_volumes(domain) else ""
+def _sidecar(path):
+    return path + ".json"
 
 
-def toggle_version(context, domain, name):
-    """The eye on a version: show or hide it. Another version than the current
-    one is shown beside the current one (or alone when the current is hidden)."""
-    props = domain.fumaris
-    current = os.path.basename(_current_directory(domain) or "")
-    if name == current:
-        if compare_volumes(domain):
-            props.compare_view = "B" if props.compare_view != "B" else "SIDE"
-            return
-        volumes = _slot_volumes(_current_directory(domain))
-        if not volumes:
-            show_slot(context, domain)
-            return
-        shown = any(not obj.hide_viewport for obj in volumes)
-        for obj in volumes:
-            _set_shown(obj, not shown)
-        return
-    if compared_name(domain) == name:
-        clear_compare(domain)
-        props.compare_slot = ""
-        return
-    side = _previewing(domain) or current_shown(domain) or not _frame_files(_current_directory(domain), _prefix(props))
-    props["compare_view"] = 2 if side else 1   # SIDE or B, without the update
-    load_compare(domain, name)
-
-
-# --- What Changed -------------------------------------------------------------
-
-_changes_cache = {}
-
-
-def _settings_mtime(directory):
+def read_sidecar(path):
     try:
-        return os.path.getmtime(os.path.join(directory, SETTINGS_FILE))
-    except OSError:
-        return 0.0
+        with open(_sidecar(path), encoding="utf-8") as stream:
+            data = json.load(stream)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
-def what_changed(domain):
-    """(title, lines) between what the current version shows and the compared
-    one: the live preview's settings while previewing (or when the current
-    version stored none), else the current version's stored settings."""
-    name = compared_name(domain)
-    if not name:
-        return "", []
+def write_sidecar(path, **values):
+    data = read_sidecar(path)
+    data.update(values)
+    with open(_sidecar(path), "w", encoding="utf-8") as stream:
+        json.dump(data, stream, indent=1, sort_keys=True)
+
+
+def _image_frame(path):
+    stem = os.path.splitext(os.path.basename(path))[0]
+    tail = stem.rsplit("_f", 1)
+    return int(tail[1]) if len(tail) == 2 and tail[1].isdigit() else None
+
+
+def list_entries(domain, *, fresh=False):
+    """VDB versions and snapshots, pinned first, then newest first."""
+    entries = []
+    for version in list_versions(domain, fresh=fresh):
+        if version["frames"] or version["protected"]:
+            entries.append(dict(version, key="vdb:" + version["name"]))
+    images = []
+    root = snapshot_root(domain)
+    if root:
+        try:
+            names = sorted(name for name in os.listdir(root) if name.lower().endswith(".png"))
+        except OSError:
+            names = []
+        images.extend((os.path.join(root, name), None) for name in names)
+    # Snapshots kept in a version's folder before 2.0 beta: that version's settings.
+    for version in list_versions(domain, fresh=False):
+        if version["snapshots"]:
+            images.extend((path, version["path"]) for path in snapshots(version["path"]))
+    for path, owner in images:
+        meta = read_sidecar(path)
+        try:
+            modified = os.path.getmtime(path)
+        except OSError:
+            continue
+        frame = _image_frame(path)
+        entries.append({
+            "key": "img:" + path,
+            "kind": "image",
+            "name": meta.get("note") or (f"Snapshot · frame {frame}" if frame is not None else "Snapshot"),
+            "note": meta.get("note", ""),
+            "path": path,
+            "owner": owner,
+            "frame": frame,
+            "modified": modified,
+            "pinned": bool(meta.get("pinned", False)),
+            "settings": bool(meta.get("settings")) or bool(owner and read_settings_snapshot(owner) is not None),
+            "protected": False,
+        })
+    entries.sort(key=lambda entry: (not entry["pinned"], -entry["modified"]))
+    return entries
+
+
+def find_entry(domain, key, *, fresh=False):
+    return next((entry for entry in list_entries(domain, fresh=fresh) if entry["key"] == key), None)
+
+
+def entry_settings(entry):
+    """The settings snapshot an entry was made with (None if it has none)."""
+    if entry["kind"] == "vdb":
+        return read_settings_snapshot(entry["path"])
+    meta = read_sidecar(entry["path"])
+    if meta.get("settings"):
+        return meta
+    return read_settings_snapshot(entry["owner"]) if entry.get("owner") else None
+
+
+def entry_summary(entry):
+    if entry["kind"] == "image":
+        return "image"
+    return version_summary(entry)
+
+
+def selected_entry(domain):
+    key = domain.fumaris.compare_selected
+    return find_entry(domain, key) if key else None
+
+
+def _entry_volumes(entry):
+    return _slot_volumes(entry["path"]) if entry["kind"] == "vdb" else []
+
+
+def entry_shown(domain, entry):
+    return any(not obj.hide_viewport for obj in _entry_volumes(entry))
+
+
+def show_entry(context, domain, entry, shown):
+    """A VDB version in the scene (imported on first show) or hidden."""
     props = domain.fumaris
-    a_dir = output_directory_for_object(domain)
-    b_dir = cache_slot_directory(domain, name)
-    live = _previewing(domain) or read_settings_snapshot(a_dir) is None
-    key = (domain.name, a_dir, b_dir, live, _settings_mtime(a_dir), _settings_mtime(b_dir))
-    now = time.monotonic()
-    cached = _changes_cache.get(domain.name)
-    if cached and cached[0] == key and now - cached[1] < _SCAN_SECONDS:
-        return cached[2]
-    b = read_settings_snapshot(b_dir)
-    if b is None:
-        result = (f"'{name}' has no stored settings", [])
+    volumes = _entry_volumes(entry)
+    current = _current_directory(domain)
+    if shown and not volumes:
+        prefix = _prefix(props)
+        files = _frame_files(entry["path"], prefix)
+        if not files:
+            raise RuntimeError(f"'{entry['name']}' has no frames")
+        volume = import_sequence(entry["path"], _frame_number(files[0], prefix), prefix,
+                                 material=props.volume_material, selectable=props.volume_selectable,
+                                 appearance=props)
+        volume.name = f"{domain.name} {entry['name']}"
+        volumes = [volume]
+    for obj in volumes:
+        if os.path.normpath(entry["path"]) != current:
+            obj[SHOWN_MARKER] = True
+        _set_shown(obj, shown)
+
+
+def remove_entry_from_scene(entry):
+    for obj in list(_entry_volumes(entry)):
+        _remove_generated_volume_object(obj)
+
+
+def delete_entry(domain, entry):
+    if entry["kind"] == "vdb":
+        delete_version(domain, entry["name"])
     else:
-        a = _current_settings(domain) if live else read_settings_snapshot(a_dir)
-        title = f"{'Current settings' if live else props.cache_slot} → {name}"
-        result = (title, settings_differences(a, b, props))
-    _changes_cache[domain.name] = (key, now, result)
-    return result
+        for path in (entry["path"], _sidecar(entry["path"])):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    if domain.fumaris.compare_selected == entry["key"]:
+        domain.fumaris.compare_selected = ""
+    forget_scan()
 
 
-# --- Deleting a version -------------------------------------------------------
+def changes_from_current(domain, entry):
+    """Lines (setting, current, entry's) where the entry differs from now."""
+    data = entry_settings(entry)
+    if data is None:
+        return None
+    return settings_differences(_current_settings(domain), data, domain.fumaris)
+
 
 def delete_version(domain, name):
-    """Delete a version's frames, images, settings and note (a protected one is refused)."""
+    """Delete a VDB version's frames, images, settings and note (a protected one is refused)."""
     props = domain.fumaris
     directory = cache_slot_directory(domain, name)
     require_unprotected(directory, "delete it")
-    if compared_name(domain) == name or props.compare_slot == name:
+    if props.compare_slot == name:
         clear_compare(domain)
         props.compare_slot = ""
     recover_cache_lock(directory, owner_pid=os.getpid())
@@ -730,11 +851,10 @@ def delete_version(domain, name):
                 pass
     # The lock's guard file outlives the lock on purpose (contenders lock the
     # same file); with the version gone it has nothing left to guard.
-    for leftover in (GUARD_FILE,):
-        try:
-            os.remove(os.path.join(directory, leftover))
-        except OSError:
-            pass
+    try:
+        os.remove(os.path.join(directory, GUARD_FILE))
+    except OSError:
+        pass
     try:
         os.rmdir(directory)
     except OSError:
@@ -748,6 +868,29 @@ def delete_version(domain, name):
     forget_scan()
 
 
+def bake_target(domain):
+    """The pinned VDB version Bake would replace (None: there is none).
+    The selected one if pinned, else the current slot if pinned, else the newest pinned."""
+    pinned = [entry for entry in list_entries(domain, fresh=True) if entry["kind"] == "vdb" and entry["pinned"]]
+    if not pinned:
+        return None
+    selected = domain.fumaris.compare_selected
+    current = os.path.basename(output_directory_for_object(domain))
+    return (next((e for e in pinned if e["key"] == selected), None)
+            or next((e for e in pinned if e["name"] == current), None)
+            or pinned[0])
+
+
+def new_bake_slot(domain):
+    prefix = _prefix(domain.fumaris)
+
+    def taken(slot):
+        directory = cache_slot_directory(domain, slot)
+        return bool(is_protected(directory) or _frame_files(directory, prefix)
+                    or os.path.isfile(os.path.join(directory, NOTE_FILE)))
+    return free_slot_name("bake", taken)
+
+
 # --- Operators ---------------------------------------------------------------
 
 class _DomainOperator:
@@ -756,105 +899,220 @@ class _DomainOperator:
         return _domain(context) is not None and active_mode() != "baking"
 
 
-def _find_version(domain, name):
-    return next((version for version in list_versions(domain) if version["name"] == name), None)
+def _entry_or_report(op, context):
+    domain = _domain(context)
+    entry = find_entry(domain, op.key, fresh=True) if domain else None
+    if entry is None:
+        op.report({"ERROR"}, "That version no longer exists")
+    return domain, entry
 
 
-class FUMARIS_OT_version_use(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_use"
-    bl_label = "Make Current"
-    bl_description = "Make this the current version: new bakes go here"
+class FUMARIS_OT_entry_select(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_select"
+    bl_label = "Select"
+    bl_description = "Select this version; its buttons appear below the list. Right-click for more"
 
-    name: StringProperty()
+    key: StringProperty()
 
     @classmethod
     def description(cls, context, properties):
         domain = _domain(context)
-        version = _find_version(domain, properties.name) if domain else None
-        if version is None:
+        entry = find_entry(domain, properties.key) if domain else None
+        if entry is None:
             return cls.bl_description
-        parts = [f"Version '{version['name']}': {version_summary(version, size=True)}"]
-        if version["modified"]:
-            parts.append("Written " + time.strftime("%Y-%m-%d %H:%M", time.localtime(version["modified"])))
-        if version["snapshots"]:
-            parts.append(f"{version['snapshots']} image(s)")
-        if version["note"]:
-            parts.append(version["note"])
-        if not version["settings"]:
+        parts = [entry["name"]]
+        if entry["kind"] == "vdb":
+            parts.append(version_summary(entry, size=True))
+        if entry["modified"]:
+            parts.append("Saved " + time.strftime("%Y-%m-%d %H:%M", time.localtime(entry["modified"])))
+        if entry["pinned"]:
+            parts.append("Pinned" + (": Bake can replace it" if entry["kind"] == "vdb" else ""))
+        if not entry["settings"]:
             parts.append("No stored settings")
-        return ".\n".join(parts) + ".\nClick to make it the current version (new bakes go there). Right-click for more"
+        return ".\n".join(parts) + ".\nClick to select. Right-click for more"
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None and active_job() is None
+        return _domain(context) is not None
 
     def execute(self, context):
-        domain = _domain(context)
-        domain.fumaris.cache_slot = self.name
-        try:
-            show_slot(context, domain)
-        except RuntimeError as error:
-            self.report({"WARNING"}, f"Could not import '{self.name}': {error}")
+        _domain(context).fumaris.compare_selected = self.key
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_pin"
+    bl_label = "Pin"
+    bl_description = "Pin or unpin. Pinned versions stay at the top; Bake offers to replace a pinned VDB version (a bake, or a preview sequence you want to keep as one)"
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        if entry["kind"] == "vdb":
+            write_pinned(entry["path"], not entry["pinned"])
+        else:
+            write_sidecar(entry["path"], pinned=not entry["pinned"])
         forget_scan()
         return {"FINISHED"}
 
 
-class FUMARIS_OT_version_show(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_show"
-    bl_label = "Show"
-    bl_description = "Show or hide this version in the viewport. With two shown, the second stands beside the domain"
+class FUMARIS_OT_entry_show(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_show"
+    bl_label = "Show in Viewport"
+    bl_description = "Show or hide this version in the viewport (imported as a volume the first time)"
 
-    name: StringProperty()
-
-    def execute(self, context):
-        domain = _domain(context)
-        try:
-            toggle_version(context, domain, self.name)
-        except RuntimeError as error:
-            self.report({"ERROR"}, str(error))
-            return {"CANCELLED"}
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_version_menu(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_menu"
-    bl_label = "Version"
-    bl_description = "Load this version's settings, save them as a preset, view its images, compare or delete it"
-
-    name: StringProperty()
-
-    def invoke(self, context, _event):
-        name = self.name
-
-        def draw(menu, _context):
-            draw_version_menu(menu.layout, _domain(_context), name)
-        context.window_manager.popup_menu(draw, title=f"Version '{name}'", icon="FILE_FOLDER")
-        return {"FINISHED"}
-
-    def execute(self, context):
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_version_load_settings(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_load_settings"
-    bl_label = "Load Settings"
-    bl_description = "Set the domain and its sources to the settings this version was made with (sources are matched by name)"
-    bl_options = {"REGISTER", "UNDO"}
-
-    name: StringProperty()
+    key: StringProperty()
 
     @classmethod
     def poll(cls, context):
         return _domain(context) is not None and active_mode() != "baking"
 
     def execute(self, context):
-        domain = _domain(context)
-        data = read_settings_snapshot(cache_slot_directory(domain, self.name))
+        domain, entry = _entry_or_report(self, context)
+        if entry is None or entry["kind"] != "vdb":
+            return {"CANCELLED"}
+        try:
+            show_entry(context, domain, entry, not entry_shown(domain, entry))
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_import(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_import"
+    bl_label = "Import"
+    bl_description = "Bring this version into the scene as a volume object, to render (EEVEE or Cycles) and keep; Remove takes it out of the scene again (its files stay)"
+
+    key: StringProperty()
+
+    def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None or entry["kind"] != "vdb":
+            return {"CANCELLED"}
+        if _entry_volumes(entry):
+            if os.path.normpath(entry["path"]) == _current_directory(domain):
+                self.report({"ERROR"}, "This is the bake the domain shows; hide it with its eye instead")
+                return {"CANCELLED"}
+            remove_entry_from_scene(entry)
+            return {"FINISHED"}
+        try:
+            show_entry(context, domain, entry, True)
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_image(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_image"
+    bl_label = "Preview"
+    bl_description = "Open this snapshot in an Image Editor"
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None or entry["kind"] != "image":
+            return {"CANCELLED"}
+        path = os.path.normpath(entry["path"])
+        image = next((image for image in bpy.data.images
+                      if os.path.normpath(bpy.path.abspath(image.filepath)) == path), None)
+        if image is None:
+            image = bpy.data.images.load(path, check_existing=True)
+        else:
+            image.reload()
+        if not show_image(context, image):
+            self.report({"INFO"}, f"Image '{image.name}' ({path})")
+        return {"FINISHED"}
+
+
+_changes = {"title": "", "lines": [], "key": ""}
+
+
+class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_changes"
+    bl_label = "View Changes"
+    bl_description = "The settings this version was made with that differ from the current ones; Load Settings from there"
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def invoke(self, context, _event):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        lines = changes_from_current(domain, entry)
+        if lines is None:
+            self.report({"ERROR"}, f"'{entry['name']}' has no stored settings")
+            return {"CANCELLED"}
+        _changes.update(title=f"{entry['name']}: changes from the current settings", lines=lines, key=entry["key"])
+        return context.window_manager.invoke_popup(self, width=520)
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.label(text=_changes["title"], icon="SEQ_SPLITVIEW")
+        lines = _changes["lines"]
+        if not lines:
+            layout.label(text="Same settings as now")
+        else:
+            grid = layout.grid_flow(row_major=True, columns=3, even_columns=False, align=True)
+            grid.label(text="Setting")
+            grid.label(text="Now")
+            grid.label(text="This version")
+            for name, now, then in lines[:60]:
+                grid.label(text=name)
+                grid.label(text=now)
+                grid.label(text=then)
+            if len(lines) > 60:
+                layout.label(text=f"… and {len(lines) - 60} more")
+        layout.separator()
+        load = layout.row()
+        load.enabled = active_job() is None or active_mode() == "previewing"
+        load.operator("fumaris.entry_load", text="Load These Settings", icon="LOOP_BACK").key = _changes["key"]
+
+    def execute(self, _context):
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_load(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_load"
+    bl_label = "Load Settings"
+    bl_description = "Set the domain and its sources to the settings this version was made with (sources are matched by name). Your current settings are overwritten"
+    bl_options = {"REGISTER", "UNDO"}
+
+    key: StringProperty()
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(
+            self, event, title="Load Settings?",
+            message="This replaces the current settings of the domain and its sources. Undo (Ctrl+Z) brings them back.",
+            confirm_text="Load", icon="WARNING")
+
+    def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        data = entry_settings(entry)
         if data is None:
-            self.report({"ERROR"}, f"'{self.name}' has no stored settings")
+            self.report({"ERROR"}, f"'{entry['name']}' has no stored settings")
             return {"CANCELLED"}
         changed, _restored, missing = apply_settings_snapshot(domain, data, bpy.data.objects)
-        message = f"Loaded {changed} settings from '{self.name}'"
+        message = f"Loaded {changed} settings from '{entry['name']}'"
         if missing:
             self.report({"WARNING"}, message + f"; not found: {', '.join(missing[:4])}")
         else:
@@ -862,196 +1120,117 @@ class FUMARIS_OT_version_load_settings(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_version_save_preset(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_save_preset"
+class FUMARIS_OT_entry_save_preset(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_save_preset"
     bl_label = "Save Settings as Preset"
     bl_description = "Save the domain settings this version was made with as a preset, available in every file"
 
-    name: StringProperty()
+    key: StringProperty()
     preset: StringProperty(name="Preset Name")
 
     def invoke(self, context, _event):
-        self.preset = self.name
+        _domain_, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        self.preset = entry["name"]
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
         from .presets import save_preset_data
-        data = read_settings_snapshot(cache_slot_directory(_domain(context), self.name))
+        _domain_, entry = _entry_or_report(self, context)
+        data = entry_settings(entry) if entry else None
         if data is None:
-            self.report({"ERROR"}, f"'{self.name}' has no stored settings")
+            self.report({"ERROR"}, "This version has no stored settings")
             return {"CANCELLED"}
-        _path, count = save_preset_data(data, self.preset or self.name)
+        _path, count = save_preset_data(data, self.preset or entry["name"])
         self.report({"INFO"}, f"Saved preset '{self.preset}' ({count} settings)")
         return {"FINISHED"}
 
 
-class FUMARIS_OT_version_image(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_image"
-    bl_label = "View Image"
-    bl_description = "Show this snapshot in an Image Editor"
+class FUMARIS_OT_entry_note(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_note"
+    bl_label = "Rename…"
+    bl_description = "Name or describe this version (its files keep their names)"
 
-    path: StringProperty()
-
-    @classmethod
-    def poll(cls, context):
-        return _domain(context) is not None
-
-    def execute(self, context):
-        image = next((image for image in bpy.data.images
-                      if os.path.normpath(bpy.path.abspath(image.filepath)) == os.path.normpath(self.path)), None)
-        if image is None:
-            image = bpy.data.images.load(self.path, check_existing=True)
-        else:
-            image.reload()
-        if not show_image(context, image):
-            self.report({"INFO"}, f"Image '{image.name}' ({self.path})")
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_version_images_side_by_side(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_images_side_by_side"
-    bl_label = "Image Beside the Current Version's"
-    bl_description = "Put this version's latest snapshot beside the current version's latest in an Image Editor"
-
-    name: StringProperty()
-
-    @classmethod
-    def poll(cls, context):
-        return _domain(context) is not None
-
-    def execute(self, context):
-        domain = _domain(context)
-        current = output_directory_for_object(domain)
-        mine = snapshots(cache_slot_directory(domain, self.name))
-        theirs = snapshots(current)
-        if not mine or not theirs:
-            self.report({"ERROR"}, "Needs a snapshot in this version and in the current one")
-            return {"CANCELLED"}
-        pixels = side_by_side(load_png(theirs[-1]), load_png(mine[-1]))
-        root = os.path.join(os.path.dirname(current), ".compare")
-        os.makedirs(root, exist_ok=True)
-        path = os.path.join(root, f"{domain.fumaris.cache_slot}_vs_{self.name}.png")
-        save_png(pixels, path)
-        title = f"Fumaris {domain.fumaris.cache_slot} | {self.name}"
-        image = bpy.data.images.get(title)
-        if image is None:
-            image = bpy.data.images.load(path, check_existing=False)
-            image.name = title
-        else:
-            image.filepath = path
-            image.reload()
-        if not show_image(context, image):
-            self.report({"INFO"}, f"Image '{title}' ({path})")
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_version_details(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_details"
-    bl_label = "Compare Details"
-    bl_description = "Every setting that differs from the current version, and measures of both at this frame (smoke voxels, extent, top, file size) and what each bake cost"
-
-    name: StringProperty()
+    key: StringProperty()
+    note: StringProperty(name="Name")
 
     @classmethod
     def poll(cls, context):
         return _domain(context) is not None
 
     def invoke(self, context, _event):
-        domain = _domain(context)
-        props = domain.fumaris
-        b = read_settings_snapshot(cache_slot_directory(domain, self.name))
-        if b is None:
-            self.report({"ERROR"}, f"'{self.name}' has no stored settings")
+        _domain_, entry = _entry_or_report(self, context)
+        if entry is None:
             return {"CANCELLED"}
-        a_dir = output_directory_for_object(domain)
-        a = read_settings_snapshot(a_dir)
-        source = props.cache_slot
-        if a is None or _previewing(domain):
-            a, source = _current_settings(domain), "current settings"
-        _last_diff["title"] = f"{source}  →  {self.name}"
-        _last_diff["lines"] = settings_differences(a, b, props)
-        previous, props.compare_slot = props.compare_slot, self.name
-        try:
-            _last_diff["measures"] = measured_differences(domain, context.scene.frame_current)
-        except Exception as error:
-            print(f"Fumaris Compare: measures unavailable: {error}")
-            _last_diff["measures"] = []
-        finally:
-            props.compare_slot = previous
-        return context.window_manager.invoke_popup(self, width=520)
-
-    def draw(self, _context):
-        layout = self.layout
-        layout.label(text=_last_diff["title"], icon="SEQ_SPLITVIEW")
-        measures = _last_diff.get("measures") or []
-        if measures:
-            grid = layout.grid_flow(row_major=True, columns=3, even_columns=False, align=True)
-            for name, a, b in measures:
-                grid.label(text=name)
-                grid.label(text=a)
-                grid.label(text=b)
-            layout.separator()
-        lines = _last_diff["lines"]
-        if not lines:
-            layout.label(text="Same settings")
-            return
-        grid = layout.grid_flow(row_major=True, columns=3, even_columns=False, align=True)
-        for name, a, b in lines[:60]:
-            grid.label(text=name)
-            grid.label(text=a)
-            grid.label(text=b)
-        if len(lines) > 60:
-            layout.label(text=f"… and {len(lines) - 60} more")
-
-    def execute(self, _context):
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_version_note(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_note"
-    bl_label = "Note…"
-    bl_description = "Describe this version (shown beside its name)"
-
-    name: StringProperty()
-    note: StringProperty(name="Note")
-
-    def invoke(self, context, _event):
-        domain = _domain(context)
-        self.note = read_note(cache_slot_directory(domain, self.name))
-        return context.window_manager.invoke_props_dialog(self, title=f"Note for '{self.name}'")
+        self.note = entry["note"]
+        return context.window_manager.invoke_props_dialog(self, title="Rename")
 
     def execute(self, context):
-        write_note(cache_slot_directory(_domain(context), self.name), self.note)
+        _domain_, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        if entry["kind"] == "vdb":
+            write_note(entry["path"], self.note)
+        else:
+            write_sidecar(entry["path"], note=self.note)
         forget_scan()
         return {"FINISHED"}
 
 
-class FUMARIS_OT_version_delete(_DomainOperator, Operator):
-    bl_idname = "fumaris.version_delete"
-    bl_label = "Delete Version"
-    bl_description = "Delete this version's frames, images and stored settings. The files cannot be recovered"
+class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_delete"
+    bl_label = "Delete"
+    bl_description = "Delete this version's files (frames, or the image) and stored settings. They cannot be recovered"
 
-    name: StringProperty()
+    key: StringProperty()
 
     @classmethod
     def poll(cls, context):
         return _domain(context) is not None and active_job() is None
 
     def invoke(self, context, event):
-        version = _find_version(_domain(context), self.name)
-        detail = version_summary(version, size=True) if version else ""
+        _domain_, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
         return context.window_manager.invoke_confirm(
-            self, event, title="Delete Version?",
-            message=f"Delete version '{self.name}' ({detail})? The files cannot be recovered.",
+            self, event, title="Delete?",
+            message=f"Delete '{entry['name']}' ({entry_summary(entry)})? The files cannot be recovered.",
             confirm_text="Delete", icon="WARNING")
 
     def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
         try:
-            delete_version(_domain(context), self.name)
+            delete_entry(domain, entry)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
-        self.report({"INFO"}, f"Deleted version '{self.name}'")
+        self.report({"INFO"}, f"Deleted '{entry['name']}'")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_menu(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_menu"
+    bl_label = "More"
+    bl_description = "Rename, save its settings as a preset, or delete"
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def invoke(self, context, _event):
+        key = self.key
+
+        def draw(menu, menu_context):
+            draw_entry_menu(menu.layout, _domain(menu_context), key)
+        context.window_manager.popup_menu(draw, title="Version")
+        return {"FINISHED"}
+
+    def execute(self, _context):
         return {"FINISHED"}
 
 
@@ -1124,7 +1303,6 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
     def execute(self, context):
         domain = _domain(context)
         cache = preview_cache()
-        base = (domain.fumaris.cache_slot.strip() or "main") + "_preview"
         if self.frame_only:
             # The frame the preview shows: the live one, or the cached frame at
             # or before it (Balanced skips some; the live frame's copy may
@@ -1133,11 +1311,12 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
             if frame < cache["first"]:
                 self.report({"ERROR"}, f"Frame {frame} is no longer cached (oldest kept: {cache['first']})")
                 return {"CANCELLED"}
-            slot = start_cache_export(context, domain, f"{base}_f{frame}", frame, frame)
-            self.report({"INFO"}, f"Saving frame {frame} as version '{slot}'")
+            slot = start_cache_export(context, domain, f"frame_{frame}", frame, frame)
+            self.report({"INFO"}, f"Saving frame {frame} as '{slot}'")
         else:
-            slot = start_cache_export(context, domain, base)
-            self.report({"INFO"}, f"Saving cached frames {cache['first']}-{cache['last']} as version '{slot}'")
+            slot = start_cache_export(context, domain, "preview")
+            self.report({"INFO"}, f"Saving cached frames {cache['first']}-{cache['last']} as '{slot}'")
+        domain.fumaris.compare_selected = "vdb:" + slot
         forget_scan()
         return {"FINISHED"}
 
@@ -1145,7 +1324,7 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
 class FUMARIS_OT_snapshot(_DomainOperator, Operator):
     bl_idname = "fumaris.snapshot"
     bl_label = "Save Snapshot"
-    bl_description = "Save what the 3D Viewport shows (the live preview included) as an image in the current version, with the settings if it has none stored"
+    bl_description = "Save what the 3D Viewport shows (the live preview included) as an image in Versions, with the current settings"
 
     @classmethod
     def poll(cls, context):
@@ -1158,140 +1337,123 @@ class FUMARIS_OT_snapshot(_DomainOperator, Operator):
         except Exception as error:
             self.report({"ERROR"}, f"Snapshot failed: {error}")
             return {"CANCELLED"}
-        directory = output_directory_for_object(domain)
-        folder = os.path.join(directory, SNAPSHOT_DIRECTORY)
-        os.makedirs(folder, exist_ok=True)
-        path = os.path.join(folder, f"{time.strftime('%Y%m%d-%H%M%S')}_f{context.scene.frame_current:04d}.png")
+        root = snapshot_root(domain, create=True)
+        path = os.path.join(root, f"{time.strftime('%Y%m%d-%H%M%S')}_f{context.scene.frame_current:04d}.png")
         save_png(pixels, path)
-        if read_settings_snapshot(directory) is None:
-            write_settings_snapshot(directory, domain, _participants_for_snapshot(domain))
+        write_sidecar(path, **settings_snapshot_data(domain, _participants_for_snapshot(domain)))
+        domain.fumaris.compare_selected = "img:" + path
         forget_scan()
-        self.report({"INFO"}, f"Snapshot saved in version '{domain.fumaris.cache_slot}'")
+        self.report({"INFO"}, "Snapshot saved in Versions")
         return {"FINISHED"}
 
 
 # --- Panel -------------------------------------------------------------------
 
-def draw_version_menu(layout, domain, name):
-    """A version's actions (its menu button and right-click)."""
+def draw_entry_menu(layout, domain, key):
+    """An entry's extra actions (its More button and right-click)."""
     if domain is None:
         return
-    version = _find_version(domain, name)
-    current = os.path.basename(_current_directory(domain) or "")
-    if name != current:
-        layout.operator("fumaris.version_use", text="Make Current", icon="RADIOBUT_ON").name = name
-    settings = layout.column()
-    settings.enabled = bool(version and version["settings"])
-    settings.operator("fumaris.version_load_settings", icon="LOOP_BACK").name = name
-    settings.operator("fumaris.version_save_preset", icon="PRESET_NEW").name = name
-    if name != current:
-        settings.operator("fumaris.version_details", text="Compare Details…", icon="SEQ_SPLITVIEW").name = name
-    images = snapshots(cache_slot_directory(domain, name))
-    if images:
-        layout.separator()
-        for path in images[-8:][::-1]:
-            layout.operator("fumaris.version_image", text=os.path.basename(path), icon="IMAGE_DATA").path = path
-        if name != current:
-            layout.operator("fumaris.version_images_side_by_side", text="Image Beside the Current Version's",
-                            icon="IMAGE_REFERENCE").name = name
+    entry = find_entry(domain, key)
+    if entry is None:
+        return
+    layout.operator("fumaris.entry_note", icon="GREASEPENCIL").key = key
+    settings = layout.row()
+    settings.enabled = entry["settings"]
+    settings.operator("fumaris.entry_save_preset", icon="PRESET_NEW").key = key
     layout.separator()
-    layout.operator("fumaris.version_note", icon="GREASEPENCIL").name = name
-    layout.operator("fumaris.version_delete", text="Delete…", icon="TRASH").name = name
+    layout.operator("fumaris.entry_delete", text="Delete…", icon="TRASH").key = key
 
 
 def _button_context_menu(self, context):
-    """Right-click on a version's name or eye: its actions."""
+    """Right-click on an entry in Versions: its actions."""
     op = getattr(context, "button_operator", None)
     try:
         identifier = op.bl_rna.identifier if op is not None else ""
     except (AttributeError, ReferenceError):
         return
-    if identifier not in {"FUMARIS_OT_version_use", "FUMARIS_OT_version_show", "FUMARIS_OT_version_menu"}:
+    if identifier not in {"FUMARIS_OT_entry_select", "FUMARIS_OT_entry_show", "FUMARIS_OT_entry_pin",
+                          "FUMARIS_OT_entry_image"}:
         return
     domain = _domain(context)
-    if domain is None or not op.name:
+    if domain is None or not op.key:
         return
-    self.layout.separator()
-    self.layout.label(text=f"Version '{op.name}'", icon="FILE_FOLDER")
-    draw_version_menu(self.layout, domain, op.name)
+    entry = find_entry(domain, op.key)
+    if entry is None:
+        return
+    layout = self.layout
+    layout.separator()
+    layout.label(text=entry["name"], icon="VOLUME_DATA" if entry["kind"] == "vdb" else "IMAGE_DATA")
+    if entry["kind"] == "vdb":
+        layout.operator("fumaris.entry_import", text="Remove from Scene" if _entry_volumes(entry) else "Import",
+                        icon="IMPORT").key = op.key
+    else:
+        layout.operator("fumaris.entry_image", icon="IMAGE_DATA").key = op.key
+    layout.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = op.key
+    draw_entry_menu(layout, domain, op.key)
+
+
+def _draw_entry_row(column, domain, entry, selected):
+    row = column.row(align=True)
+    split = row.split(factor=0.62, align=True)
+    name = split.row(align=True)
+    icon = "VOLUME_DATA" if entry["kind"] == "vdb" else "IMAGE_DATA"
+    name.operator("fumaris.entry_select", text=entry["name"], icon=icon, depress=selected).key = entry["key"]
+    split.label(text="" if entry["kind"] == "image" else version_summary(entry),
+                icon="LOCKED" if entry["protected"] else "NONE")
+    row.operator("fumaris.entry_pin", text="", icon="PINNED" if entry["pinned"] else "UNPINNED",
+                 emboss=False).key = entry["key"]
+    if entry["kind"] == "vdb":
+        shown = entry_shown(domain, entry)
+        row.operator("fumaris.entry_show", text="", icon="HIDE_OFF" if shown else "HIDE_ON",
+                     depress=shown).key = entry["key"]
+    else:
+        row.operator("fumaris.entry_image", text="", icon="IMAGE_DATA").key = entry["key"]
 
 
 def draw_compare(layout, domain, props):
-    idle = active_job() is None
-    column = layout.column(align=True)
+    entries = list_entries(domain)
+    selected = props.compare_selected
+    box = layout.box()
+    column = box.column(align=True)
+    if not entries:
+        column.label(text="Bake, or save while previewing (Cache Preview)", icon="INFO")
+    pinned = [entry for entry in entries if entry["pinned"]]
+    others = [entry for entry in entries if not entry["pinned"]]
+    for entry in pinned:
+        _draw_entry_row(column, domain, entry, entry["key"] == selected)
+    if pinned and others:
+        column.separator(factor=0.6, type="LINE")
+    for entry in others:
+        _draw_entry_row(column, domain, entry, entry["key"] == selected)
 
-    # Presets: settings to reuse in any file.
-    row = column.row(align=True)
-    row.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")
-    row.operator("fumaris.preset_save", text="", icon="ADD")
-
-    # Versions: every saved result of this domain.
-    column.separator(factor=0.8)
-    header = column.row(align=True)
-    header.label(text="Versions")
-    new = header.row(align=True)
-    new.enabled = idle
-    new.operator("fumaris.cache_slot_new", text="", icon="ADD")
-    versions = list_versions(domain)
-    current = os.path.basename(_current_directory(domain) or "")
-    compared = compared_name(domain)
-    for version in versions:
-        name = version["name"]
-        is_current = name == current
-        row = column.row(align=True)
-        split = row.split(factor=0.6, align=True)
-        use = split.row(align=True)
-        use.enabled = idle
-        label = name + (f" — {version['note']}" if version["note"] else "")
-        use.operator("fumaris.version_use", text=label,
-                     icon="RADIOBUT_ON" if is_current else "RADIOBUT_OFF", depress=is_current).name = name
-        split.label(text=version_summary(version),
-                    icon="LOCKED" if version["protected"] else ("IMAGE_DATA" if version["snapshots"] else "BLANK1"))
-        eye = row.row(align=True)
-        if is_current:
-            eye.enabled = version["frames"] > 0 and not _previewing(domain)
-            shown = eye.enabled and current_shown(domain)
-        else:
-            eye.enabled = version["frames"] > 0
-            shown = compared == name
-        eye.operator("fumaris.version_show", text="", icon="HIDE_OFF" if shown else "HIDE_ON",
-                     depress=shown).name = name
-        row.operator("fumaris.version_menu", text="", icon="DOWNARROW_HLT").name = name
-    if len(versions) == 1 and not versions[0]["frames"]:
-        column.label(text="Bake, or Save Sequence while previewing", icon="INFO")
-
-    # What Changed between the two shown.
-    if compared:
-        title, lines = what_changed(domain)
-        column.separator(factor=0.8)
-        box = column.box()
-        row = box.row(align=True)
-        row.prop(props, "show_compare_changes", text=f"What Changed ({len(lines)})" if lines else "What Changed",
-                 icon="DOWNARROW_HLT" if props.show_compare_changes else "RIGHTARROW", emboss=False)
-        row.operator("fumaris.version_details", text="", icon="ZOOM_IN").name = compared
-        if props.show_compare_changes:
-            box.label(text=title)
-            if not lines:
-                box.label(text="Same settings")
-            for setting, before, after in lines[:12]:
-                split = box.split(factor=0.5, align=True)
-                split.label(text=setting)
-                split.label(text=f"{before} → {after}")
-            if len(lines) > 12:
-                box.label(text=f"… and {len(lines) - 12} more (magnifier for all)")
+    entry = next((entry for entry in entries if entry["key"] == selected), None)
+    if entry is None:
+        return
+    row = layout.row(align=True)
+    if entry["kind"] == "vdb":
+        imported = bool(_entry_volumes(entry))
+        row.operator("fumaris.entry_import", text="Remove" if imported else "Import",
+                     icon="X" if imported else "IMPORT").key = entry["key"]
+    else:
+        row.operator("fumaris.entry_image", icon="IMAGE_DATA").key = entry["key"]
+    changes = row.row(align=True)
+    changes.enabled = entry["settings"]
+    changes.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = entry["key"]
+    row.operator("fumaris.entry_menu", text="", icon="DOWNARROW_HLT").key = entry["key"]
 
 
 CLASSES = (
-    FUMARIS_OT_version_use,
-    FUMARIS_OT_version_show,
-    FUMARIS_OT_version_menu,
-    FUMARIS_OT_version_load_settings,
-    FUMARIS_OT_version_save_preset,
-    FUMARIS_OT_version_image,
-    FUMARIS_OT_version_images_side_by_side,
-    FUMARIS_OT_version_details,
-    FUMARIS_OT_version_note,
-    FUMARIS_OT_version_delete,
+    FUMARIS_OT_entry_select,
+    FUMARIS_OT_entry_pin,
+    FUMARIS_OT_entry_show,
+    FUMARIS_OT_entry_import,
+    FUMARIS_OT_entry_image,
+    FUMARIS_OT_entry_changes,
+    FUMARIS_OT_entry_load,
+    FUMARIS_OT_entry_save_preset,
+    FUMARIS_OT_entry_note,
+    FUMARIS_OT_entry_delete,
+    FUMARIS_OT_entry_menu,
     FUMARIS_OT_version_save,
     FUMARIS_OT_snapshot,
 )

@@ -40,8 +40,8 @@ operating system.
    keeps the frames it simulates, so scrubbing or playing the timeline while
    paused shows them again with the live camera and look. **Save Sequence**
    (below the toggle) keeps them as a version you can import, render in Cycles
-   and compare: in Presets & Compare, turn on the eye of two versions to see
-   them side by side and what changed between them.
+   and compare: in Versions, select one and View Changes shows how its settings
+   differ from yours, with Load to bring them back.
 4. Use **Bake** for a final sequence at the domain's full resolution.
 
 Domain participant collections include nested child collections and select only
@@ -86,7 +86,7 @@ need to be set up again. See the [changelog](CHANGELOG.md).
 
 - Choose and save the GPU used by the next simulation job.
 - Use Timeline follows the scene range, with optional warmup frames.
-- Preserve bakes with New Slot, overwrite/delete confirmations and Protect.
+- Preserve bakes: Bake asks to replace a pinned bake or make a new one; delete confirmations and Protect.
 - Preview Flame Light: flames light the smoke around them in the live preview.
 
 ## Earlier 1.2.0 Features

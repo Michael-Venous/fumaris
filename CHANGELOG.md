@@ -235,14 +235,15 @@ Removed). This is a beta: please report scenes that look wrong.
   throughout; the object's Fumaris role is labelled **Role**.
 - **Ground Fog** rolls into billows (a light Disturb layer) instead of
   spreading in regular rings.
-- **Presets & Compare** (top of the domain panel): a Presets menu (apply,
-  save, delete) and **Versions**, the results saved for the domain (a bake, or
-  a live preview kept with Save Sequence or Save Frame), each with the settings that made it
-  and any snapshot images. The eye shows a version: with a second one shown,
-  it stands beside the domain and What Changed lists the settings that
-  differ. Right-click a version to load its settings, save them as a preset,
-  view its images, add a note or delete it. Versions are VDB volumes, so they
-  render in EEVEE and Cycles.
+- **Versions** (top of the domain panel): one list of what the domain has
+  saved: bakes and live previews kept with Save Sequence or Save Frame (VDB
+  sequences that import and render in EEVEE and Cycles), and Save Snapshot
+  images, each with the settings that made it. Bakes are pinned at the top;
+  pin any entry. Select one for Import (or a snapshot's Preview) and View
+  Changes, which lists its settings against the current ones and loads them.
+  Bake asks to replace a pinned bake or make a new one, so nothing piles up
+  unasked, and Play works after a bake. The domain's Presets menu sits at the
+  top of its panel like every other object's.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
 - Transport status (Live / Cached / Baked frames).

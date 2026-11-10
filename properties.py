@@ -801,6 +801,13 @@ class FumarisSettings(PropertyGroup):
         update=_compare_view_updated,
     )
 
+    compare_selected: StringProperty(
+        name="Selected Version",
+        description="The entry selected in Versions",
+        default="",
+        options={"HIDDEN"},
+    )
+
     show_compare_changes: BoolProperty(
         name="What Changed",
         description="List the settings that differ between the two versions shown",

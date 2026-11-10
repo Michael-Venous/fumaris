@@ -99,19 +99,22 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         return bool(domain and not active_job())
 
     def invoke(self, context, _event):
-        # Pressing Bake clears the slot first. Ask before that destroys an
-        # earlier bake; scripts calling the operator directly are not asked.
+        # Bake writes into the domain's current slot, clearing it first. With
+        # a pinned bake (Versions) it asks: replace that one, or a new one.
+        # The first bake needs no question. Scripts calling the operator
+        # directly bake into the current slot, unasked.
         domain = _active_domain(context)
         if domain and not self.replace_confirmed:
+            from .compare import bake_target, new_bake_slot
+            target = bake_target(domain)
+            if target is not None:
+                bpy.ops.fumaris.bake_choose("INVOKE_DEFAULT", target=target["name"])
+                return {"CANCELLED"}
             directory = output_directory_for_object(domain)
-            try:
-                require_unprotected(directory, "bake over it")
-            except RuntimeError as error:
-                self.report({"ERROR"}, str(error))
-                return {"CANCELLED"}
-            if baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
-                bpy.ops.fumaris.bake_replace("INVOKE_DEFAULT")
-                return {"CANCELLED"}
+            if baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_") or is_protected(directory):
+                # The current slot holds something that is not a pinned bake
+                # (a preview save): keep it and bake into a new slot.
+                domain.fumaris.cache_slot = new_bake_slot(domain)
         return self.execute(context)
 
     def execute(self, context):
@@ -206,10 +209,11 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         props.bake_elapsed = time.monotonic() - self._started_at
         props.bake_peak_vram_mb = self._peak_vram_bytes / (1024.0 * 1024.0)
         props.bake_peak_ram_mb = self._peak_ram_bytes / (1024.0 * 1024.0)
-        # Kept with the bake, so Compare can set two versions' costs side by side.
+        # Kept with the bake (its cost in View Changes); a bake is pinned.
         try:
-            from .compare import write_bake_stats
+            from .compare import write_bake_stats, write_pinned
             write_bake_stats(self._directory, props)
+            write_pinned(self._directory, True)
         except OSError as error:
             console_log(f"Fumaris could not store bake statistics: {error}")
 
@@ -247,7 +251,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     def poll(cls, context):
         from .playback import scene_domains
         return not active_job() and any(
-            domain.fumaris.simulation_state not in {"baking", "baked"}
+            domain.fumaris.simulation_state != "baking"
             for domain in scene_domains(context)
         )
 
@@ -258,9 +262,16 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if not domain or domain.fumaris.smoke_object_type != 'domain':
             self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
-        if active_job() or domain.fumaris.simulation_state in {"baking", "baked"}:
-            self.report({"WARNING"}, "Stop the active job or delete this domain's bake before previewing")
+        if active_job() or domain.fumaris.simulation_state == "baking":
+            self.report({"WARNING"}, "Stop the active job before previewing")
             return {"CANCELLED"}
+        if domain.fumaris.simulation_state == "baked":
+            # The bake stays in Versions (its eye shows it again); the preview
+            # runs in an empty slot, so nothing is written over it.
+            from .compare import free_slot_name
+            prefix = domain.fumaris.output_prefix or "fumaris_"
+            domain.fumaris.cache_slot = free_slot_name(
+                "live", lambda slot: bool(baked_frame_count(cache_slot_directory(domain, slot), prefix)))
         if _is_playing(context):
             self.report({"WARNING"}, "Stop Blender playback before starting Fumaris preview")
             return {"CANCELLED"}
@@ -879,32 +890,66 @@ def _slot_contents(domain):
     return directory, baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_")
 
 
-class FUMARIS_OT_bake_replace(Operator):
-    bl_idname = "fumaris.bake_replace"
-    bl_label = "Replace Existing Bake?"
-    bl_description = "Bake over the bake already in this version"
+class FUMARIS_OT_bake_choose(Operator):
+    bl_idname = "fumaris.bake_choose"
+    bl_label = "Bake"
+    bl_description = "Replace a pinned bake or bake a new one"
     bl_options = {"INTERNAL"}
+
+    target: bpy.props.StringProperty()
 
     @classmethod
     def poll(cls, context):
         return FUMARIS_OT_bake.poll(context)
 
-    def invoke(self, context, event):
-        domain = _active_domain(context)
-        _directory, frames = _slot_contents(domain)
-        return context.window_manager.invoke_confirm(
-            self,
-            event,
-            title="Replace Existing Bake?",
-            message=(
-                f"Version '{domain.fumaris.cache_slot}' holds {frames} baked frames. "
-                "Baking deletes them first. Use New Slot under Output to keep them."
-            ),
-            confirm_text="Replace",
-            icon="WARNING",
-        )
+    def invoke(self, context, _event):
+        target = self.target
+
+        def draw(menu, _context):
+            layout = menu.layout
+            layout.operator_context = "INVOKE_DEFAULT"
+            replace = layout.operator("fumaris.bake_into", text=f"Replace '{target}'", icon="FILE_REFRESH")
+            replace.slot = target
+            layout.operator("fumaris.bake_into", text="New Bake", icon="ADD").slot = ""
+        context.window_manager.popup_menu(draw, title="Bake", icon="RENDER_ANIMATION")
+        return {"FINISHED"}
 
     def execute(self, _context):
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_bake_into(Operator):
+    bl_idname = "fumaris.bake_into"
+    bl_label = "Bake Into"
+    bl_description = "Bake into this version (replacing its frames), or into a new one"
+    bl_options = {"INTERNAL"}
+
+    slot: bpy.props.StringProperty()
+
+    @classmethod
+    def description(cls, _context, properties):
+        if properties.slot:
+            return f"Bake again into '{properties.slot}': its frames are replaced"
+        return "Bake into a new version, keeping the others"
+
+    @classmethod
+    def poll(cls, context):
+        return FUMARIS_OT_bake.poll(context)
+
+    def invoke(self, context, _event):
+        return self.execute(context)
+
+    def execute(self, context):
+        from .compare import new_bake_slot
+        domain = _active_domain(context)
+        slot = self.slot or new_bake_slot(domain)
+        try:
+            require_unprotected(cache_slot_directory(domain, slot), "bake over it")
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
+        domain.fumaris.cache_slot = slot
+        domain.fumaris.compare_selected = "vdb:" + slot
         # Started through invoke so the bake's modal handler is installed
         # the same way as from the Bake button.
         bpy.ops.fumaris.bake("INVOKE_DEFAULT", replace_confirmed=True)
@@ -1329,7 +1374,8 @@ class FUMARIS_OT_copy_diagnostics(Operator):
 CLASSES = (
     FUMARIS_OT_copy_diagnostics,
     FUMARIS_OT_bake,
-    FUMARIS_OT_bake_replace,
+    FUMARIS_OT_bake_choose,
+    FUMARIS_OT_bake_into,
     FUMARIS_OT_cache_slot_new,
     FUMARIS_OT_cache_slot_restore_settings,
     FUMARIS_OT_cache_make_lighter,

@@ -610,7 +610,7 @@ def _draw_domain(layout, scene, props):
     is_initializing = job is not None and not getattr(job, "_accepted", False)
 
     compare_box = layout.box()
-    if _section(compare_box, props, "show_panel_compare", "Presets & Compare", "SEQ_SPLITVIEW"):
+    if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
         from .compare import draw_compare
         draw_compare(compare_box, props.id_data, props)
 
@@ -641,7 +641,7 @@ def _draw_domain(layout, scene, props):
         controls.separator(factor=0.6)
         preview = controls.row(align=True)
         play = preview.row(align=True)
-        play.enabled = mode is None and props.simulation_state != "baked"
+        play.enabled = mode is None
         play.operator("fumaris.preview_play", icon="PLAY", text="Play")
         pause = preview.row(align=True)
         pause.enabled = is_previewing and not is_initializing
@@ -692,9 +692,6 @@ def _draw_domain(layout, scene, props):
                 text=_bake_summary(props, "Baked" if completed else "Stopped"),
                 icon="CHECKMARK" if completed else "PAUSE",
             )
-            if completed:
-                # Why Play is greyed out.
-                status.label(text="Delete the bake or make a new version (+ under Versions) to preview again")
         elif is_previewing:
             status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                          icon="PAUSE" if is_preview_paused else "PLAY")
@@ -777,11 +774,10 @@ def _draw_domain(layout, scene, props):
             split = _label_split(output, 0.2, 0.3)
             labels = split.column(align=True)
             fields = split.column(align=True)
-            labels.label(text="Version")
+            # The bake the domain shows (chosen in Versions) and tools for it.
+            labels.label(text="Bake")
             slot = fields.row(align=True)
-            slot.prop(props, "cache_slot", text="")
-            slot.operator("fumaris.cache_slot_new", icon="ADD", text="")
-            slot.operator("fumaris.cache_slot_restore_settings", icon="LOOP_BACK", text="")
+            slot.label(text=props.cache_slot)
             slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
             slot.operator("fumaris.add_sparks", icon="PARTICLES", text="")
             slot.operator(
@@ -1033,8 +1029,7 @@ class FUMARIS_PT_main(Panel):
             header.enabled = active_mode() != "baking"
         header.label(text=obj.name, icon="OBJECT_DATA")
         header.prop(props, "smoke_object_type", text="Role")
-        # A domain's presets live in Presets & Compare.
-        if props.smoke_object_type not in {"none", "domain"}:
+        if props.smoke_object_type != "none":
             presets = header.row(align=True)
             presets.menu("FUMARIS_MT_presets", text="Presets", icon="PRESET")
             presets.operator("fumaris.preset_save", text="", icon="ADD")

@@ -248,6 +248,18 @@ def _rna_values(props):
 
 def write_settings_snapshot(directory, domain, participants=()):
     """Write the domain's and its participants' settings for this bake."""
+    data = settings_snapshot_data(domain, participants)
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, SETTINGS_FILE)
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, indent=1, sort_keys=True)
+    os.replace(temporary, path)
+    return path
+
+
+def settings_snapshot_data(domain, participants=()):
+    """The domain's and its participants' settings, as a settings snapshot holds them."""
     from . import detail_stack
     data = {
         "version": 1,
@@ -262,13 +274,7 @@ def write_settings_snapshot(directory, domain, participants=()):
         if obj is None or obj == domain or not hasattr(obj, "fumaris"):
             continue
         data["participants"][obj.name] = _rna_values(obj.fumaris)
-    os.makedirs(directory, exist_ok=True)
-    path = os.path.join(directory, SETTINGS_FILE)
-    temporary = path + ".tmp"
-    with open(temporary, "w", encoding="utf-8") as stream:
-        json.dump(data, stream, indent=1, sort_keys=True)
-    os.replace(temporary, path)
-    return path
+    return data
 
 
 def read_settings_snapshot(directory):

@@ -194,12 +194,25 @@ its Flow working set. Native Blender
 playback is separate from Fumaris preview and should not be started at the same
 time.
 
-## Baking And Cache Slots
+## Baking
 
 `Bake` resets Flow and simulates every frame sequentially. It writes an
 OpenVDB sequence and imports the completed frames as a Blender Volume object.
 The status row reports elapsed time and peak RAM and VRAM observed during the
 bake.
+
+- The first bake needs no choice. Once a bake exists, Bake asks: **Replace**
+  the selected pinned bake in Versions (or, with none selected, the one the
+  domain shows), or **New Bake**, which keeps the others. Rebaking replaces, so
+  nothing piles up unless you choose New Bake.
+- A bake is pinned in Versions. Pin a preview save there to make it a bake
+  that Bake can replace.
+- Play works after a bake: the bake stays in Versions (its eye shows it again)
+  and the preview never writes over it.
+- `Delete` (beside Bake) asks before removing the bake the domain shows and
+  removes only its files. It is unavailable while a job is active. Scripts that
+  call the operators directly are not asked, but a protected bake still
+  refuses them.
 
 Under `Output`:
 
@@ -208,22 +221,10 @@ Under `Output`:
   directory (system temporary storage if unavailable). An explicit absolute
   output directory is respected. After saving, project-relative output is
   resolved beside the `.blend`; earlier caches stay at their original location.
-- `Cache Slot` names an independent bake. Each name has its own folder, so
-  changing it before baking keeps the earlier bake. Switching slots shows that
-  slot's bake, hides the others' volumes and updates the status line; nothing
-  is deleted, and switching back brings the earlier bake up again.
-  - The `+` button (`New Slot`) moves to the next unused version of the name:
-    `main`, `main_001`, `main_002`, or `v2`, `v3`. Versions that already hold
-    a bake are skipped.
-  - The lock button (`Protect`) locks the current slot. While it is locked,
-    Bake and Delete are refused and the Simulate box says so. The lock is a
-    small file in the slot's folder, so it also holds if another scene points
-    at the same folder.
-- Bake clears the current slot before writing. If the slot already holds a
-  bake, the Bake button asks first. Delete asks before removing a bake, and
-  removes only the current slot's files. Scripts
-  that call the operators directly are not asked, but a locked slot still
-  refuses them.
+- `Bake` names the bake the domain shows. Beside it: make a lighter copy, add
+  sparks, and the lock (`Protect`): while it is locked, Bake and Delete refuse
+  it and the Simulate box says so. The lock is a small file in the bake's
+  folder, so it also holds if another scene points at the same folder.
 - Assign a material to apply it automatically to the imported volume.
 - Use `Selectable Volume` to control whether the imported object can be
   selected in the viewport.
@@ -235,40 +236,43 @@ Under `Output`:
 
 `Stop` during a bake imports every valid frame already written. Flow's complete
 solver state cannot currently be serialized, so a stopped bake cannot resume;
-the next Bake starts from the beginning. `Delete` removes the selected cache
-slot and its imported volume. It is unavailable while a job is active.
+the next Bake starts from the beginning.
 
-## Presets & Compare
+## Versions
 
-The `Presets & Compare` section at the top of the domain panel holds the
-domain's presets and its versions.
+The `Versions` section at the top of the domain panel lists what the domain has
+saved, in one list:
 
-- **Presets** are settings you can reuse in any file: the menu applies one
-  (`X` deletes it), `+` saves the domain's current settings as a new one.
-  Emitters, colliders, effectors and outflows keep a `Presets` menu at the top
-  of their own panel.
-- **Versions** are the results you saved for this domain: a bake, or a live
-  preview kept with **Save Sequence** or **Save Frame** (see Preview Cache). Each keeps the
-  settings that made it, its frames as VDB files (they import and render in
-  EEVEE and Cycles like any volume) and any snapshot images. The filled
-  circle marks the current version, where bakes go; click another name to make
-  it current. `+` starts a new empty version, keeping the others on disk. A
-  version's row shows its frames, a lock when protected, and a picture icon
-  when it holds snapshots.
-  - The **eye** shows or hides a version in the viewport. With the eye of a
-    second version on, it stands beside the domain, next to the current version
-    or the live preview; turn the current version's eye off to see the second
-    one in its place. **What Changed** then lists the settings that differ (the
-    magnifier opens every difference, with measures of both at this frame and
-    what each bake cost).
-  - **Right-click** a version (or use its menu button) to **Load Settings**
-    (the domain and its sources go back to the settings it was made with),
-    **Save Settings as Preset**, view its snapshot images (and put the latest
-    beside the current version's), add a **Note**, or **Delete** it.
+- **VDB versions** (volume icon): bakes, and live previews kept with Save
+  Sequence or Save Frame (see Preview Cache). Each is a VDB sequence with the
+  settings that made it, at the resolution it was simulated; it imports and
+  renders in EEVEE and Cycles like any volume. The row shows its frames.
+- **Snapshots** (picture icon): viewport images from Save Snapshot, each with
+  the settings of the moment it was taken.
 
-The live preview itself is drawn by Fumaris' own renderer and shows only in the
-viewport; a saved version is a VDB volume that Blender draws, so it looks the
-same in Solid, Material Preview and Rendered views, EEVEE or Cycles.
+Pinned entries (the pin on a row) stay at the top, above a line; bakes are
+pinned. Any entry can be pinned or unpinned; Bake offers to replace a pinned
+VDB version. The button at the right of a row is a quick look: the eye shows or
+hides a VDB version in the viewport (imported the first time), the picture opens
+a snapshot in an Image Editor.
+
+Click a row to select it; its buttons appear below the list:
+
+- VDB version: **Import** brings it into the scene as a volume object to render
+  and keep (**Remove** takes it out again; its files stay), **View Changes**,
+  and a menu with **Rename**, **Save Settings as Preset** and **Delete**.
+- Snapshot: **Preview** opens it, **View Changes**, and the same menu.
+- **View Changes** lists every setting that differs from the current settings,
+  with **Load These Settings** below. Loading replaces the current settings of
+  the domain and its sources (sources are matched by name) after a warning; Undo
+  brings them back.
+
+Right-click a row for the same actions. Rename changes the name shown, not the
+files. Delete asks first and cannot be undone; a protected bake refuses it.
+
+The domain's **Presets** menu sits at the top of its panel, as for emitters,
+colliders, effectors and outflows: apply a preset (`X` deletes it) or `+` to
+save the current settings as one, available in every file.
 
 ## Domain Settings
 
@@ -973,13 +977,13 @@ stops or starts over; Save Sequence keeps it.
   cache).
 - While a cached preview runs, three buttons sit below Cache Preview:
   **Save Sequence** writes the cached frames as VDB files into a new version
-  (see Presets & Compare), with the settings that made them and the Output
+  (see Versions), with the settings that made them and the Output
   settings (grids, resolutions, Glow) at the preview's resolution; it imports,
   renders and compares like a bake. **Save Frame** saves only the frame the
   preview shows (the live one, or the cached frame at or before it). **Save
   Snapshot** saves what the 3D Viewport shows, live preview included, as an
-  image in the current version. Saving while playing holds the preview until
-  the files are written.
+  image in Versions, with the current settings. Saving while playing holds the
+  preview until the files are written.
 - **Stop** releases the cache with the simulation.
 
 Preferences > Preview Cache chooses how often frames are kept. Each kept frame

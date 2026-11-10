@@ -295,6 +295,10 @@ Shaping layers).
 
 ### Fixes
 
+- The live preview in the viewport was drawn too bright: its display-encoded
+  image was encoded a second time by the viewport, lifting dark and unlit
+  smoke to grey. It now shows the colours the preview computes (the ones
+  matched to Cycles), the same as Save Snapshot.
 - A new domain's panel no longer logs errors from the Restore Settings and
   Make Lighter Copy buttons (they wrote the cache identity while drawing).
 - A domain that had never simulated hid the panel below Play and Stop (on the

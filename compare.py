@@ -636,10 +636,25 @@ def capture_snapshot(context, domain):
     rows = ((np.arange(scene.shape[0]) + 0.5) * smoke.shape[0] / scene.shape[0]).astype(np.intp)
     columns = ((np.arange(scene.shape[1]) + 0.5) * smoke.shape[1] / scene.shape[1]).astype(np.intp)
     smoke = smoke[rows[:, None], columns[None, :]]
+    # Blended in linear light like the viewport (its overlay buffer is sRGB):
+    # both images are display-encoded, the preview premultiplied.
+    alpha = smoke[..., 3:4]
+    straight = np.divide(smoke[..., :3], alpha, out=np.zeros_like(smoke[..., :3]), where=alpha > 0.0)
+    linear = _srgb_to_linear(np.clip(straight, 0.0, 1.0)) * alpha + (1.0 - alpha) * _srgb_to_linear(scene[..., :3])
     out = scene.copy()
-    out[..., :3] = smoke[..., :3] + (1.0 - smoke[..., 3:4]) * scene[..., :3]
+    out[..., :3] = _linear_to_srgb(linear)
     out[..., 3] = 1.0
     return np.clip(out, 0.0, 1.0)
+
+
+def _srgb_to_linear(values):
+    import numpy as np
+    return np.where(values <= 0.04045, values / 12.92, np.power((np.clip(values, 0.0, None) + 0.055) / 1.055, 2.4))
+
+
+def _linear_to_srgb(values):
+    import numpy as np
+    return np.where(values <= 0.0031308, values * 12.92, 1.055 * np.power(np.clip(values, 0.0, None), 1.0 / 2.4) - 0.055)
 
 
 def save_png(pixels, path):

@@ -1005,7 +1005,9 @@ ever removes cached frames.
   The status line shows the cached range and the frame shown.
 - **Resume** returns to the live frame and continues (a replay continues from
   where it was).
-- While a cached preview runs, three buttons sit below the cache options:
+- With Cache Preview on, three buttons sit below the cache options (Save
+  Sequence and Save Frame need a cached preview running; with Cache Preview
+  off only Save Snapshot is shown):
   **Save Sequence** writes the cached frames as VDB files into a new version
   (see Versions), with the settings that made them and the Output
   settings (grids, resolutions, Glow) at the preview's resolution; it imports,

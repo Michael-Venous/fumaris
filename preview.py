@@ -534,10 +534,23 @@ def _image_shader():
                 gl_Position = vec4(pos, 0.0, 1.0);
             }
         """)
+        # The preview is display-encoded (the scene's view transform) and
+        # premultiplied, and Blender's viewport overlay buffer is sRGB (it
+        # encodes what is drawn), so the colour is decoded here: without it
+        # the preview showed encoded twice, dark smoke lifted to grey,
+        # brighter than snapshots and renders.
         info.fragment_source("""
+            vec3 srgb_to_linear(vec3 c)
+            {
+                return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+            }
             void main()
             {
-                FragColor = texture(image, vec2(texCoord.x, 1.0 - texCoord.y));
+                vec4 color = texture(image, vec2(texCoord.x, 1.0 - texCoord.y));
+                if (color.a > 0.0) {
+                    color.rgb = srgb_to_linear(clamp(color.rgb / color.a, 0.0, 1.0)) * color.a;
+                }
+                FragColor = color;
             }
         """)
         _IMAGE_SHADER = gpu.shader.create_from_info(info)

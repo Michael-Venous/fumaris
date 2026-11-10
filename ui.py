@@ -690,16 +690,22 @@ def _draw_domain(layout, scene, props):
         bake_preview = controls.row(align=True)
         bake_preview.enabled = mode is None
         bake_preview.prop(props, "preview_bake")
-        # A cached live preview can be kept as a version, and pictured.
-        if (is_previewing and job is not None and getattr(job, "_domain_name", None) == props.id_data.name
-                and job._worker._session.get("preview_cache")):
+        # A cached live preview can be kept as a version (with Cache Preview
+        # on, the buttons wait for one); the viewport can always be pictured.
+        cached = (is_previewing and job is not None and getattr(job, "_domain_name", None) == props.id_data.name
+                  and job._worker._session.get("preview_cache"))
+        if props.preview_cache or cached:
             # "Save" is dropped when narrow, so the three names stay whole;
             # tight, they stack with their full names.
             word = "Save " if (_TIGHT or not _NARROW) else ""
             save = controls.column(align=True) if _TIGHT else controls.row(align=True)
-            save.operator("fumaris.version_save", text=word + "Sequence", icon="SEQUENCE")
-            save.operator("fumaris.version_save", text=word + "Frame", icon="IMAGE_PLANE").frame_only = True
+            versions = save.row(align=True) if not _TIGHT else save.column(align=True)
+            versions.enabled = bool(cached)
+            versions.operator("fumaris.version_save", text=word + "Sequence", icon="SEQUENCE")
+            versions.operator("fumaris.version_save", text=word + "Frame", icon="IMAGE_PLANE").frame_only = True
             save.operator("fumaris.snapshot", text=word + "Snapshot", icon="RESTRICT_RENDER_OFF")
+        else:
+            controls.operator("fumaris.snapshot", text="Save Snapshot", icon="RESTRICT_RENDER_OFF")
         controls.separator(factor=0.5)
         # Keep transport rows together; all status text lives below their options.
         status = controls.column(align=True)

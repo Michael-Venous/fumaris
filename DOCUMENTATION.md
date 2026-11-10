@@ -982,9 +982,11 @@ default) the preview starts over at the end of its range:
 - If you change a setting, an emitter, collider or effector, or their
   animation, the run is marked as mixing settings (the status line says from
   which frame). A simulated pass keeps caching, so a paused preview still shows
-  the mix; a replay plays out. The cache is never cleared for this: at the next
-  loop the range simulates again with the current settings and replaces the
-  stale frames as it reaches them, so you can still scrub them until then.
+  the mix, and at the next loop the range simulates again with the current
+  settings. A change during a replay simulates again from the first frame at
+  once, so it shows straight away. The cache is never cleared for this: the new
+  pass replaces the stale frames as it reaches them, so you can still scrub
+  them until then.
 - When the oldest frames have rolled out (the RAM limit below), the range
   simulates again and keeps rolling: each new frame replaces the oldest one,
   so the last frames you watched stay until newer ones push them out.

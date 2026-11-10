@@ -268,18 +268,56 @@ def packet_digest(packet):
     return hashlib.blake2b(json.dumps(header, sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
 
 
+def _fumaris_animation(obj):
+    """obj's animated Fumaris settings: their names, and their keys and
+    drivers (the animation as authored, the same on every frame)."""
+    anim = getattr(obj, "animation_data", None)
+    if anim is None:
+        return set(), []
+    curves = list(anim.drivers)
+    action = anim.action
+    if action is not None:
+        layered = False
+        for layer in getattr(action, "layers", ()):
+            for strip in layer.strips:
+                for bag in getattr(strip, "channelbags", ()):
+                    layered = True
+                    curves.extend(bag.fcurves)
+        if not layered and hasattr(action, "fcurves"):
+            curves.extend(action.fcurves)
+    names, keys = set(), []
+    for curve in curves:
+        if not curve.data_path.startswith("fumaris."):
+            continue
+        path = curve.data_path[len("fumaris."):]
+        names.add(path.split(".")[0].split("[")[0])
+        driver = getattr(curve, "driver", None)
+        keys.append((path, curve.array_index, curve.mute,
+                     [(tuple(key.co), key.interpolation, tuple(key.handle_left), tuple(key.handle_right))
+                      for key in curve.keyframe_points],
+                     driver.expression if driver is not None else None))
+    return names, sorted(keys, key=str)
+
+
 def settings_digest(domain, participants, resolution_scale):
-    """The simulation settings of the domain and its sources (no look, no view)."""
+    """The simulation settings of the domain and its sources (no look, no
+    view). Animated settings count by their keys, not this frame's value, so
+    playing through the animation is not a change."""
     from .cache import _rna_values
     from .exporters import _domain_state
     from .presets import _belongs
-    sources = {}
+    sources, animation = {}, {}
     for item in participants:
         obj = item.get("object") if isinstance(item, dict) else item
         props = getattr(obj, "fumaris", None)
         if props is not None:
-            sources[obj.name] = {key: value for key, value in _rna_values(props).items() if _belongs(key, "source")}
-    data = {"domain": _domain_state(domain.fumaris, resolution_scale), "sources": sources}
+            animated, animation[obj.name] = _fumaris_animation(obj)
+            sources[obj.name] = {key: value for key, value in _rna_values(props).items()
+                                 if _belongs(key, "source") and key not in animated}
+    animated, animation[""] = _fumaris_animation(domain)
+    state = {key: value for key, value in _domain_state(domain.fumaris, resolution_scale).items()
+             if key not in animated}
+    data = {"domain": state, "sources": sources, "animation": animation}
     return hashlib.blake2b(json.dumps(data, sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
 
 
@@ -556,6 +594,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._loop_reset_pending = False
         self._pass_stale_frame = None
         self._next_submit_at = 0.0
+        self._replay_clock = (time.monotonic(), start)   # replay keeps to the preview frame rate
         diagnostics.set_status(self._diagnostic_key, "Replaying the cache")
         console_log(f"Fumaris preview replays its cache for {self._domain_name}")
 
@@ -570,12 +609,14 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             volume_stage_dir=self._volume_staging.name, preview_enabled=True,
             volume_preview={"valid": False},
         )
-        if (self._pass_stale_frame is None
-                and self._frame_fingerprints.get(self._frame) != packet_digest(packet)):
-            # Changed since it was cached: the replay plays out; the next
-            # pass simulates again and replaces the frames.
-            self._pass_stale_frame = self._frame
-            self._stale_runs.add(self._frame_runs.get(self._frame))
+        if self._frame_fingerprints.get(self._frame) != packet_digest(packet):
+            # Changed since it was cached: simulate again from the start now,
+            # so the change shows at once (as without a cache). The cache is
+            # kept; its frames are stale until the new pass replaces them.
+            console_log(f"Fumaris preview: changed since frame {self._frame} was cached; simulating again")
+            self._stale_runs.update(self._frame_runs.values())
+            self._restart_preview_session(context, domain, keep_cache=True)
+            return
         preview = capture_volume_preview(context, domain)
         self._submitted = True
         self._replay_waiting = True
@@ -608,7 +649,25 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if self._frame >= end:
             self._end_of_range(context, self._frame)
             return
-        self._frame += 1
+        # Like Blender's own playback (the scene's Sync): Play Every Frame
+        # slows when drawing falls behind the preview frame rate (no catching
+        # up, which would leave the bridge no time to prefetch the next cached
+        # frame); Frame Dropping and Sync to Audio skip ahead to the frame due.
+        duration = _preview_frame_duration(context.scene, domain.fumaris if domain else None)
+        frame = self._frame + 1
+        clock = getattr(self, "_replay_clock", None)
+        if duration > 0.0 and clock is not None:
+            now = time.monotonic()
+            due = clock[1] + int((now - clock[0]) / duration)
+            if context.scene.sync_mode != "NONE":
+                frame = max(frame, due)
+            elif now > clock[0] + (frame - clock[1]) * duration:
+                clock = self._replay_clock = (now, frame)
+        self._frame = min(frame, end)
+        if duration > 0.0 and clock is not None:
+            # Due on the replay's own clock, not a frame after the last one
+            # started: timer latency would add up into skipped frames.
+            self._next_submit_at = clock[0] + (self._frame - clock[1]) * duration
 
     def _ready_to_submit(self, context):
         if getattr(self, "_preview_render_submitted", False):
@@ -929,6 +988,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         resume_at = self._frame if getattr(self, "_replaying", False) else getattr(self, "_live_frame", None)
         if resume_at is not None and context.scene.frame_current != resume_at:
             context.scene.frame_set(resume_at)
+        if getattr(self, "_replaying", False):
+            self._replay_clock = (time.monotonic(), self._frame)
         self._next_submit_at = 0.0
         if getattr(self, "_loop_reset_pending", False):
             # Let any pending viewport response arrive before resetting Flow.

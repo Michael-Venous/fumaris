@@ -732,11 +732,8 @@ def _draw_domain(layout, scene, props):
             if stale is not None:
                 row = status.column(align=True)
                 row.alert = True
-                _wrapped(row, (f"Changed since frame {stale} was cached: the next pass simulates again "
-                               "and replaces the cache"
-                               if replaying else
-                               f"Settings changed at frame {stale}: this run mixes earlier and current settings; "
-                               "the next pass simulates again and replaces it"), "ERROR")
+                _wrapped(row, f"Settings changed at frame {stale}: this run mixes earlier and current settings; "
+                              "the next pass simulates again and replaces it", "ERROR")
             elif job._worker._session.get("preview_cache"):
                 from .operators import stale_frames
                 behind = len(stale_frames(job, props.id_data))

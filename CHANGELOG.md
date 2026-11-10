@@ -251,7 +251,9 @@ Removed). This is a beta: please report scenes that look wrong.
 - **Loop** (beside the frame range, on by default): the live preview starts over at the end of
   its range; off, it pauses on the last frame. A cached preview that nothing has
   changed since replays its cache instead of simulating; a change marks the run
-  as mixed and the next loop simulates again.
+  as mixed and the next loop simulates again, replacing the stale frames (the
+  cache is never cleared for it). A strip on the Timeline shows the cached
+  frames, orange where they are stale.
 - **Preview While Baking** (on by default): watch the live preview
   while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving

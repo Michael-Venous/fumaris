@@ -17,6 +17,7 @@ from . import quick_setup
 from . import effector_display
 from . import detail_stack
 from . import compare
+from . import timeline
 
 
 def register():
@@ -29,9 +30,11 @@ def register():
     effector_display.register()
     detail_stack.register()
     compare.register()
+    timeline.register()
 
 
 def unregister():
+    timeline.unregister()
     compare.unregister()
     detail_stack.unregister()
     effector_display.unregister()

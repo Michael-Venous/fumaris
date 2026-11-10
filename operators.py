@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import time
 
 import bpy
@@ -282,6 +283,58 @@ def settings_digest(domain, participants, resolution_scale):
     return hashlib.blake2b(json.dumps(data, sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
 
 
+_ranges_parsed = {"text": None, "frames": frozenset()}
+# "first-last:step" or "frame"; frames may be negative (warmup).
+_RANGE = re.compile(r"(-?\d+)(?:-(-?\d+):(\d+))?")
+
+
+def cached_frames(job):
+    """The frames the live preview's cache holds (the bridge's "ranges")."""
+    text = str((getattr(job, "_preview_cache", None) or {}).get("ranges", "") or "")
+    if text != _ranges_parsed["text"]:
+        frames = set()
+        for part in filter(None, text.split(",")):
+            match = _RANGE.fullmatch(part.strip())
+            if not match:
+                continue
+            first, last, step = match.groups()
+            if last is None:
+                frames.add(int(first))
+            else:
+                frames.update(range(int(first), int(last) + 1, max(1, int(step))))
+        _ranges_parsed.update(text=text, frames=frozenset(frames))
+    return _ranges_parsed["frames"]
+
+
+_settings_now = {"key": None, "at": 0.0, "digest": None}
+
+
+def stale_frames(job, domain):
+    """Cached frames made by a run that mixed settings, or with settings that
+    are no longer the current ones (the next pass simulates and replaces them)."""
+    frames = cached_frames(job)
+    if not frames or domain is None:
+        return frozenset()
+    now = time.monotonic()
+    key = (id(job), domain.name)
+    if _settings_now["key"] != key or now - _settings_now["at"] > 0.5:
+        _settings_now.update(key=key, at=now, digest=settings_digest(
+            domain, getattr(job, "_participants", ()), getattr(job, "_resolution_scale", 1.0)))
+    current = _settings_now["digest"]
+    runs = getattr(job, "_frame_runs", {})
+    settings = getattr(job, "_frame_settings", {})
+    stale_runs = getattr(job, "_stale_runs", set())
+    return frozenset(frame for frame in frames
+                     if runs.get(frame) in stale_runs or settings.get(frame, current) != current)
+
+
+def tag_timelines(context):
+    screen = getattr(context, "screen", None)
+    for area in screen.areas if screen else ():
+        if area.type == "DOPESHEET_EDITOR":
+            area.tag_redraw()
+
+
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     bl_idname = "fumaris.preview_play"
     bl_label = "Play"
@@ -371,6 +424,11 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._preview_cache = {}
         self._live_frame = None
         self._frame_fingerprints = {}
+        # Per cached frame: the pass (run) that simulated it and its settings.
+        self._frame_runs = {}
+        self._frame_settings = {}
+        self._run_id = 1
+        self._stale_runs = set()
         self._replaying = False
         self._replay_waiting = False
         self._pass_settings = None
@@ -404,8 +462,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._preview_render_count = 0
 
     def _restart_preview_session(self, context, domain, keep_cache=True):
-        """Simulate the range again. keep_cache: the cache stays and the new
-        pass replaces frames as it reaches them; otherwise it starts empty."""
+        """Simulate the range again. The cache stays and the new pass replaces
+        frames as it reaches them (keep_cache False starts it empty)."""
         signature = session_structure_signature(domain)
         start, end = simulation_frame_range(domain)
         clear_preview(domain)
@@ -441,7 +499,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         session["preview_cache_keep"] = bool(keep_cache)
         if not keep_cache:
             self._frame_fingerprints = {}
+            self._frame_runs, self._frame_settings, self._stale_runs = {}, {}, set()
             self._preview_cache = {}
+        self._run_id = getattr(self, "_run_id", 0) + 1
         self._replaying = False
         self._replay_waiting = False
         self._pass_settings = None
@@ -458,28 +518,28 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
                 domain, self._participants, getattr(self, "_resolution_scale", 1.0)):
             return False   # changed while paused at the end
         start, end = simulation_frame_range(domain)
-        cache = self._preview_cache or {}
-        try:
-            first, last, frames = int(cache.get("first", -1)), int(cache.get("last", -1)), int(cache.get("frames", 0))
-        except (TypeError, ValueError):
-            return False
+        frames = cached_frames(self)
+        if start not in frames:
+            return False   # the oldest frames rolled out (RAM limit), or none yet
+        if stale_frames(self, domain):
+            return False   # some come from a run that mixed settings: simulate and replace them
         step = int(self._worker._session.get("preview_cache_step", 1) or 0)
-        if first != start or frames <= 0:
-            return False   # the oldest frames rolled out (RAM limit)
         if step <= 0:
             return True    # Auto: whatever it kept, held between
-        expected = (end - start) // step + 1
-        # The stats trail the last copies by a frame or two; the bridge
-        # finishes them before it draws a cached frame.
-        return frames >= expected - 2 and last >= end - 2 * step
+        # Every kept frame of the range; the stats trail the last copies by a
+        # frame or two, which the bridge finishes before it draws one.
+        needed = range(start, end - 2 * step + 1, step)
+        return all(frame in frames for frame in needed)
 
     def _next_pass(self, context, domain):
         """At the end of the range with Loop on: replay the cache when it is
         whole and current; simulate again otherwise (an empty cache when this
         run mixed settings, else the oldest frames roll out as it goes)."""
         if self._pass_stale_frame is not None:
+            # Simulate again; its frames replace the stale ones as it goes (the
+            # cache is only ever emptied by the RAM limit).
             console_log(f"Fumaris preview: settings changed at frame {self._pass_stale_frame}; simulating again")
-            self._restart_preview_session(context, domain, keep_cache=False)
+            self._restart_preview_session(context, domain, keep_cache=True)
         elif self._replayable(domain):
             self._begin_replay(context, domain)
         else:
@@ -513,8 +573,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if (self._pass_stale_frame is None
                 and self._frame_fingerprints.get(self._frame) != packet_digest(packet)):
             # Changed since it was cached: the replay plays out; the next
-            # pass simulates again.
+            # pass simulates again and replaces the frames.
             self._pass_stale_frame = self._frame
+            self._stale_runs.add(self._frame_runs.get(self._frame))
         preview = capture_volume_preview(context, domain)
         self._submitted = True
         self._replay_waiting = True
@@ -701,10 +762,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         self._frame_fingerprints[self._frame] = packet_digest(packet)
         current = settings_digest(domain, self._participants, getattr(self, "_resolution_scale", 1.0))
+        self._frame_runs[self._frame] = self._run_id
+        self._frame_settings[self._frame] = current
         if self._pass_settings is None:
             self._pass_settings = current
         elif current != self._pass_settings and self._pass_stale_frame is None:
             self._pass_stale_frame = self._frame
+            self._stale_runs.add(self._run_id)
 
     def export_cache(self, context, directory, slot, first, last, lock=None):
         """Save Sequence / Save Frame: the bridge writes the cached frames into a new
@@ -793,6 +857,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._live_frame = int(completed)
         if data.get("preview_cache"):
             self._preview_cache = dict(data["preview_cache"])
+            tag_timelines(context)
         # A new simulation frame: every other viewport needs a new image.
         self._view_signatures = {}
         if domain:

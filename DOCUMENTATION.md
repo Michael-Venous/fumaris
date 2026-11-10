@@ -982,8 +982,9 @@ default) the preview starts over at the end of its range:
 - If you change a setting, an emitter, collider or effector, or their
   animation, the run is marked as mixing settings (the status line says from
   which frame). A simulated pass keeps caching, so a paused preview still shows
-  the mix; a replay plays out. At the next loop the cache is cleared and the
-  range simulates again with the current settings.
+  the mix; a replay plays out. The cache is never cleared for this: at the next
+  loop the range simulates again with the current settings and replaces the
+  stale frames as it reaches them, so you can still scrub them until then.
 - When the oldest frames have rolled out (the RAM limit below), the range
   simulates again and keeps rolling: each new frame replaces the oldest one,
   so the last frames you watched stay until newer ones push them out.
@@ -991,6 +992,11 @@ default) the preview starts over at the end of its range:
 Look and viewport changes (lighting, colour, camera) never count: cached frames
 are always drawn with the live look. With Loop off the preview pauses on the
 last frame, and Resume continues the same way.
+
+**On the Timeline**, a thin strip along the bottom shows which frames are
+cached while the preview runs: blue for cached frames, orange for cached frames
+from earlier settings that the next pass replaces. Only the RAM limit (below)
+ever removes cached frames.
 
 - While the preview is paused, scrub or play the timeline (Blender's own
   playback) to see the cached frames with the live camera, lighting and look.

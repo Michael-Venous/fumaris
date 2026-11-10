@@ -732,10 +732,17 @@ def _draw_domain(layout, scene, props):
             if stale is not None:
                 row = status.column(align=True)
                 row.alert = True
-                _wrapped(row, (f"Changed since frame {stale} was cached: it simulates again at the next loop"
+                _wrapped(row, (f"Changed since frame {stale} was cached: the next pass simulates again "
+                               "and replaces the cache"
                                if replaying else
                                f"Settings changed at frame {stale}: this run mixes earlier and current settings; "
-                               "the cache refreshes at the next loop"), "ERROR")
+                               "the next pass simulates again and replaces it"), "ERROR")
+            elif job._worker._session.get("preview_cache"):
+                from .operators import stale_frames
+                behind = len(stale_frames(job, props.id_data))
+                if behind:
+                    _wrapped(status, f"{behind} cached frames are from earlier settings (orange on the Timeline); "
+                                     "this pass replaces them", "INFO")
             if (is_preview_paused and getattr(job, "_loop_reset_pending", False)
                     and not job._worker._session.get("preview_cache")):
                 # (A cached preview says so with its cache status.)

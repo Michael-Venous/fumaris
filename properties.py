@@ -650,7 +650,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_loop: BoolProperty(
         name="Loop",
-        description="At the end of the frame range the live preview starts over. Off: it pauses on the last frame (Resume starts over). With Cache Preview, an unchanged, whole cache replays instead of simulating; after a change the cache clears at the loop and the range simulates again",
+        description="At the end of the frame range the live preview starts over. Off: it pauses on the last frame (Resume starts over). With Cache Preview, an unchanged, whole cache replays instead of simulating; after a change the range simulates again and replaces the stale frames as it goes (the cache is not cleared)",
         default=True,
     )
 

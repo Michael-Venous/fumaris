@@ -269,6 +269,8 @@ Click a row to select it; its buttons appear below the list:
 
 Right-click a row for the same actions. Rename changes the name shown, not the
 files. Delete asks first and cannot be undone; a protected bake refuses it.
+Versions can be deleted during a live preview (not while baking), except the
+one being saved.
 
 The domain's **Presets** menu sits at the top of its panel, as for emitters,
 colliders, effectors and outflows: apply a preset (`X` deletes it) or `+` to
@@ -1014,8 +1016,9 @@ ever removes cached frames.
   renders and compares like a bake. **Save Frame** saves only the frame the
   preview shows (the live one, or the cached frame at or before it). **Save
   Snapshot** saves what the 3D Viewport shows, live preview included, as an
-  image in Versions, with the current settings. Saving while playing holds the
-  preview until the files are written.
+  image in Versions, with the current settings. Save Sequence and Save Frame
+  work while paused (greyed while playing); Resume waits until the files are
+  written, and the cursor counts the frames as they are saved.
 - **Stop** releases the cache with the simulation (as does a change of
   resolution or domain, which restarts the preview).
 

@@ -701,7 +701,7 @@ def _draw_domain(layout, scene, props):
             save = controls.column(align=True) if _TIGHT else controls.row(align=True)
             versions = save.row(align=True) if not _TIGHT else save.column(align=True)
             versions.enabled = bool(cached)
-            versions.operator("fumaris.version_save", text=word + "Sequence", icon="SEQUENCE")
+            versions.operator("fumaris.version_save", text=word + "Sequence", icon="SEQUENCE").frame_only = False
             versions.operator("fumaris.version_save", text=word + "Frame", icon="IMAGE_PLANE").frame_only = True
             save.operator("fumaris.snapshot", text=word + "Snapshot", icon="RESTRICT_RENDER_OFF")
         else:

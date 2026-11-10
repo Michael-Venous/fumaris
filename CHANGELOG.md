@@ -33,8 +33,8 @@ Removed). This is a beta: please report scenes that look wrong.
   dark while crevices next to the flames glow).
 - **Preview cache** (**Cache Preview** under Play, off by default): the live preview keeps the frames it simulates
   (compressed, full detail), so a paused preview scrubs and plays them back
-  with the live camera and look, and **Save Sequence** or **Save Frame** (below the toggle, also
-  while playing) write them as a version that imports, renders and compares
+  with the live camera and look, and **Save Sequence** or **Save Frame** (below the toggle, while
+  paused; the cursor counts the frames saved) write them as a version that imports, renders and compares
   like a bake; **Save Snapshot** saves an image. Replaces Bake on
   Preview. Cache Every (beside the toggle) keeps every frame by default, or
   every 2nd/3rd/4th, or Auto (as many as about a fifth of the frame time

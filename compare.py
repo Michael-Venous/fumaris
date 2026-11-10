@@ -1245,7 +1245,9 @@ class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None and active_job() is None
+        # Not while baking (the bake writes a version); a live preview writes
+        # only the version it is saving, which execute() refuses.
+        return _domain(context) is not None and (active_job() is None or active_mode() == "previewing")
 
     def invoke(self, context, event):
         _domain_, entry = _entry_or_report(self, context)
@@ -1259,6 +1261,10 @@ class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
         if entry is None:
+            return {"CANCELLED"}
+        pending = getattr(active_job(), "_export_pending", None) or {}
+        if pending.get("directory") and entry.get("path") and os.path.normpath(pending["directory"]) == os.path.normpath(entry["path"]):
+            self.report({"ERROR"}, f"'{entry['name']}' is being saved: delete it when the save is done")
             return {"CANCELLED"}
         try:
             delete_entry(domain, entry)
@@ -1346,6 +1352,8 @@ def _preview_save_blocker(context):
         return "Already saving"
     if preview_cache(job).get("frames", 0) <= 0:
         return "Nothing cached yet"
+    if not getattr(job, "_pause_requested", False):
+        return "Pause the preview to save it"
     return None
 
 
@@ -1354,7 +1362,9 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
     bl_label = "Save Sequence"
     bl_description = "Save the frames the live preview has cached as a new version: VDB files with the settings that made them, which import, render (Cycles included) and compare like a bake. Uses the Output settings (grids, resolutions, Glow), at the preview's resolution"
 
-    frame_only: BoolProperty(name="This Frame Only", default=False)
+    # Not remembered between clicks: Save Sequence after Save Frame saved
+    # one frame (Blender reuses an operator's last property values).
+    frame_only: BoolProperty(name="This Frame Only", default=False, options={"SKIP_SAVE"})
 
     @classmethod
     def description(cls, _context, properties):

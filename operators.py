@@ -858,16 +858,46 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             "vdb_precision": getattr(props, "vdb_precision", "half"),
         }
         # The version's folder stays locked (as for a bake) until the reply.
-        self._export_pending = {"directory": directory, "slot": slot, "started": time.monotonic(), "lock": lock}
+        frames = cached_frames(self)
+        total = max(1, sum(1 for frame in frames if int(first) <= frame <= int(last)))
+        self._export_pending = {"directory": directory, "slot": slot, "started": time.monotonic(), "lock": lock,
+                                "total": total, "written": 0, "checked": 0.0}
         self._export_error = None
-        diagnostics.set_status(self._diagnostic_key, f"Saving version '{slot}'")
+        diagnostics.set_status(self._diagnostic_key, f"Saving version '{slot}': 0/{total} frames")
+        # The cursor counts the frames written (Blender's progress cursor).
+        context.window_manager.progress_begin(0, total)
         self._worker.send_preview_cache_export(header)
+
+    def _update_diagnostics(self, context):
+        super()._update_diagnostics(context)
+        pending = getattr(self, "_export_pending", None)
+        if not pending:
+            return
+        now = time.monotonic()
+        if now - pending.get("checked", 0.0) < 0.2:
+            return
+        pending["checked"] = now
+        # Frames written so far: the bridge writes one file per frame.
+        try:
+            written = sum(1 for entry in os.scandir(pending["directory"])
+                          if entry.name.endswith(".vdb") and entry.is_file())
+        except OSError:
+            return
+        if written != pending.get("written"):
+            pending["written"] = written
+            context.window_manager.progress_update(min(written, pending["total"]))
+            diagnostics.set_status(self._diagnostic_key,
+                                   f"Saving version '{pending['slot']}': {written}/{pending['total']} frames")
+            for area in context.screen.areas if context.screen else ():
+                if area.type == "PROPERTIES":
+                    area.tag_redraw()
 
     def _handle_worker_message(self, context, message_type, data, _payload):
         if message_type != PREVIEW_CACHE_EXPORTED:
             return False
         pending = getattr(self, "_export_pending", None) or {}
         self._export_pending = None
+        context.window_manager.progress_end()
         domain = bpy.data.objects.get(self._domain_name)
         directory = pending.get("directory")
         frames = int(data.get("frames", 0))
@@ -1190,12 +1220,21 @@ class FUMARIS_OT_preview_pause(Operator):
 
     @classmethod
     def poll(cls, context):
-        return active_mode() == "previewing"
+        if active_mode() != "previewing":
+            return False
+        job = active_job()
+        if getattr(job, "_pause_requested", False) and getattr(job, "_export_pending", None):
+            cls.poll_message_set("Saving a version: Resume once it is written")
+            return False
+        return True
 
     def execute(self, context):
         job = active_job() if active_mode() == "previewing" else None
         if job is None:
             self.report({"WARNING"}, "This domain has no active preview")
+            return {"CANCELLED"}
+        if getattr(job, "_pause_requested", False) and getattr(job, "_export_pending", None):
+            self.report({"INFO"}, "Saving a version: Resume once it is written")
             return {"CANCELLED"}
         try:
             job.set_paused(

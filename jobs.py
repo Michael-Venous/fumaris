@@ -488,6 +488,8 @@ class FrameRangeJob:
         pending = getattr(self, "_export_pending", None) or {}
         if pending.get("lock") is not None:
             cleanup(pending["lock"].release)
+        if pending:
+            cleanup(context.window_manager.progress_end)   # its cursor counter
         self._export_pending = None
         timer = getattr(self, "_timer", None)
         self._timer = None

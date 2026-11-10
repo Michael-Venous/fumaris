@@ -1331,6 +1331,8 @@ class FUMARIS_OT_delete(Operator):
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         diagnostics.clear(domain)
+        from .compare import forget_scan
+        forget_scan()
         domain.fumaris.simulation_state = "idle"
         domain.fumaris.baked_frames = 0
         domain.fumaris.bake_elapsed = 0.0

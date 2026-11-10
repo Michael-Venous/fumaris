@@ -60,7 +60,9 @@ SIDE_OFFSET = 1.15
 # Background behind the live preview where no scene image is available
 # (Blender's default viewport grey).
 SNAPSHOT_BACKGROUND = 0.235
-_SCAN_SECONDS = 2.0
+# The folder scan behind the list is reused for a moment (every redraw asks);
+# a version folder added or removed shows at once (the root's mtime).
+_SCAN_SECONDS = 1.0
 _scan_cache = {}
 _last_diff = {"title": "", "lines": [], "measures": []}
 
@@ -234,8 +236,12 @@ def list_versions(domain, *, fresh=False):
     prefix = _prefix(domain.fumaris)
     key = (root, prefix)
     now = time.monotonic()
+    try:
+        stamp = os.stat(root).st_mtime_ns
+    except OSError:
+        stamp = 0
     cached = _scan_cache.get(key)
-    if cached and not fresh and now - cached[0] < _SCAN_SECONDS:
+    if cached and not fresh and now - cached[0] < _SCAN_SECONDS and cached[2] == stamp:
         return cached[1]
     try:
         with os.scandir(root) as entries:
@@ -275,7 +281,7 @@ def list_versions(domain, *, fresh=False):
             "pinned": read_pinned(path),
             "kind": "vdb",
         })
-    _scan_cache[key] = (now, versions)
+    _scan_cache[key] = (now, versions, stamp)
     return versions
 
 
@@ -1018,6 +1024,8 @@ class FUMARIS_OT_entry_import(_DomainOperator, Operator):
         if entry is None or entry["kind"] != "vdb":
             return {"CANCELLED"}
         if _entry_volumes(entry):
+            # The bake the domain shows stays: removing it by mistake would
+            # leave nothing to render. Its eye hides it; Delete is in the menu.
             if os.path.normpath(entry["path"]) == _current_directory(domain):
                 self.report({"ERROR"}, "This is the bake the domain shows; hide it with its eye instead")
                 return {"CANCELLED"}

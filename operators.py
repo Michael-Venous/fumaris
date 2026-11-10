@@ -74,6 +74,9 @@ PREVIEW_RERENDER_MARGIN = 1.5
 PREVIEW_RERENDER_DEFAULT_SECONDS = 0.005
 
 
+SAVE_CANCEL_FILE = ".fumaris_cancel"   # the bridge stops a save when it appears
+
+
 class FUMARIS_OT_bake(FrameRangeJob, Operator):
     bl_idname = "fumaris.bake"
     bl_label = "Bake"
@@ -95,6 +98,21 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     _timer_interval = 0.001
 
     replace_confirmed: BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    def _escape(self, context):
+        """Escape: like Stop (keeps and imports the frames written so far)."""
+        domain = bpy.data.objects.get(self._domain_name)
+        if not getattr(self, "_accepted", False):
+            self._stop_requested = True
+            _cancel_job(context, self)
+            if domain:
+                mark_bake_cancelled(domain)
+                self._store_bake_stats(domain)
+        elif not getattr(self, "_stop_requested", False):
+            self.request_stop(context)
+        for area in context.screen.areas if context.screen else ():
+            area.tag_redraw()
+        return True
 
     @classmethod
     def poll(cls, context):
@@ -508,6 +526,29 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         super()._finish(context)
         tag_timelines(context)
 
+    def _escape(self, context):
+        """Escape: cancels a save; stops a playing preview (like Stop). A paused
+        preview leaves Escape to Blender (it stops timeline playback)."""
+        pending = getattr(self, "_export_pending", None)
+        if pending:
+            if not pending.get("cancelled"):
+                pending["cancelled"] = True
+                # The bridge reads no messages while it writes; it checks for
+                # this file before each frame and removes what it wrote.
+                try:
+                    with open(os.path.join(pending["directory"], SAVE_CANCEL_FILE), "w"):
+                        pass
+                except OSError as error:
+                    console_log(f"Fumaris could not cancel the save: {error}")
+                diagnostics.set_status(self._diagnostic_key, "Cancelling the save")
+            return True
+        if getattr(self, "_pause_requested", False):
+            return False
+        _cancel_job(context, self)
+        for area in context.screen.areas if context.screen else ():
+            area.tag_redraw()
+        return True
+
     def _restart_preview_session(self, context, domain, keep_cache=True):
         """Simulate the range again. The cache stays and the new pass replaces
         frames as it reaches them (keep_cache False starts it empty)."""
@@ -905,10 +946,17 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         lock = pending.get("lock")
         if lock is not None:
             lock.release()
+        cancelled = bool(pending.get("cancelled"))
+        if directory:
+            try:
+                os.remove(os.path.join(directory, SAVE_CANCEL_FILE))
+            except OSError:
+                pass
         if error:
-            # The save failed; the preview and its cache carry on, so it can
-            # be retried (another Output directory, freed disk space).
-            self._export_error = str(error)
+            # The save failed (or Escape cancelled it); the preview and its
+            # cache carry on, so it can be retried (another Output directory,
+            # freed disk space).
+            self._export_error = None if cancelled else str(error)
             self._export_report = None
             if directory:
                 from .compare import forget_scan
@@ -923,7 +971,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
                     pass
                 forget_scan()
             diagnostics.set_status(self._diagnostic_key, "Paused" if self._pause_requested else "Running")
-            console_log(f"Fumaris could not save the preview to {directory}: {error}")
+            console_log(f"Fumaris preview save cancelled ({directory})" if cancelled
+                        else f"Fumaris could not save the preview to {directory}: {error}")
             for area in context.screen.areas if context.screen else ():
                 area.tag_redraw()
             return True
@@ -933,7 +982,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             scale = int(round(100 * float(getattr(self, "_resolution_scale", 1.0))))
             first, last = int(data.get("first", -1)), int(data.get("last", -1))
             what = f"frame {first} from the preview" if first == last and first >= 0 else "from the preview"
-            write_note(directory, what + (f" at {scale}%" if scale != 100 else ""))
+            # A save gets its own copy of the material (Sync Material off).
+            write_note(directory, what + (f" at {scale}%" if scale != 100 else ""), sync_material=False)
             forget_scan()
         diagnostics.record(self._diagnostic_key, {"bridge_preview_cache_export_ms": float(data.get("export_ms", 0.0))})
         diagnostics.set_status(self._diagnostic_key, "Paused" if self._pause_requested else "Running")
@@ -1283,15 +1333,18 @@ def _import_cache(context, domain, directory, prefix, *, frame_start=None, frame
     clear_preview(domain)
     props = domain.fumaris
     try:
+        from .compare import apply_material_sync, version_material
         volume = import_sequence(
             directory,
             simulation_frame_range(domain)[0] if frame_start is None else frame_start,
             prefix,
-            material=props.volume_material,
+            # A bake syncs its material with Appearance unless turned off.
+            material=version_material(domain, directory, default=True),
             selectable=props.volume_selectable,
             appearance=props,
             frame_end=frame_end,
         )
+        apply_material_sync(domain, directory, default=True)
     finally:
         _restore_selection(context, domain, selected, active)
     return volume

@@ -262,6 +262,11 @@ Click a row to select it; its buttons appear below the list:
   and keep (**Remove** takes it out again; its files stay), **View Changes**,
   and a menu with **Rename**, **Save Settings as Preset** and **Delete**.
 - Snapshot: **Preview** opens it, **View Changes**, and the same menu.
+- **Sync Material** (VDB versions): on, the version uses Fumaris's material,
+  kept in step with Appearance (shared with the other synced versions; your
+  Volume Material if one is set). Off, it gets its own copy, which Appearance
+  no longer changes: a look you liked stays put. Bakes start synced; saves from
+  the live preview start with their own copy.
 - **View Changes** lists every setting that differs from the current settings,
   with **Load These Settings** below. Loading replaces the current settings of
   the domain and its sources (sources are matched by name) after a warning; Undo
@@ -1018,7 +1023,11 @@ ever removes cached frames.
   Snapshot** saves what the 3D Viewport shows, live preview included, as an
   image in Versions, with the current settings. Save Sequence and Save Frame
   work while paused (greyed while playing); Resume waits until the files are
-  written, and the cursor counts the frames as they are saved.
+  written, and the cursor counts the frames as they are saved. The buttons
+  show only while this domain previews.
+- **Escape** stops a bake (keeping the frames written, like Stop), a playing
+  live preview (like Stop) and a save in progress (its files are removed). A
+  paused preview leaves Escape to Blender (it stops timeline playback).
 - **Stop** releases the cache with the simulation (as does a change of
   resolution or domain, which restarts the preview).
 

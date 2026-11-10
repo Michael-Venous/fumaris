@@ -163,6 +163,15 @@ class FrameRangeJob:
     def modal(self, context, event):
         if getattr(self, "_finished", False):
             return {"FINISHED"}
+        # Escape (when nothing else used it: menus, transforms and text fields
+        # come first) stops a bake, a playing preview or a save.
+        if event.type == "ESC" and event.value == "PRESS":
+            try:
+                if self._escape(context):
+                    return {"FINISHED"} if getattr(self, "_finished", False) else {"RUNNING_MODAL"}
+            except Exception as error:
+                console_log(f"Fumaris: Escape failed: {error}")
+            return {"PASS_THROUGH"}
         if event.type != "TIMER":
             return {"PASS_THROUGH"}
         # Blender's public Event API does not expose the originating timer.
@@ -271,6 +280,10 @@ class FrameRangeJob:
         diagnostics.add_log(key, "Error: " + message)
         diagnostics.set_status(key, "Failed")
         diagnostics.finish(key)
+
+    def _escape(self, context):
+        """Escape pressed: True when it stopped something (overridden)."""
+        return False
 
     def request_stop(self, _context=None):
         self._stop_requested = True

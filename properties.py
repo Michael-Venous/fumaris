@@ -847,6 +847,12 @@ class FumarisSettings(PropertyGroup):
         type=bpy.types.Material,
     )
 
+    managed_material: PointerProperty(
+        name="Synced Material",
+        description="The material Fumaris keeps in step with Appearance, shared by the versions with Sync Material on",
+        type=bpy.types.Material,
+    )
+
     volume_selectable: BoolProperty(
         name="Selectable Volume",
         description="Allow imported Fumaris volume objects to be selectable in the viewport",

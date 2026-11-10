@@ -295,6 +295,13 @@ Shaping layers).
 
 ### Fixes
 
+- The generated material is organised: the looks, Scatter Glow, Blue Core and
+  the smoke colour are shared node groups in labelled frames, and each
+  material's Appearance values are the group nodes' inputs (renders unchanged).
+- **Escape** stops a bake, a playing live preview or a save in progress.
+- **Sync Material** (Versions): bakes share Fumaris's material, kept in step
+  with Appearance; saves from the live preview get their own copy (toggle per
+  version).
 - The live preview in the viewport was drawn too bright: its display-encoded
   image was encoded a second time by the viewport, lifting dark and unlit
   smoke to grey. It now shows the colours the preview computes (the ones

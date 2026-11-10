@@ -136,6 +136,46 @@ def write_pinned(directory, pinned):
     write_note(directory, read_note(directory), pinned=bool(pinned))
 
 
+def material_synced(directory, default=None):
+    """Sync Material: stored, else on for a bake (it kept bake statistics) and
+    off for a save (it gets its own copy of the material)."""
+    data = read_meta(directory)
+    if "sync_material" in data:
+        return bool(data["sync_material"])
+    if default is not None:
+        return bool(default)
+    return os.path.isfile(os.path.join(directory, STATS_FILE))
+
+
+def version_material(domain, directory, default=None):
+    """The material an import of this version gets: the synced one, or None
+    (the import then builds the version's own)."""
+    from .importers import synced_material
+    return synced_material(domain) if material_synced(directory, default) else None
+
+
+def apply_material_sync(domain, directory, default=None):
+    """Sync Material on: this version's volumes use the synced material. Off:
+    each keeps a material of its own, copied from the synced one when it
+    shares it."""
+    from .importers import GENERATED_MATERIAL_MARKER, OWN_MATERIAL_MARKER, _assign_material, own_material_copy, synced_material
+    synced = material_synced(directory, default)
+    target = synced_material(domain)
+    for obj in _slot_volumes(directory):
+        if obj.type != "VOLUME":
+            continue
+        materials = obj.data.materials
+        current = materials[0] if len(materials) else None
+        if synced:
+            if current is not target:
+                _assign_material(obj, target)
+        elif current is None or current is target or current.users > 1 or not current.get(OWN_MATERIAL_MARKER):
+            if current is not None and current.users == 1 and current.get(GENERATED_MATERIAL_MARKER) and current is not target:
+                current[OWN_MATERIAL_MARKER] = True   # already its own: keep it
+            else:
+                own_material_copy(obj, current or target, os.path.basename(os.path.normpath(directory)))
+
+
 def write_bake_stats(directory, props):
     frames = _frame_files(directory, _prefix(props))
     data = {
@@ -406,11 +446,12 @@ def load_compare(domain, slot):
             directory,
             _frame_number(files[0], prefix),
             prefix,
-            material=props.volume_material,
+            material=version_material(domain, directory),
             selectable=props.volume_selectable,
             appearance=props,
         )
         volume.name = f"{domain.name} {slot}"
+    apply_material_sync(domain, directory)
     volume[COMPARE_MARKER] = domain.name
     if not volume.name.endswith(" (B)"):
         volume.name = f"{volume.name} (B)"
@@ -851,10 +892,12 @@ def show_entry(context, domain, entry, shown):
         if not files:
             raise RuntimeError(f"'{entry['name']}' has no frames")
         volume = import_sequence(entry["path"], _frame_number(files[0], prefix), prefix,
-                                 material=props.volume_material, selectable=props.volume_selectable,
-                                 appearance=props)
+                                 material=version_material(domain, entry["path"]),
+                                 selectable=props.volume_selectable, appearance=props)
         volume.name = f"{domain.name} {entry['name']}"
         volumes = [volume]
+    if shown:
+        apply_material_sync(domain, entry["path"])
     for obj in volumes:
         if os.path.normpath(entry["path"]) != current:
             obj[SHOWN_MARKER] = True
@@ -1015,6 +1058,29 @@ class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
             write_pinned(entry["path"], not entry["pinned"])
         else:
             write_sidecar(entry["path"], pinned=not entry["pinned"])
+        forget_scan()
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_sync_material(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_sync_material"
+    bl_label = "Sync Material"
+    bl_description = ("On: this version uses Fumaris's material, kept in step with Appearance (bakes start "
+                      "on). Off: it gets its own copy, which Appearance no longer changes (saves start off)")
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None and active_mode() != "baking"
+
+    def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None or entry["kind"] != "vdb":
+            return {"CANCELLED"}
+        synced = not material_synced(entry["path"])
+        write_note(entry["path"], read_note(entry["path"]), sync_material=synced)
+        apply_material_sync(domain, entry["path"])
         forget_scan()
         return {"FINISHED"}
 
@@ -1549,12 +1615,17 @@ def draw_compare(layout, domain, props):
         parts.append("saved " + time.strftime("%b %d %H:%M", time.localtime(entry["modified"])))
     if entry["protected"]:
         parts.append("protected")
+    if entry["kind"] == "vdb":
+        synced = material_synced(entry["path"])
+        layout.operator("fumaris.entry_sync_material", depress=synced,
+                        icon="LINKED" if synced else "UNLINKED").key = entry["key"]
     ui._wrapped(column, " · ".join(parts), "INFO")
 
 
 CLASSES = (
     FUMARIS_OT_entry_select,
     FUMARIS_OT_entry_pin,
+    FUMARIS_OT_entry_sync_material,
     FUMARIS_OT_entry_show,
     FUMARIS_OT_entry_import,
     FUMARIS_OT_entry_image,

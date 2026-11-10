@@ -350,6 +350,17 @@ cache slots. Expect saved scenes to simulate and look differently:
 - Existing bakes need a new bake for Glow Spread, Glow Shadowing and the Pyro
   look; generated materials rebuild when opened.
 
+### Known issues
+
+- Results change slightly with Simulation Memory (or Auto): where a block sits
+  in GPU memory shifts texture sampling by rounding, and turbulence grows the
+  difference. Bakes budget like the preview, so a preview and its bake agree.
+- The Pyro look's heat blur shows in renders only, not in the live preview.
+- Smoke lit by a sun previews somewhat brighter than Cycles renders it (about
+  1.3x in a test scene); world lighting matches.
+- The first replay of a large cached preview stutters once while buffers are
+  sized.
+
 ## 1.3.1 — 2026-10-26
 
 - **Simulation GPU selector.** Choose a supported GPU beside the simulation

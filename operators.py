@@ -367,8 +367,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._next_preview_capture_at = 0.0
         self._loop_reset_pending = False
         self._loop_reset_started = time.perf_counter()
-        # A new run: the bridge drops the cache of the old one.
-        self._preview_cache = {}
+        # Looping over the same range: the bridge keeps the cache and the new
+        # pass replaces each frame as it reaches it.
+        session["preview_cache_keep"] = True
         self._live_frame = None
         self._worker.reset_session(session)
 
@@ -676,7 +677,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if domain is None:
             return self._cancelled(context, {"message": "The active Fumaris domain was deleted"})
         if domain.fumaris.preview_loop:
-            # Loop on: start over (a cached preview begins a new cache),
+            # Loop on: start over (a cached preview keeps its cache; the new
+            # pass replaces each frame as it reaches it),
             # unless paused (Resume then starts over). Loop off: pause on the
             # last frame, keeping any cache to scrub, play back or save.
             if getattr(self, "_pause_requested", False):

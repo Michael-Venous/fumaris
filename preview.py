@@ -534,22 +534,33 @@ def _image_shader():
                 gl_Position = vec4(pos, 0.0, 1.0);
             }
         """)
-        # The preview is display-encoded (the scene's view transform) and
-        # premultiplied, and Blender's viewport overlay buffer is sRGB (it
-        # encodes what is drawn), so the colour is decoded here: without it
-        # the preview showed encoded twice, dark smoke lifted to grey,
-        # brighter than snapshots and renders.
+        # The preview is display-encoded (the scene's view transform),
+        # premultiplied, with additive glow (colour may exceed alpha). The
+        # viewport's overlay buffer is sRGB (it encodes what is drawn), so
+        # the colour is decoded here (without it the preview showed encoded
+        # twice: dark smoke lifted to grey). preview_linear() in compare.py
+        # is the same for snapshots: the smoke part (straight colour at most
+        # 1) is decoded per unit of coverage, the excess glow (same hue) is
+        # added; where alpha is a few 8-bit steps, colour / alpha is mostly
+        # rounding, so the colour is decoded as is. Clamping each channel
+        # instead turned orange glow green-white at the edges.
         info.fragment_source("""
             vec3 srgb_to_linear(vec3 c)
             {
+                c = max(c, vec3(0.0));
                 return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
             }
             void main()
             {
                 vec4 color = texture(image, vec2(texCoord.x, 1.0 - texCoord.y));
-                if (color.a > 0.0) {
-                    color.rgb = srgb_to_linear(clamp(color.rgb / color.a, 0.0, 1.0)) * color.a;
-                }
+                float a = color.a;
+                vec3 direct = srgb_to_linear(color.rgb);
+                vec3 straight = color.rgb / max(a, 1e-4);
+                float peak = max(max(straight.r, straight.g), straight.b);
+                vec3 smoke = color.rgb / max(peak, 1.0);
+                vec3 glow = color.rgb - smoke;
+                vec3 split = a * srgb_to_linear(smoke / max(a, 1e-4)) + srgb_to_linear(glow);
+                color.rgb = mix(direct, split, smoothstep(0.02, 0.08, a));
                 FragColor = color;
             }
         """)

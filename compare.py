@@ -639,12 +639,27 @@ def capture_snapshot(context, domain):
     # Blended in linear light like the viewport (its overlay buffer is sRGB):
     # both images are display-encoded, the preview premultiplied.
     alpha = smoke[..., 3:4]
-    straight = np.divide(smoke[..., :3], alpha, out=np.zeros_like(smoke[..., :3]), where=alpha > 0.0)
-    linear = _srgb_to_linear(np.clip(straight, 0.0, 1.0)) * alpha + (1.0 - alpha) * _srgb_to_linear(scene[..., :3])
+    linear = preview_linear(smoke) + (1.0 - alpha) * _srgb_to_linear(scene[..., :3])
     out = scene.copy()
     out[..., :3] = _linear_to_srgb(linear)
     out[..., 3] = 1.0
     return np.clip(out, 0.0, 1.0)
+
+
+def preview_linear(smoke):
+    """The live preview's premultiplied, display-encoded colour in linear light,
+    as the viewport draws it (preview.py _image_shader): the smoke part per
+    unit of coverage, the excess glow added; decoded as is at tiny alpha."""
+    import numpy as np
+    colour, alpha = smoke[..., :3], smoke[..., 3:4]
+    direct = _srgb_to_linear(colour)
+    safe = np.maximum(alpha, 1e-4)
+    peak = np.max(colour / safe, axis=-1, keepdims=True)
+    part = colour / np.maximum(peak, 1.0)
+    split = alpha * _srgb_to_linear(part / safe) + _srgb_to_linear(colour - part)
+    t = np.clip((alpha - 0.02) / 0.06, 0.0, 1.0)
+    weight = t * t * (3.0 - 2.0 * t)
+    return direct + (split - direct) * weight
 
 
 def _srgb_to_linear(values):

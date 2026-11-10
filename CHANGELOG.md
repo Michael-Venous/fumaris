@@ -247,6 +247,8 @@ Removed). This is a beta: please report scenes that look wrong.
 - **Participant list** with Enabled and Solo, saying why an object is skipped;
   effectors are drawn in the viewport.
 - Transport status (Live / Cached / Baked frames).
+- **Loop** (beside the frame range, on by default): the live preview starts over at the end of
+  its range; off, it pauses on the last frame.
 - **Preview While Baking** (on by default): watch the live preview
   while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving

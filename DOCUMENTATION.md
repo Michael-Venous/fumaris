@@ -966,7 +966,9 @@ The simulation empty stores settings; smoke can extend freely around it.
 With **Cache Preview** on (under Play; off by default, applies from the next
 Play), the live preview keeps the frames it simulates, compressed in system
 memory, at full detail (exactly what the preview drew). Without it the preview
-loops over its range and keeps nothing. The cache lasts until the preview
+keeps nothing and, with **Loop** on (the loop button beside the frame range, on
+by default), starts over at the end of its range; with Loop off it pauses on the
+last frame and Resume starts over. A cached preview always pauses at the end. The cache lasts until the preview
 stops or starts over; Save Sequence keeps it.
 
 - While the preview is paused, scrub or play the timeline (Blender's own

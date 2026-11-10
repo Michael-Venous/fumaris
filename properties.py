@@ -648,6 +648,12 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
+    preview_loop: BoolProperty(
+        name="Loop",
+        description="At the end of the frame range the live preview starts over. Off: it pauses on the last frame (Resume starts over). A preview with Cache Preview on always pauses at the end, keeping its cache",
+        default=True,
+    )
+
     preview_cache: BoolProperty(
         name="Cache Preview",
         description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Sequence or Save Frame (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. The preview then pauses at the end of its range instead of looping. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",

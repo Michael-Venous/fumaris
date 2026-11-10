@@ -720,6 +720,9 @@ def _draw_domain(layout, scene, props):
         elif is_previewing:
             status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                          icon="PAUSE" if is_preview_paused else "PLAY")
+            if (is_preview_paused and getattr(job, "_loop_reset_pending", False)
+                    and not job._worker._session.get("preview_cache")):
+                _wrapped(status, "At the end: Resume starts over", "INFO")
             _draw_preview_cache_status(status, scene, job, is_preview_paused)
         domain = props.id_data
         if not domain.visible_get(view_layer=bpy.context.view_layer):
@@ -733,6 +736,9 @@ def _draw_domain(layout, scene, props):
         settings.enabled = not is_baking
         row = settings.row(align=True)
         row.prop(props, "use_scene_frame_range", text="", icon="TIME")
+        loop = row.row(align=True)
+        loop.enabled = not props.preview_cache   # a cached preview always pauses at the end
+        loop.prop(props, "preview_loop", text="", icon="LOOP_FORWARDS")
         if props.use_scene_frame_range:
             row.prop(props, "warmup_frames")
         else:

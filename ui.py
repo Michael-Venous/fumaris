@@ -27,6 +27,19 @@ def _foldout(layout, props, property_name, label):
 # side by side (Blender's default ~330 px truncated every pair's label).
 _NARROW = False
 NARROW_WIDTH = 440
+# Narrower still (Blender's default Properties editor, ~250 px): three
+# labelled buttons no longer fit a row, so rows stack and text wraps.
+_TIGHT = False
+TIGHT_WIDTH = 330
+# About how many characters of label text fit a line (for wrapping status).
+_LINE_CHARS = 60
+
+
+def _wrapped(layout, text, icon="NONE"):
+    """A status label that wraps instead of being cut off in a narrow panel."""
+    lines = textwrap.wrap(text, width=max(16, _LINE_CHARS)) or [""]
+    for index, line in enumerate(lines):
+        layout.label(text=line, icon=icon if index == 0 else ("BLANK1" if icon != "NONE" else "NONE"))
 
 
 def _pair(layout):
@@ -568,9 +581,17 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     if getattr(job, "_export_pending", None):
         layout.label(text="Saving the version…", icon="TIME")
     report = getattr(job, "_export_report", None)
-    if report and not getattr(job, "_export_pending", None):
-        frames, slot, _first, _last = report
-        layout.label(text=f"Saved {frames} frames as version '{slot}'", icon="CHECKMARK")
+    error = getattr(job, "_export_error", None)
+    if error and not getattr(job, "_export_pending", None):
+        row = layout.column(align=True)
+        row.alert = True
+        _wrapped(row, f"Could not save: {error}", "ERROR")
+    elif report and not getattr(job, "_export_pending", None):
+        frames, slot, first, last = report
+        span = f"frame {first}" if first == last else f"frames {first}–{last}"
+        _wrapped(layout, f"Saved {span} as '{slot}'", "CHECKMARK")
+        if getattr(job, "_export_warning", None):
+            _wrapped(layout, job._export_warning, "INFO")
     if not cache.get("frames"):
         return
     first, last = cache["first"], cache["last"]
@@ -581,22 +602,22 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     live = getattr(job, "_live_frame", None)
     if paused and live is not None and first <= scene.frame_current < live:
         shown = cache.get("shown", -1)
-        layout.label(text=f"Showing cached frame {shown if shown >= 0 else scene.frame_current} (live {live})",
-                     icon="SEQUENCE")
+        _wrapped(layout, f"Showing cached frame {shown if shown >= 0 else scene.frame_current} (live {live})",
+                 "SEQUENCE")
     elif paused and live is not None and scene.frame_current < first:
-        layout.label(text=f"Frame {scene.frame_current} is no longer cached (oldest kept: {first})", icon="INFO")
+        _wrapped(layout, f"Frame {scene.frame_current} is no longer cached (oldest kept: {first})", "INFO")
     elif paused and getattr(job, "_loop_reset_pending", False):
-        layout.label(text="At the end: Resume starts over", icon="INFO")
+        _wrapped(layout, "At the end: Resume starts over", "INFO")
     frames = cache["frames"]
     every = "" if frames >= last - first + 1 else f" ({frames} frames)"
-    layout.label(text=f"Cache {first}–{last}{every} · {size_text(cache.get('bytes', 0))} of "
-                      f"{size_text(cache.get('budget', 0))}", icon="DISK_DRIVE")
+    _wrapped(layout, f"Cache {first}–{last}{every} · {size_text(cache.get('bytes', 0))} of "
+                     f"{size_text(cache.get('budget', 0))}", "DISK_DRIVE")
     if cache.get("low_memory"):
-        row = layout.row()
+        row = layout.column(align=True)
         row.alert = True
-        row.label(text="System RAM is low: the cache keeps fewer frames", icon="ERROR")
+        _wrapped(row, "System RAM is low: the cache keeps fewer frames", "ERROR")
     elif cache.get("dropped"):
-        layout.label(text="Cache full: older frames dropped (Preferences > Preview Cache RAM)", icon="INFO")
+        _wrapped(layout, "Cache full: older frames dropped (Preferences > Preview Cache RAM)", "INFO")
 
 
 def _draw_domain(layout, scene, props):
@@ -628,32 +649,35 @@ def _draw_domain(layout, scene, props):
         row = controls.row(align=True)
         sub = row.row(align=True)
         sub.enabled = mode is None and not slot_protected
-        sub.operator("fumaris.bake", icon="RENDER_ANIMATION", text="Bake")
+        # Tight: words without icons, so Delete is not cut off.
+        sub.operator("fumaris.bake", icon="NONE" if _TIGHT else "RENDER_ANIMATION", text="Bake")
         stop = row.row(align=True)
         stop.enabled = is_baking
-        stop.operator("fumaris.stop", icon="CANCEL", text="Stop")
+        stop.operator("fumaris.stop", icon="NONE" if _TIGHT else "CANCEL", text="Stop")
         delete = row.row(align=True)
         delete.enabled = mode is None and not slot_protected
-        delete.operator("fumaris.delete", icon="TRASH", text="Delete")
+        delete.operator("fumaris.delete", icon="NONE" if _TIGHT else "TRASH", text="Delete")
         if slot_protected:
             controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
 
         controls.separator(factor=0.6)
         preview = controls.row(align=True)
+        # Tight: words without icons, so Resume is not cut off.
+        icon = (lambda name: "NONE") if _TIGHT else (lambda name: name)
         play = preview.row(align=True)
         play.enabled = mode is None
-        play.operator("fumaris.preview_play", icon="PLAY", text="Play")
+        play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
         pause = preview.row(align=True)
         pause.enabled = is_previewing and not is_initializing
         pause.operator(
             "fumaris.preview_pause",
-            icon="PLAY" if is_preview_paused else "PAUSE",
+            icon=icon("PLAY" if is_preview_paused else "PAUSE"),
             text="Resume" if is_preview_paused else "Pause",
         )
         preview_stop = preview.row(align=True)
         # A preview that is still starting (or paused) can always be stopped.
         preview_stop.enabled = job is not None and not is_baking
-        preview_stop.operator("fumaris.preview_stop", icon="CANCEL", text="Stop")
+        preview_stop.operator("fumaris.preview_stop", icon=icon("CANCEL"), text="Stop")
         controls.separator(factor=0.5)
         options = controls.row(align=True)
         record = _pair(options)
@@ -666,9 +690,10 @@ def _draw_domain(layout, scene, props):
         # A cached live preview can be kept as a version, and pictured.
         if (is_previewing and job is not None and getattr(job, "_domain_name", None) == props.id_data.name
                 and job._worker._session.get("preview_cache")):
-            # "Save" is dropped when narrow, so the three names stay whole.
-            word = "" if _NARROW else "Save "
-            save = controls.row(align=True)
+            # "Save" is dropped when narrow, so the three names stay whole;
+            # tight, they stack with their full names.
+            word = "Save " if (_TIGHT or not _NARROW) else ""
+            save = controls.column(align=True) if _TIGHT else controls.row(align=True)
             save.operator("fumaris.version_save", text=word + "Sequence", icon="SEQUENCE")
             save.operator("fumaris.version_save", text=word + "Frame", icon="IMAGE_PLANE").frame_only = True
             save.operator("fumaris.snapshot", text=word + "Snapshot", icon="RESTRICT_RENDER_OFF")
@@ -1016,10 +1041,13 @@ class FUMARIS_PT_main(Panel):
         return context.object is not None
 
     def draw(self, context):
-        global _NARROW
+        global _NARROW, _TIGHT, _LINE_CHARS
         region = context.region
         scale = context.preferences.system.ui_scale or 1.0
-        _NARROW = region is not None and region.width / scale < NARROW_WIDTH
+        width = region.width / scale if region is not None else 1000.0
+        _NARROW = region is not None and width < NARROW_WIDTH
+        _TIGHT = region is not None and width < TIGHT_WIDTH
+        _LINE_CHARS = int((width - 70) / 7.0)
         layout = self.layout
         obj = context.object
         props = obj.fumaris

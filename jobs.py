@@ -481,6 +481,11 @@ class FrameRangeJob:
 
         cleanup(diagnostics.finish, getattr(self, "_diagnostic_key", None))
         cleanup(clear_preview, getattr(self, "_domain_name", ""))
+        # A Save Sequence/Frame still running holds its version's lock.
+        pending = getattr(self, "_export_pending", None) or {}
+        if pending.get("lock") is not None:
+            cleanup(pending["lock"].release)
+        self._export_pending = None
         timer = getattr(self, "_timer", None)
         self._timer = None
         if timer:

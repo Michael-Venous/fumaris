@@ -26,8 +26,14 @@ def preview_description(context, action):
     job = active_job() if active_mode() == 'previewing' else None
     if action in {'toggle', 'pause'}:
         action = ('resume' if getattr(job, '_pause_requested', False) else 'pause') if job else 'play'
+    domain = resolve_domain(context) if hasattr(context, 'view_layer') else None
+    cached = bool(domain and getattr(domain.fumaris, 'preview_cache', False))
     descriptions = {
-        'play': 'Start the live preview from the simulation start frame. Its frames are cached, so a paused preview can scrub and play them back.',
+        'play': ('Start the live preview from the simulation start frame. Its frames are cached (Cache Preview), '
+                 'so a paused preview can scrub and play them back, and the preview pauses at the end of its range.'
+                 if cached else
+                 'Start the live preview from the simulation start frame. It loops over its range; turn on Cache '
+                 'Preview to keep its frames for scrubbing and saving.'),
         'pause': 'Pause the preview, keeping its simulation ready to resume; with Cache Preview on, scrub or play the timeline to see the cached frames, or Save Sequence.',
         'resume': 'Resume the preview from its live frame (after the last frame: from the start).',
         'stop': 'Stop the preview, releasing its simulation memory and its cache.',

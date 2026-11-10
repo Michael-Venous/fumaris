@@ -23,6 +23,7 @@ from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 
 from .cache import (
+    CacheLock,
     GUARD_FILE,
     SETTINGS_FILE,
     apply_settings_snapshot,
@@ -504,17 +505,36 @@ def free_slot_name(base, taken):
     return f"{base}_{number}"
 
 
+def validate_prefix(prefix):
+    """A file name prefix, never a path (the bridge checks the same)."""
+    if "/" in prefix or "\\" in prefix or prefix in {".", ".."} or "\0" in prefix:
+        raise RuntimeError(f"Output prefix '{prefix}' cannot contain a path: use a plain name")
+
+
 def _new_version(domain, base):
+    """A fresh version folder, locked as a bake's is (returns slot, directory,
+    lock). A folder another Blender holds is passed over, so two saves never
+    share one."""
     prefix = _prefix(domain.fumaris)
+    validate_prefix(prefix)
+    locks = {}
 
     def taken(slot):
         directory = cache_slot_directory(domain, slot)
-        return bool(is_protected(directory) or _frame_files(directory, prefix))
+        if is_protected(directory) or _frame_files(directory, prefix) or \
+                os.path.isfile(os.path.join(directory, NOTE_FILE)):
+            return True
+        lock = CacheLock(directory)
+        try:
+            lock.acquire()
+        except RuntimeError:
+            return True
+        locks[slot] = lock
+        return False
 
     slot = free_slot_name(base, taken)
     directory = cache_slot_directory(domain, slot)
-    os.makedirs(directory, exist_ok=True)
-    return slot, directory
+    return slot, directory, locks[slot]
 
 
 def _participants_for_snapshot(domain):
@@ -1256,11 +1276,21 @@ def start_cache_export(context, domain, base, first=None, last=None):
     """Write the live preview's cache (or frames first-last of it) into a
     new version; returns its name. The preview reports when it is done."""
     job = active_job()
+    if job is None or getattr(job, "_domain_name", None) != domain.name:
+        raise RuntimeError(f"'{domain.name}' is not the domain being previewed")
     cache = preview_cache(job)
     first = cache["first"] if first is None else first
-    last = cache["last"] if last is None else last
-    slot, directory = _new_version(domain, base)
-    job.export_cache(context, directory, slot, first, last)
+    if last is None:
+        # Through the live frame: the stats can trail it by the copies still
+        # on their way, which the bridge finishes before saving.
+        live = getattr(job, "_live_frame", None)
+        last = max(cache["last"], live if live is not None else cache["last"])
+    slot, directory, lock = _new_version(domain, base)
+    try:
+        job.export_cache(context, directory, slot, first, last, lock=lock)
+    except BaseException:
+        lock.release()
+        raise
     return slot
 
 
@@ -1270,6 +1300,8 @@ def _preview_save_blocker(context):
     job = active_job()
     if domain is None or job is None or active_mode() != "previewing":
         return "Turn on Cache Preview, then play a live preview"
+    if getattr(job, "_domain_name", None) != domain.name:
+        return f"The live preview belongs to '{job._domain_name}': select that domain to save it"
     if not job._worker._session.get("preview_cache"):
         return "This preview keeps no cache: turn on Cache Preview (under Play) and play again"
     if getattr(job, "_export_pending", None):
@@ -1311,11 +1343,23 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
             if frame < cache["first"]:
                 self.report({"ERROR"}, f"Frame {frame} is no longer cached (oldest kept: {cache['first']})")
                 return {"CANCELLED"}
-            slot = start_cache_export(context, domain, f"frame_{frame}", frame, frame)
+            try:
+                slot = start_cache_export(context, domain, f"frame_{frame}", frame, frame)
+            except (RuntimeError, OSError) as error:
+                self.report({"ERROR"}, str(error))
+                return {"CANCELLED"}
             self.report({"INFO"}, f"Saving frame {frame} as '{slot}'")
         else:
-            slot = start_cache_export(context, domain, "preview")
-            self.report({"INFO"}, f"Saving cached frames {cache['first']}-{cache['last']} as '{slot}'")
+            try:
+                slot = start_cache_export(context, domain, "preview")
+            except (RuntimeError, OSError) as error:
+                self.report({"ERROR"}, str(error))
+                return {"CANCELLED"}
+            self.report({"INFO"}, f"Saving the cached frames from {cache['first']} as '{slot}'")
+        if domain.fumaris.export_velocity_vdb and not active_job()._worker._session.get("preview_cache_velocity"):
+            # Velocity is kept only when the preview starts with it on.
+            self.report({"WARNING"}, "This preview did not keep velocity: the version has no velocity grid. "
+                        "Turn on velocity export before Play to save it")
         domain.fumaris.compare_selected = "vdb:" + slot
         forget_scan()
         return {"FINISHED"}
@@ -1393,13 +1437,18 @@ def _button_context_menu(self, context):
 
 
 def _draw_entry_row(column, domain, entry, selected):
+    from . import ui
     row = column.row(align=True)
-    split = row.split(factor=0.62, align=True)
-    name = split.row(align=True)
     icon = "VOLUME_DATA" if entry["kind"] == "vdb" else "IMAGE_DATA"
+    if ui._TIGHT:
+        # The name gets the room; its frames are under the selected entry.
+        name = row.row(align=True)
+    else:
+        split = row.split(factor=0.62, align=True)
+        name = split.row(align=True)
+        split.label(text="" if entry["kind"] == "image" else version_summary(entry),
+                    icon="LOCKED" if entry["protected"] else "NONE")
     name.operator("fumaris.entry_select", text=entry["name"], icon=icon, depress=selected).key = entry["key"]
-    split.label(text="" if entry["kind"] == "image" else version_summary(entry),
-                icon="LOCKED" if entry["protected"] else "NONE")
     row.operator("fumaris.entry_pin", text="", icon="PINNED" if entry["pinned"] else "UNPINNED",
                  emboss=False).key = entry["key"]
     if entry["kind"] == "vdb":
@@ -1429,17 +1478,30 @@ def draw_compare(layout, domain, props):
     entry = next((entry for entry in entries if entry["key"] == selected), None)
     if entry is None:
         return
-    row = layout.row(align=True)
+    from . import ui
+    # Tight (Blender's default Properties width): the first button on its own row.
+    column = layout.column(align=True)
+    row = column.row(align=True)
     if entry["kind"] == "vdb":
         imported = bool(_entry_volumes(entry))
         row.operator("fumaris.entry_import", text="Remove" if imported else "Import",
                      icon="X" if imported else "IMPORT").key = entry["key"]
     else:
         row.operator("fumaris.entry_image", icon="IMAGE_DATA").key = entry["key"]
+    if ui._TIGHT:
+        row = column.row(align=True)
     changes = row.row(align=True)
     changes.enabled = entry["settings"]
     changes.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = entry["key"]
     row.operator("fumaris.entry_menu", text="", icon="DOWNARROW_HLT").key = entry["key"]
+    # What it is, on its own line (wraps in a narrow panel).
+    parts = [version_summary(entry, size=True) if entry["kind"] == "vdb"
+             else (f"Snapshot of frame {entry['frame']}" if entry.get("frame") is not None else "Snapshot")]
+    if entry["modified"]:
+        parts.append("saved " + time.strftime("%b %d %H:%M", time.localtime(entry["modified"])))
+    if entry["protected"]:
+        parts.append("protected")
+    ui._wrapped(column, " · ".join(parts), "INFO")
 
 
 CLASSES = (

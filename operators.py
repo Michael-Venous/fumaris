@@ -306,6 +306,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._preview_owner_directory = output_directory_for_object(domain)
         self._preview_cache = {}
         self._live_frame = None
+        pending = getattr(self, "_export_pending", None) or {}
+        if pending.get("lock") is not None:
+            pending["lock"].release()
         self._export_pending = None
         self._configure_job(
             context,
@@ -470,6 +473,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             signatures = self._view_signatures = {}
         for target in targets:
             preview = capture_volume_preview(context, domain, target)
+            # The same cached frame as the main view while paused (its
+            # signature includes it, so scrubbing redraws every view).
+            if preview.get("valid", False):
+                preview["cache_frame"] = self._cache_frame(context)
             signature = volume_preview_signature(preview)
             view_id = int(preview.get("view_id", 0))
             if signature is None or signatures.get(view_id) == signature:
@@ -504,7 +511,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return
         super()._submit_frame(context)
 
-    def export_cache(self, context, directory, slot, first, last):
+    def export_cache(self, context, directory, slot, first, last, lock=None):
         """Save Sequence / Save Frame: the bridge writes the cached frames into a new
         version; its reply finishes it (_handle_worker_message). Playing
         pauses until it is written (_ready_to_submit)."""
@@ -512,14 +519,20 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if domain is None:
             raise RuntimeError("The active Fumaris domain was deleted")
         from .exporters import _domain_state
+        props = domain.fumaris
         header = {
             "output_directory": directory,
-            "output_prefix": domain.fumaris.output_prefix or "fumaris_",
-            "domain": _domain_state(domain.fumaris, self._resolution_scale),
+            "output_prefix": props.output_prefix or "fumaris_",
+            "domain": _domain_state(props, self._resolution_scale),
             "first": int(first),
             "last": int(last),
+            # The Output settings now, not when the preview started.
+            "vdb_compression": getattr(props, "vdb_compression", "active_mask"),
+            "vdb_precision": getattr(props, "vdb_precision", "half"),
         }
-        self._export_pending = {"directory": directory, "slot": slot, "started": time.monotonic()}
+        # The version's folder stays locked (as for a bake) until the reply.
+        self._export_pending = {"directory": directory, "slot": slot, "started": time.monotonic(), "lock": lock}
+        self._export_error = None
         diagnostics.set_status(self._diagnostic_key, f"Saving version '{slot}'")
         self._worker.send_preview_cache_export(header)
 
@@ -531,6 +544,32 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         directory = pending.get("directory")
         frames = int(data.get("frames", 0))
+        error = data.get("error")
+        lock = pending.get("lock")
+        if lock is not None:
+            lock.release()
+        if error:
+            # The save failed; the preview and its cache carry on, so it can
+            # be retried (another Output directory, freed disk space).
+            self._export_error = str(error)
+            self._export_report = None
+            if directory:
+                from .compare import forget_scan
+                try:
+                    from .cache import GUARD_FILE
+                    for name in (GUARD_FILE,):
+                        path = os.path.join(directory, name)
+                        if os.path.isfile(path):
+                            os.remove(path)
+                    os.rmdir(directory)
+                except OSError:
+                    pass
+                forget_scan()
+            diagnostics.set_status(self._diagnostic_key, "Paused" if self._pause_requested else "Running")
+            console_log(f"Fumaris could not save the preview to {directory}: {error}")
+            for area in context.screen.areas if context.screen else ():
+                area.tag_redraw()
+            return True
         if domain is not None and directory:
             from .compare import forget_scan, write_note
             write_settings_snapshot(directory, domain, self._participants)
@@ -543,6 +582,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         diagnostics.set_status(self._diagnostic_key, "Paused" if self._pause_requested else "Running")
         console_log(f"Fumaris exported {frames} cached preview frames to {directory}")
         self._export_report = (frames, pending.get("slot"), int(data.get("first", -1)), int(data.get("last", -1)))
+        self._export_warning = ("Velocity was not kept by this preview: turn on velocity export before Play to save it"
+                                if int(float(data.get("velocity_missing", 0) or 0)) else None)
+        if self._export_warning:
+            console_log(f"Fumaris: {self._export_warning}")
         for area in context.screen.areas if context.screen else ():
             area.tag_redraw()
         return True

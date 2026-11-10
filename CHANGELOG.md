@@ -295,6 +295,11 @@ Shaping layers).
 
 ### Fixes
 
+- **Expansion thins fuel and smoke as the gas spreads** (mass is kept): strong
+  Gas Expansion with a lot of fuel no longer runs away (speeds rising to
+  thousands of m/s, the smoke filling the domain). The presets look the same.
+- The Pyro look kept its flame only with Export Glow on: its heat grids are now
+  written with temperature.
 - The generated material is organised: the looks, Scatter Glow, Blue Core and
   the smoke colour are shared node groups in labelled frames, and each
   material's Appearance values are the group nodes' inputs (renders unchanged).

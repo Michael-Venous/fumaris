@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import time
 
@@ -22,7 +24,7 @@ from .cache import (
 )
 from .diagnostics import console_log
 from . import diagnostics
-from .exporters import build_session, session_structure_signature
+from .exporters import build_frame, build_session, session_structure_signature
 from .importers import (
     VOLUME_MARKER,
     baked_frame_count,
@@ -218,6 +220,68 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
             console_log(f"Fumaris could not store bake statistics: {error}")
 
 
+# --- Replay -------------------------------------------------------------------
+# A looping cached preview replays its cache instead of simulating when
+# nothing it was simulated from has changed. Each frame's fingerprint is what
+# the simulation received (the frame packet without the view); a pass also
+# keeps the fingerprint of the settings it started with, to notice changes
+# made during it.
+
+def packet_digest(packet):
+    """What the simulation receives in a frame, independent of the view: the
+    header without the viewport request, each payload array by its content
+    (the view's depth image comes first in a previewed frame, shifting every
+    offset)."""
+    payload = memoryview(bytes(packet.payload))
+    starts = set()
+
+    def offsets(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("offset"), int):
+                starts.add(node["offset"])
+            for value in node.values():
+                offsets(value)
+        elif isinstance(node, (list, tuple)):
+            for value in node:
+                offsets(value)
+    offsets(packet.header)
+    bounds = sorted(starts | {len(payload)})
+    ends = {start: next((b for b in bounds if b > start), len(payload)) for start in starts}
+
+    def canonical(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("offset"), int) and "count" in node:
+                if node.get("reuse"):
+                    return {"reuse": True}
+                if not node["count"]:
+                    return {"count": 0}
+                start = node["offset"]
+                return {"count": node["count"],
+                        "bytes": hashlib.blake2b(payload[start:ends[start]], digest_size=16).hexdigest()}
+            return {key: canonical(value) for key, value in node.items()}
+        if isinstance(node, (list, tuple)):
+            return [canonical(value) for value in node]
+        return node
+    header = {key: canonical(value) for key, value in packet.header.items()
+              if key not in ("volume_preview", "preview_mode")}
+    return hashlib.blake2b(json.dumps(header, sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
+
+
+def settings_digest(domain, participants, resolution_scale):
+    """The simulation settings of the domain and its sources (no look, no view)."""
+    from .cache import _rna_values
+    from .exporters import _domain_state
+    from .presets import _belongs
+    sources = {}
+    for item in participants:
+        obj = item.get("object") if isinstance(item, dict) else item
+        props = getattr(obj, "fumaris", None)
+        if props is not None:
+            sources[obj.name] = {key: value for key, value in _rna_values(props).items() if _belongs(key, "source")}
+    data = {"domain": _domain_state(domain.fumaris, resolution_scale), "sources": sources}
+    return hashlib.blake2b(json.dumps(data, sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
+
+
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     bl_idname = "fumaris.preview_play"
     bl_label = "Play"
@@ -306,6 +370,11 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._preview_owner_directory = output_directory_for_object(domain)
         self._preview_cache = {}
         self._live_frame = None
+        self._frame_fingerprints = {}
+        self._replaying = False
+        self._replay_waiting = False
+        self._pass_settings = None
+        self._pass_stale_frame = None
         pending = getattr(self, "_export_pending", None) or {}
         if pending.get("lock") is not None:
             pending["lock"].release()
@@ -334,7 +403,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._next_preview_capture_at = 0.0
         self._preview_render_count = 0
 
-    def _restart_preview_session(self, context, domain):
+    def _restart_preview_session(self, context, domain, keep_cache=True):
+        """Simulate the range again. keep_cache: the cache stays and the new
+        pass replaces frames as it reaches them; otherwise it starts empty."""
         signature = session_structure_signature(domain)
         start, end = simulation_frame_range(domain)
         clear_preview(domain)
@@ -367,11 +438,116 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._next_preview_capture_at = 0.0
         self._loop_reset_pending = False
         self._loop_reset_started = time.perf_counter()
-        # Looping over the same range: the bridge keeps the cache and the new
-        # pass replaces each frame as it reaches it.
-        session["preview_cache_keep"] = True
+        session["preview_cache_keep"] = bool(keep_cache)
+        if not keep_cache:
+            self._frame_fingerprints = {}
+            self._preview_cache = {}
+        self._replaying = False
+        self._replay_waiting = False
+        self._pass_settings = None
+        self._pass_stale_frame = None
         self._live_frame = None
         self._worker.reset_session(session)
+
+    def _replayable(self, domain):
+        """The cache holds the whole range (at its step) from a pass nothing
+        has changed since."""
+        if not self._worker._session.get("preview_cache") or self._pass_stale_frame is not None:
+            return False
+        if self._pass_settings is not None and self._pass_settings != settings_digest(
+                domain, self._participants, getattr(self, "_resolution_scale", 1.0)):
+            return False   # changed while paused at the end
+        start, end = simulation_frame_range(domain)
+        cache = self._preview_cache or {}
+        try:
+            first, last, frames = int(cache.get("first", -1)), int(cache.get("last", -1)), int(cache.get("frames", 0))
+        except (TypeError, ValueError):
+            return False
+        step = int(self._worker._session.get("preview_cache_step", 1) or 0)
+        if first != start or frames <= 0:
+            return False   # the oldest frames rolled out (RAM limit)
+        if step <= 0:
+            return True    # Auto: whatever it kept, held between
+        expected = (end - start) // step + 1
+        # The stats trail the last copies by a frame or two; the bridge
+        # finishes them before it draws a cached frame.
+        return frames >= expected - 2 and last >= end - 2 * step
+
+    def _next_pass(self, context, domain):
+        """At the end of the range with Loop on: replay the cache when it is
+        whole and current; simulate again otherwise (an empty cache when this
+        run mixed settings, else the oldest frames roll out as it goes)."""
+        if self._pass_stale_frame is not None:
+            console_log(f"Fumaris preview: settings changed at frame {self._pass_stale_frame}; simulating again")
+            self._restart_preview_session(context, domain, keep_cache=False)
+        elif self._replayable(domain):
+            self._begin_replay(context, domain)
+        else:
+            self._restart_preview_session(context, domain, keep_cache=True)
+
+    def _begin_replay(self, context, domain):
+        from .participants import participants as gather_participants
+        start, _end = simulation_frame_range(domain)
+        self._replaying = True
+        self._replay_waiting = False
+        self._replay_participants = gather_participants(domain.fumaris)
+        self._frame = start
+        self._submitted = False
+        self._loop_reset_pending = False
+        self._pass_stale_frame = None
+        self._next_submit_at = 0.0
+        diagnostics.set_status(self._diagnostic_key, "Replaying the cache")
+        console_log(f"Fumaris preview replays its cache for {self._domain_name}")
+
+    def _submit_replay_frame(self, context, domain):
+        """One replayed frame: the cached frame drawn with the live view, and
+        the frame's fingerprint checked against the one it was cached with."""
+        self._last_frame_submit_started = time.monotonic()
+        self._evaluate_frame(context)
+        packet = build_frame(
+            context, self._frame, self._replay_participants, domain=domain,
+            resolution_scale=getattr(self, "_resolution_scale", 1.0),
+            volume_stage_dir=self._volume_staging.name, preview_enabled=True,
+            volume_preview={"valid": False},
+        )
+        if (self._pass_stale_frame is None
+                and self._frame_fingerprints.get(self._frame) != packet_digest(packet)):
+            # Changed since it was cached: the replay plays out; the next
+            # pass simulates again.
+            self._pass_stale_frame = self._frame
+        preview = capture_volume_preview(context, domain)
+        self._submitted = True
+        self._replay_waiting = True
+        if not preview.get("valid", False):
+            # No viewport to draw into: the replay still moves on.
+            self._replay_frame_done(context, domain)
+            return
+        preview["cache_frame"] = self._frame
+        self._last_submitted_volume_preview = preview
+        self._worker.send_preview(preview)
+        self._preview_sent_at = time.monotonic()
+        self._preview_render_submitted = True
+
+    def _replay_frame_done(self, context, domain):
+        self._replay_waiting = False
+        self._submitted = False
+        self._has_volume_preview_frame = True
+        self._view_signatures = {}   # every other viewport draws the new frame
+        self._last_preview_signature = volume_preview_signature(
+            getattr(self, "_last_submitted_volume_preview", None))
+        started = getattr(self, "_last_frame_submit_started", time.monotonic())
+        self._next_submit_at = started + _preview_frame_duration(
+            context.scene, domain.fumaris if domain else None)
+        if self._stop_requested:
+            if not self._ending_session:
+                self._ending_session = True
+                self._worker.end_session()
+            return
+        _start, end = simulation_frame_range(domain)
+        if self._frame >= end:
+            self._end_of_range(context, self._frame)
+            return
+        self._frame += 1
 
     def _ready_to_submit(self, context):
         if getattr(self, "_preview_render_submitted", False):
@@ -399,7 +575,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             domain = bpy.data.objects.get(self._domain_name)
             if domain is None:
                 raise RuntimeError("The active Fumaris domain was deleted")
-            self._restart_preview_session(context, domain)
+            self._next_pass(context, domain)
             return False
         if self._submit_changed_volume_preview(context):
             return False
@@ -446,6 +622,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         Scrubbing or playing the timeline back while paused shows the frames
         the preview simulated; at or past the live frame it shows the live
         state, which Resume continues from."""
+        if getattr(self, "_replaying", False) and not getattr(self, "_pause_requested", False):
+            return int(context.scene.frame_current)   # replaying: the frame on screen
         if not getattr(self, "_pause_requested", False):
             return -1
         cache = getattr(self, "_preview_cache", None) or {}
@@ -510,7 +688,23 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self._ending_session = False
             self._start_preview_session(context, domain, clear_preview_image=True)
             return
+        if getattr(self, "_replaying", False):
+            self._submit_replay_frame(context, domain)
+            return
         super()._submit_frame(context)
+
+    def _after_frame_packet(self, packet):
+        """A simulated frame: remember what it was simulated from; a change of
+        settings during the pass marks the run stale (its cache mixes them)."""
+        if not self._worker._session.get("preview_cache"):
+            return
+        domain = bpy.data.objects.get(self._domain_name)
+        self._frame_fingerprints[self._frame] = packet_digest(packet)
+        current = settings_digest(domain, self._participants, getattr(self, "_resolution_scale", 1.0))
+        if self._pass_settings is None:
+            self._pass_settings = current
+        elif current != self._pass_settings and self._pass_stale_frame is None:
+            self._pass_stale_frame = self._frame
 
     def export_cache(self, context, directory, slot, first, last, lock=None):
         """Save Sequence / Save Frame: the bridge writes the cached frames into a new
@@ -639,6 +833,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         # Timings stay in Diagnostics; a console line per rerender spammed
         # (and on Windows slowed) orbiting at display rate.
         self._preview_render_count = getattr(self, "_preview_render_count", 0) + 1
+        if getattr(self, "_replay_waiting", False):
+            self._replay_frame_done(_context, domain)
 
     def _complete(self, context):
         domain = bpy.data.objects.get(self._domain_name)
@@ -663,9 +859,11 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None:
             raise RuntimeError("The active Fumaris domain was deleted")
-        # Scrubbed back through the cache: continue from the live frame.
-        if getattr(self, "_live_frame", None) is not None and context.scene.frame_current != self._live_frame:
-            context.scene.frame_set(self._live_frame)
+        # Scrubbed back through the cache: continue from the live frame (or,
+        # replaying, from the frame the replay had reached).
+        resume_at = self._frame if getattr(self, "_replaying", False) else getattr(self, "_live_frame", None)
+        if resume_at is not None and context.scene.frame_current != resume_at:
+            context.scene.frame_set(resume_at)
         self._next_submit_at = 0.0
         if getattr(self, "_loop_reset_pending", False):
             # Let any pending viewport response arrive before resetting Flow.
@@ -686,7 +884,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
                 self._loop_reset_pending = True
                 return None
             try:
-                self._restart_preview_session(context, domain)
+                self._next_pass(context, domain)
             except Exception as error:
                 return self._cancelled(context, {"message": str(error)})
             return None

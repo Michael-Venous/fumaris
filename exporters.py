@@ -82,11 +82,6 @@ def simulation_memory_mb(props):
     return float(props.simulation_memory) * 1024.0
 
 
-def _preview_cache_mode():
-    from .utils import get_addon_preferences
-    return getattr(get_addon_preferences(), "preview_cache_mode", "BALANCED")
-
-
 def _preview_cache_budget_mb():
     """Preview Cache RAM (preferences) in MB; 0 lets the bridge choose."""
     from .utils import get_addon_preferences
@@ -131,7 +126,10 @@ def build_session(
         "preview_enabled": bool(preview_enabled),
         # Preview cache: a live preview keeps its frames for scrubbing.
         "preview_cache": bool(preview_enabled and not write_vdb and getattr(domain.fumaris, "preview_cache", False)),
-        "preview_cache_every_frame": _preview_cache_mode() == "EVERY",
+        # Cache Every: a fixed step copies each kept frame whole; Auto paces it.
+        "preview_cache_every_frame": getattr(domain.fumaris, "preview_cache_step", "1") != "AUTO",
+        "preview_cache_step": (0 if getattr(domain.fumaris, "preview_cache_step", "1") == "AUTO"
+                               else int(getattr(domain.fumaris, "preview_cache_step", "1"))),
         "preview_cache_budget_mb": _preview_cache_budget_mb(),
         # Velocity compresses poorly: kept only for velocity export and the
         # velocity-based preview views.

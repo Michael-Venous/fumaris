@@ -679,12 +679,15 @@ def _draw_domain(layout, scene, props):
         preview_stop.enabled = job is not None and not is_baking
         preview_stop.operator("fumaris.preview_stop", icon=icon("CANCEL"), text="Stop")
         controls.separator(factor=0.5)
-        options = controls.row(align=True)
-        record = _pair(options)
-        cache_preview = record.row(align=True)
+        cache_preview = controls.row(align=True)
         cache_preview.enabled = mode is None
         cache_preview.prop(props, "preview_cache")
-        bake_preview = record.row(align=True)
+        if props.preview_cache:
+            # Beside the checkbox; tight, on its own line so neither is cut off.
+            step = controls.row(align=True) if _TIGHT else cache_preview
+            step.enabled = mode is None
+            step.prop(props, "preview_cache_step", text="")
+        bake_preview = controls.row(align=True)
         bake_preview.enabled = mode is None
         bake_preview.prop(props, "preview_bake")
         # A cached live preview can be kept as a version, and pictured.
@@ -718,8 +721,21 @@ def _draw_domain(layout, scene, props):
                 icon="CHECKMARK" if completed else "PAUSE",
             )
         elif is_previewing:
-            status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
-                         icon="PAUSE" if is_preview_paused else "PLAY")
+            replaying = getattr(job, "_replaying", False)
+            if replaying:
+                status.label(text="Replaying the cache · Paused" if is_preview_paused else "Replaying the cache",
+                             icon="PAUSE" if is_preview_paused else "LOOP_FORWARDS")
+            else:
+                status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
+                             icon="PAUSE" if is_preview_paused else "PLAY")
+            stale = getattr(job, "_pass_stale_frame", None)
+            if stale is not None:
+                row = status.column(align=True)
+                row.alert = True
+                _wrapped(row, (f"Changed since frame {stale} was cached: it simulates again at the next loop"
+                               if replaying else
+                               f"Settings changed at frame {stale}: this run mixes earlier and current settings; "
+                               "the cache refreshes at the next loop"), "ERROR")
             if (is_preview_paused and getattr(job, "_loop_reset_pending", False)
                     and not job._worker._session.get("preview_cache")):
                 # (A cached preview says so with its cache status.)

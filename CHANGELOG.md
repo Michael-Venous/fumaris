@@ -36,9 +36,10 @@ Removed). This is a beta: please report scenes that look wrong.
   with the live camera and look, and **Save Sequence** or **Save Frame** (below the toggle, also
   while playing) write them as a version that imports, renders and compares
   like a bake; **Save Snapshot** saves an image. Replaces Bake on
-  Preview. Loop off pauses at the end with the cache kept. Balanced (the
-  default) keeps as many frames as about a fifth of the frame time allows,
-  with the copy spread evenly so playback stays smooth; Every Frame keeps all.
+  Preview. Cache Every (beside the toggle) keeps every frame by default, or
+  every 2nd/3rd/4th, or Auto (as many as about a fifth of the frame time
+  allows). With Loop on, a whole cache that nothing has changed since replays
+  instead of simulating.
 - **Simulation Memory** replaces Sparse Block Capacity: set GB (or Auto, 80%
   of free GPU memory); it is allocated up front, so GPU memory stays flat.
 
@@ -248,8 +249,9 @@ Removed). This is a beta: please report scenes that look wrong.
   effectors are drawn in the viewport.
 - Transport status (Live / Cached / Baked frames).
 - **Loop** (beside the frame range, on by default): the live preview starts over at the end of
-  its range (a cached preview keeps its cache, each pass replacing the frames it
-  reaches); off, it pauses on the last frame.
+  its range; off, it pauses on the last frame. A cached preview that nothing has
+  changed since replays its cache instead of simulating; a change marks the run
+  as mixed and the next loop simulates again.
 - **Preview While Baking** (on by default): watch the live preview
   while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving

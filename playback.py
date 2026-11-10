@@ -30,7 +30,7 @@ def preview_description(context, action):
     cached = bool(domain and getattr(domain.fumaris, 'preview_cache', False))
     descriptions = {
         'play': ('Start the live preview from the simulation start frame. Its frames are cached (Cache Preview), '
-                 'so a paused preview can scrub and play them back; looping keeps them (each pass replaces the frames it reaches).'
+                 'so a paused preview can scrub and play them back, and an unchanged loop replays them instead of simulating.'
                  if cached else
                  'Start the live preview from the simulation start frame. It loops over its range; turn on Cache '
                  'Preview to keep its frames for scrubbing and saving.'),

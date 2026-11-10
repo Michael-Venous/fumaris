@@ -966,22 +966,38 @@ The simulation empty stores settings; smoke can extend freely around it.
 With **Cache Preview** on (under Play; off by default, applies from the next
 Play), the live preview keeps the frames it simulates, compressed in system
 memory, at full detail (exactly what the preview drew). Without it the preview
-keeps nothing.
+keeps nothing. **Cache Every** beside it chooses how often a frame is kept:
+Every Frame (the default), every 2nd, 3rd or 4th, or Auto. Fewer frames use
+less RAM and preview time; scrubbing and replay hold each kept frame until the
+next one, so they look choppier. Auto keeps as many frames as copying them from
+the GPU allows in about a fifth of the frame time (the copy takes about 40 ms
+per GB on a PCIe 4.0 x16 link, several times that on a narrower one).
 
-At the end of the range, with **Loop** on (the loop button beside the frame
-range, on by default), the preview starts over; a cached preview keeps its
-cache, and the new pass replaces each frame as it reaches it. With Loop off it
-pauses on the last frame, and Resume starts over the same way. The cache lasts
-until the preview stops (or restarts for a change of resolution or domain);
-Save Sequence keeps it.
+**Looping.** With **Loop** on (the loop button beside the frame range, on by
+default) the preview starts over at the end of its range:
+
+- When the cache holds the whole range and nothing the simulation uses has
+  changed, the preview **replays the cache** instead of simulating: smooth
+  playback, no GPU simulation. The status line says Replaying the cache.
+- If you change a setting, an emitter, collider or effector, or their
+  animation, the run is marked as mixing settings (the status line says from
+  which frame). A simulated pass keeps caching, so a paused preview still shows
+  the mix; a replay plays out. At the next loop the cache is cleared and the
+  range simulates again with the current settings.
+- When the oldest frames have rolled out (the RAM limit below), the range
+  simulates again and keeps rolling: each new frame replaces the oldest one,
+  so the last frames you watched stay until newer ones push them out.
+
+Look and viewport changes (lighting, colour, camera) never count: cached frames
+are always drawn with the live look. With Loop off the preview pauses on the
+last frame, and Resume continues the same way.
 
 - While the preview is paused, scrub or play the timeline (Blender's own
   playback) to see the cached frames with the live camera, lighting and look.
   The status line shows the cached range and the frame shown.
-- **Resume** returns to the live frame and continues the simulation from it.
-  Paused at the end of the range (Loop off), Resume starts over, keeping the
-  cache.
-- While a cached preview runs, three buttons sit below Cache Preview:
+- **Resume** returns to the live frame and continues (a replay continues from
+  where it was).
+- While a cached preview runs, three buttons sit below the cache options:
   **Save Sequence** writes the cached frames as VDB files into a new version
   (see Versions), with the settings that made them and the Output
   settings (grids, resolutions, Glow) at the preview's resolution; it imports,
@@ -990,23 +1006,17 @@ Save Sequence keeps it.
   Snapshot** saves what the 3D Viewport shows, live preview included, as an
   image in Versions, with the current settings. Saving while playing holds the
   preview until the files are written.
-- **Stop** releases the cache with the simulation.
+- **Stop** releases the cache with the simulation (as does a change of
+  resolution or domain, which restarts the preview).
 
-Preferences > Preview Cache chooses how often frames are kept. Each kept frame
-is copied from the GPU to system memory, which takes about 40 ms per GB on a
-PCIe 4.0 x16 link and several times that on a narrower one (a card in an x4
-slot). **Balanced** (the default) measures the link and spends about a fifth of
-the frame time on the copy, spread evenly over the frames that follow a kept
-one, so playback stays smooth: small scenes keep most frames, large ones every
-few. **Every Frame** always keeps every frame, whatever the cost. RAM sets the most
-memory the cache may use (0: a quarter of the RAM, from 1 to 16 GB; set more to
-keep more frames, for example 20 on a 32 GB machine). When it is full the oldest
-frames are dropped, so the cache holds the most recent part of the preview; the
-status line shows the range it still holds and its size against the limit.
-Whatever RAM is set to, the cache also drops its oldest frames when the system
-runs short of free memory, leaving 2 GB or an eighth of the RAM (whichever is
-more) for Blender and other programs; the status line then says System RAM is
-low. Frames Balanced skipped show the nearest earlier cached frame.
+Preferences > Preview Cache RAM sets the most memory the cache may use (0: a
+quarter of the RAM, from 1 to 16 GB; set more to keep more frames, for example
+20 on a 32 GB machine). When it is full the oldest frames are dropped, so the
+cache holds the most recent part of the preview; the status line shows the
+range it still holds and its size against the limit. Whatever RAM is set to,
+the cache also drops its oldest frames when the system runs short of free
+memory, leaving 2 GB or an eighth of the RAM (whichever is more) for Blender and
+other programs; the status line then says System RAM is low.
 
 ### Capacity warning and defaults
 

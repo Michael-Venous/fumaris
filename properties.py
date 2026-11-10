@@ -650,13 +650,26 @@ class FumarisSettings(PropertyGroup):
 
     preview_loop: BoolProperty(
         name="Loop",
-        description="At the end of the frame range the live preview starts over. Off: it pauses on the last frame (Resume starts over). With Cache Preview the cache is kept: each new pass replaces the frames as it reaches them",
+        description="At the end of the frame range the live preview starts over. Off: it pauses on the last frame (Resume starts over). With Cache Preview, an unchanged, whole cache replays instead of simulating; after a change the cache clears at the loop and the range simulates again",
         default=True,
+    )
+
+    preview_cache_step: EnumProperty(
+        name="Cache Every",
+        description="How often the live preview keeps a frame. Fewer frames use less RAM and preview time; scrubbing and replay hold each kept frame until the next one",
+        items=(
+            ("1", "Every Frame", "Keep every frame: smooth scrubbing and replay"),
+            ("2", "Every 2nd Frame", "Keep every 2nd frame"),
+            ("3", "Every 3rd Frame", "Keep every 3rd frame"),
+            ("4", "Every 4th Frame", "Keep every 4th frame"),
+            ("AUTO", "Auto", "As many frames as copying them to system memory allows in about a fifth of the frame time: small scenes keep most frames, large ones every few (fewer on slower PCIe links)"),
+        ),
+        default="1",
     )
 
     preview_cache: BoolProperty(
         name="Cache Preview",
-        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Sequence or Save Frame (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. Looping keeps the cache (each new pass replaces the frames it reaches); turn Loop off to pause at the end. Uses system RAM and some preview speed; how often frames are kept and how much RAM is set in Preferences > Preview Cache. Applies from the next Play",
+        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Sequence or Save Frame (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. With Loop on, a whole cache that nothing has changed since replays instead of simulating. Uses system RAM and some preview speed; how often frames are kept is Cache Every (beside this), the RAM limit is in Preferences > Preview Cache RAM. Applies from the next Play",
         default=False,
     )
 

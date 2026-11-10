@@ -367,10 +367,12 @@ def stale_frames(job, domain):
 
 
 def tag_timelines(context):
-    screen = getattr(context, "screen", None)
-    for area in screen.areas if screen else ():
-        if area.type == "DOPESHEET_EDITOR":
-            area.tag_redraw()
+    """Redraw every Timeline (each window), for the preview cache strip."""
+    manager = getattr(context, "window_manager", None) or bpy.context.window_manager
+    for window in getattr(manager, "windows", ()):
+        for area in window.screen.areas if window.screen else ():
+            if area.type == "DOPESHEET_EDITOR":
+                area.tag_redraw()
 
 
 class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
@@ -498,6 +500,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._last_preview_signature = None
         self._next_preview_capture_at = 0.0
         self._preview_render_count = 0
+
+    def _finish(self, context):
+        # However the preview ends (Stop, the end, an error), its cache strip
+        # leaves the Timeline now rather than at the next redraw.
+        self._preview_cache = {}
+        super()._finish(context)
+        tag_timelines(context)
 
     def _restart_preview_session(self, context, domain, keep_cache=True):
         """Simulate the range again. The cache stays and the new pass replaces

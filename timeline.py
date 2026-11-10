@@ -34,7 +34,8 @@ def _draw():
     if space is None or getattr(space, "mode", "") != "TIMELINE":
         return
     job = active_job()
-    if job is None or active_mode() != "previewing" or not job._worker._session.get("preview_cache"):
+    if (job is None or active_mode() != "previewing" or getattr(job, "_finished", False)
+            or not job._worker._session.get("preview_cache")):
         return
     from .operators import cached_frames, stale_frames
     frames = cached_frames(job)

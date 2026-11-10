@@ -60,8 +60,9 @@ Doubling resolution needs approximately eight times the cells for equal coverage
 
 ## What's New In 2.0
 
-- About 1.5x more simulation in the same GPU memory and faster bakes, set
-  directly as Simulation Memory (GB or Auto).
+- About 1.4x more simulation in the same GPU memory (up to about 2x for
+  smoke only), set directly as VRAM (GB or Auto), and 35-40% less GPU time per
+  voxel than 1.3.1 at default settings.
 - Physical fire: one combustion model with Fuel Energy, Burn Time, Cooling
   Time, Temperature Diffusion, Oxygen Limit and Field, Soot Radiation, Wisp
   Cooling and Flame Sheets; fire glows by its temperature.
@@ -70,7 +71,8 @@ Doubling resolution needs approximately eight times the cells for equal coverage
 - Stronger pressure solve, colliders as walls, Wind, physical emitter
   Expansion and Normal Velocity, Detail & Shaping layers (Disturb, Grain, Shred).
 - Quick Setup for five effects, Add Source (Candle, Burst, Trail, Spreading
-  Fire), user presets, Sparks, Takes and Make Lighter Copy.
+  Fire), user presets, Sparks, Make Lighter Copy, and a preview cache with
+  Versions (bakes, preview saves and snapshots with their settings).
 - Two fire looks with their own controls: Temperature (blackbody) and Pyro
   (golden or blackbody, soft glowing cells, dark soot).
 - Fewer, more accurate solver steps (1 Sub-Step with Trace by default), a
@@ -86,7 +88,7 @@ need to be set up again. See the [changelog](CHANGELOG.md).
 
 - Choose and save the GPU used by the next simulation job.
 - Use Timeline follows the scene range, with optional warmup frames.
-- Preserve bakes: Bake asks to replace a pinned bake or make a new one; delete confirmations and Protect.
+- Preserve bakes: New Slot, delete confirmations and Protect.
 - Preview Flame Light: flames light the smoke around them in the live preview.
 
 ## Earlier 1.2.0 Features

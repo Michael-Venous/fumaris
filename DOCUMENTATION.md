@@ -5,9 +5,9 @@ live volume preview to develop motion quickly, then bake standard OpenVDB
 sequences for Blender's native volume shading and rendering workflow.
 
 Fumaris 2.0 lights the live preview like Cycles (the scene's lights and world,
-fire light, Scatter Glow, Blender's own colour management), adds Realistic
-combustion for every domain, and smaller VDB options (temperature floor, Half
-Res grids). Preview shading controls do not change baked VDB materials.
+fire light, Scatter Glow, Blender's own colour management), adds one physical
+combustion model for every domain, and smaller VDB options (temperature floor,
+Half Res grids). Preview shading controls do not change baked VDB materials.
 See [CHANGELOG.md](CHANGELOG.md) for release details and the Updating section
 below before replacing an installation.
 
@@ -170,7 +170,7 @@ Useful preview controls:
 - `Self Shadows` shadows the smoke from that light and from the sky, at some GPU
   cost; off lights every voxel fully. Changing Appearance Density rebuilds the
   shadow field so light and camera attenuation stay consistent.
-- `Flame Light` makes flames light the smoke around them. The glow takes the
+- `Fire Lighting` makes flames light the smoke around them. The glow takes the
   flame's color, is strongest beside the fire, falls off with distance and is
   dimmed by smoke in between; darker Smoke Color reflects less of it. 1 is the
   default, 0 turns it off, and it follows Flame Brightness. It is an

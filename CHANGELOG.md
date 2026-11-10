@@ -4,386 +4,103 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 1 — Unreleased
 
-Fumaris 2.0: a new solver core, physical fire, a live preview lit like Cycles,
-two fire looks (Temperature and Pyro) and a reworked panel. A major version
-that starts fresh: **scenes from 1.x are not converted** and need to be set up
-again (see Compatibility), and several features were removed or replaced (see
-Removed). This is a beta: please report scenes that look wrong.
+The first Fumaris 2.0 release: a new solver core, physical fire and a live
+preview that looks like the render. **Scenes from 1.x are not converted** (see
+Compatibility). This is a beta: please report scenes that look wrong.
 
 ### Highlights
 
-- **About 1.5x more simulation in the same memory, and faster bakes.** Blocks
-  are stored without Flow's copied border, in 16-cell blocks that fit the smoke
-  tightly (about 35% more smoke per GB, on macOS too). Smoke-only scenes store
-  only the channels they use (Density Storage: Auto), up to about twice the
-  smoke per GB. Bakes of the test scenes run about 30% faster than 1.3.1 while
-  holding 36–59% more smoke; Apple silicon bakes up to 80% faster. Advection
-  reads across block faces with fewer lookups: about 6% less GPU time per
-  frame on Apple M4 and 8–10% on Intel Arc. A profiling pass took another 11%
-  off each frame's GPU time (Explosion at Resolution 1024, RTX 4060 Ti):
-  leaner advection shaders, a faster pressure solve and fewer repeated reads.
-- **Physical fire.** One combustion model: burning releases Fuel Energy times
-  the heat that takes cold air to Flame Temperature, per unit of fuel. Burn
-  Time sets how long fire lasts and Cooling Time how fast heat fades after it;
-  neither changes how hot fire gets. Fire glows by its temperature like real
-  soot (Temperature look), in the render and the live preview alike.
-- **Live preview lit like Cycles**: the scene's strongest light or HDRI sun
-  with shadows, sky light, fire lighting the smoke, multiple scattering, and
-  Blender's own colour management and blackbody colours.
-- **Scatter Glow**: fire light spreads into the smoke around it, with Glow
-  Spread (a long, soft falloff) and Glow Shadowing (dense outer billows stay
-  dark while crevices next to the flames glow).
-- **Preview cache** (**Cache Preview** under Play, off by default): the live preview keeps the frames it simulates
-  (compressed, full detail), so a paused preview scrubs and plays them back
-  with the live camera and look, and **Save Sequence** or **Save Frame** (below the toggle, while
-  paused; the cursor counts the frames saved) write them as a version that imports, renders and compares
-  like a bake; **Save Snapshot** saves an image. Replaces Bake on
-  Preview. Cache Every (beside the toggle) keeps every frame by default, or
-  every 2nd/3rd/4th, or Auto (as many as about a fifth of the frame time
-  allows). With Loop on, a whole cache that nothing has changed since replays
-  instead of simulating.
-- **Simulation Memory** replaces Sparse Block Capacity: set GB (or Auto, 80%
-  of free GPU memory); it is allocated up front, so GPU memory stays flat.
+- **A new solver core.** Smoke keeps its motion and rolls instead of fading,
+  the pressure solve is stronger (no more rectangles in flames), colliders act
+  as real walls, and results hold up across Resolution and Sub-Steps.
+- **The same look with fewer sub-steps.** New domains run 1 Sub-Step (1.3.1
+  used 2): fast smoke follows the flow within each step (Trace Steps). About
+  35–40% less GPU time per voxel than 1.3.1 at default settings (Explosion and
+  Rising Smoke, Resolution 1024, RTX 4060 Ti).
+- **More simulation per GB.** VRAM (GB) replaces Sparse Block Capacity and is
+  reserved up front, so memory stays flat: about 1.4x as much simulation per
+  GB, up to about 2x for smoke-only scenes.
+- **A live preview lit like Cycles**: the scene's sun or HDRI with shadows, sky
+  light, fire lighting the smoke, multiple scattering and Blender's own colour
+  management.
+- **Physical fire**: one combustion model (Flame Temperature, Fuel Energy, Burn
+  Time, Cooling Time, Gas Expansion) with Soot Radiation, and an optional
+  oxygen model (Oxygen Limit, and an Oxygen Field in which fire starves inside
+  thick burnt gas).
+- **Detail & Shaping layers**: stack Disturb, Grain, Shred, Vorticity,
+  Dissipation, Cooling and Soot Burn-off, each limited by up to six masks
+  (temperature, speed, smoke, fuel, burn, air left, noise).
+- **Two fire looks**: Temperature (blackbody) and Pyro (Houdini-style), with
+  Scatter Glow, so fire light spreads into the smoke around it.
+- **Preview cache and Versions**: scrub and replay what the preview simulated,
+  save it as a VDB version or a snapshot, and compare versions with the
+  settings that made them.
 
-### Fire and combustion
+### Simulation
 
-- **One combustion model** (Classic removed). Combustion settings: Flame Temperature, Fuel Energy, Ignition
-  Temperature, Burn Time, Cooling Time, Temperature Diffusion, Smoke Amount,
-  Gas Expansion, Wisp Cooling, Flame Sheets, Oxygen Limit, Soot Radiation and
-  Oxygen Field (Use, Mixing).
-- **Gas Expansion**: burning gas pushes the smoke around it outward where it
-  burns, the same at any resolution, frame rate or Sub-Steps.
-- **Temperature Diffusion**: heat evens out between neighbouring voxels,
-  smoothing speckle in fire (0.1 lowers cell-to-cell temperature noise about
-  12%, 0.3 about 30%; about 7% more simulation time while on).
-- **Oxygen Limit** and **Oxygen Field**: fire needs fresh air, so it burns in
-  shells where fuel meets air, and with the field starves inside thick burnt
-  gas. 0 burns evenly everywhere.
-- **Soot Radiation**, **Wisp Cooling** and **Flame Sheets** break up evenly
-  hot fireballs: sooty pockets radiate their heat away, thin gas cools faster,
-  dense fuel burns in thin sheets with glowing seams.
-- **Physical Buoyancy**: a checkbox beside Temperature Buoyancy that lifts hot
-  gas as the gas law says (about 5.8 g at 2000 K).
-- **Burning emitters**: an emitter can burn where it sits (a gas jet, a
-  burning surface) without emitting fuel.
-- Fire lights reliably from an igniter emitter (Temperature in Maximum mode at
-  or above Ignition Temperature), and the emitter panel warns when an
-  emitter's Temperature is too low to ignite its fuel.
-- Cooling and burning are exact at any Sub-Steps: a short Cooling Time no
-  longer reheats gas, and a short Burn Time no longer burns all fuel in one
-  step.
+- Vorticity scales with Resolution and has a Vorticity Mask; Adaptive
+  Sub-Steps (Cells per Step); Wind and Gravity from Scene.
+- Advanced: Preserve Turbulence (at least 2 Sub-Steps), Smoke Detail Sharp,
+  Full-Resolution Velocity, Projection Filter.
 
-### Motion and solver
+### Emitters and sources
 
-- **Stronger, cleaner pressure solve**: two multigrid cycles, a checkerboard
-  filter that removes the cell-sized odd-even pattern (and the straight-edged
-  rectangles it caused in flames), and a sign error inherited from Flow fixed.
-  15–25% less leftover compression; Projection Filter (Advanced) lets finer
-  motion through. Its smoothing uses red-black Gauss-Seidel: one sweep does
-  the work of two Jacobi passes, so the solve takes about 12% less time at the
-  same quality (energy, plume height and smoke within 3%).
-- **Colliders are walls**, sitting on the real surface: smoke spreads along
-  and wraps around colliders and reaches them, instead of thinning out or
-  stopping a few cells short. Open Collider Wall (Advanced, 1 cell) keeps thin
-  open planes sealed; Closed Collider Margin (Advanced) lets fire resting on a
-  closed collider rise freely.
-- **Livelier default motion**: Flow's constant velocity fade (which stalled
-  large plumes) is replaced by a small **Velocity Damping**.
-- **Wind**: a steady wind that carries all smoke downwind at no cost; Gravity
-  from Scene copies the scene's gravity.
-- **Vorticity** is weakened in proportion below Resolution 512, so coarse
-  grids rise and spread like fine ones, and it no longer keeps pumping energy
-  into the gas after a fire dies. **Vorticity Mask** chooses where it acts.
-- **Detail & Shaping** (Smoke Behavior): a stack of layers, applied in order.
-  Disturb (swirls of a set size, with Detail octaves), Grain (blocky kicks
-  that break up fast fronts; Size, Layers) and Shred add motion; Vorticity, Dissipation and Cooling layers
-  scale those rates per cell; Soot Burn-off thins smoke where gas is hot.
-  Stack several (a large and a fine Disturb), and give each up to six
-  masks: a map range (From Min/Max to To Min/Max) of Temperature (K), Speed
-  (m/s), Smoke, Fuel, Burn, Air Left or Noise, combined by Multiply,
-  Minimum, Maximum, Add, Subtract or Replace. New layers start with useful
-  masks (Disturb and Grain: smoke, or heat up to 2500 K); with none a layer
-  acts everywhere. Speed masks read the gas as each layer finds it. Clear
-  air skips the noise.
-- **Preserve Turbulence** (Advanced, advection–reflection) keeps more swirling
-  energy; off for new domains.
-- **Smoke Detail** (Advanced): Sharp carries smoke with cubic interpolation
-  for finer billows; **Edge Sharpness** sets how strongly edges are restored.
-- **Full-Resolution Velocity** (Advanced): motion at the full Resolution for
-  rounder, finer billows, at about twice the memory per block.
-- **Adaptive Sub-Steps**: Cells per Step (0 = off) uses only as many steps as
-  the motion needs, up to Max Sub-Steps.
-- Smoke, fire and heat no longer fade or stall at high Sub-Steps (small
-  changes were lost to half-precision rounding), and look much the same at
-  any step count.
-
-### Emitters
-
-- **Physical Expansion and Normal Velocity.** Expansion (formerly Divergence)
-  is a rate per second, the same at any Resolution and Sub-Steps, and exact
-  wherever a box, sphere or Surface mesh sits on the grid. Normal Velocity on
-  closed meshes, spheres and boxes really blows the air out, closed meshes
-  that grow or shrink push or pull the smoke, and open meshes act as fans.
-  Point and particle emitters expand per second and push outward too.
-- **Expansion operation**: Maximum (exact, the default), Blend (pulls toward
-  Expansion at the Expansion coupling rate, for gentler pushes) or Replace.
-- **Influence Only**: an emitter can steer, heat or expand the smoke already
-  there without adding any (also for points and particles).
-- **Burning** works on point and particle emitters (they emitted their plain
-  values instead).
-- **Velocity attribute** for mesh and Geometry Nodes mesh emitters.
-- Fast point and particle emitters leave joined trails instead of beads.
-- Static emitters are stamped once per step (up to 8x less emitter time);
-  fast-moving mesh emitters emit from their real surface at any Sub-Steps.
-- Collection Mesh emitters with many copies of one mesh export up to 8x faster.
-- Point attribute tooltips say that a per-point value replaces the emitter's
-  setting (it does not scale it).
-
-### Look and material
-
-- **Temperature look**: Colour (Blackbody or the Pyro look's Golden ramp),
-  Brightness, Full Glow, Contrast (flame width), Colour
-  Spread, Sharpness, Blue Core and Flame Tint; Anisotropy for forward
-  scattering. The Burn look is removed. Appearance always drives the generated
-  material, which is leaner (density, temperature and glow grids; fuel only
-  for Blue Core).
-- **Scatter Glow**, Glow Spread and Glow Shadowing (bakes add small glow
-  grids; Glow Radius and Glow Resolution in Output).
-- **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with its
-  own flame controls (Brightness, Full Glow, Contrast, Blackbody Scale, Blue
-  Core, Flame Tint, Scatter Glow; separate from the Temperature look's, using
-  the same brightness law so equal values give equal exposure) and a Colour
-  choice (Golden ramp or real Blackbody): golden fire,
-  softly glowing cells (a blurred heat field), dark hot soot. Thin Gas sets
-  the smoke density where both looks glow alike; thinner gas glows brighter,
-  denser smoke darker. Works at any scene size, and Full Glow applies without
-  a re-bake. Bakes write two small half-resolution grids for it (heat and a
-  softened density). The live preview shows it too (without the blur).
-- Blue Core is 0 for new domains (with Brightness raised it turned fuel-rich
-  scenes lilac).
+- Expansion (formerly Divergence) is a rate per second; Normal Velocity really
+  blows air out of closed meshes; Influence Only; Burning emitters (also points
+  and particles); a per-channel operation for each emitter.
+- **Add Source**: Candle, Burst, Trail and Spreading Fire Geometry Nodes sources.
+- Thin collider planes stay sealed (Open Collider Wall); moving colliders are
+  smooth between steps; effectors are drawn in the viewport.
+- OpenVDB sources read temperature in kelvin.
 
 ### Live preview
 
-- Lit like Cycles (see Highlights), with exposure and every Tone Mapping mode
-  following Blender's colour management exactly (Standard replaces Off), and
-  dithered so dark smoke does not band.
-- Dense smoke as opaque as in Cycles and flame colours matching the material;
-  Scatter Glow, Glow Spread and Glow Shadowing drawn in the preview (Glow
-  Spread mixes two blur widths as the material does, so it changes smoothly).
-- **Show** views: Speed, Expansion, Fuel and Active Blocks. Field views ignore
-  the look's Brightness; Speed runs from dark (still) through red (10-20 m/s)
-  to orange (fast) and never clips to white; Active Blocks outlines are
-  thinner; Lighting settings hide while a field view is shown.
-- **Preview Step Size** replaces Ray Steps; the preview is faster (no velocity
-  reads for ordinary looks, rays stop once nothing behind can show).
-- Dragging a mesh emitter while previewing costs much less (fast drags: the
-  emitter pass ~2.4x cheaper, frames back within 24 fps): the live preview
-  stamps a moving source at half its emission band instead of every 2 voxels.
-  Bakes and recordings keep the finer stamping.
-- **Frame Rate** (Preview Settings): Scene (default, real speed), Uncapped (as
-  fast as the GPU simulates) or a Custom frame rate.
-- Stays in the window it was started from; View > Show Fumaris Preview Here
-  and All Viewports choose where it appears.
-- The self-shadow and flame light volumes are counted in Simulation Memory.
-- Smooth playback: panning while the preview plays re-renders between
-  simulation frames (Rising Smoke: ~23 -> ~130 images/s, 24 fps kept), and
-  playback no longer slows as Simulation Memory grows (Flow recreated its
-  scratch textures every preview frame). Scene occlusion depth now follows the
-  view while orbiting and playing, refreshed as often as about a quarter of the
-  viewport's time allows (it lagged up to 1/15 s behind a fast orbit).
-- Scene lighting with a world: the sky-light shading inside the smoke no
-  longer shows block-shaped patches that shifted as the smoke grew.
-- Lighting: Custom replaces the scene's lights and world with its one light
-  and its own grey Sky (shadowed by the smoke, for soft ambient depth), the
-  same in every scene; it used to add the world's light.
+- Show views: Speed, Expansion, Fuel and Active Blocks.
+- Smoother: panning while playing re-renders between frames, occlusion
+  follows fast orbits, and Preview While Baking.
+- Preview Frame Rate, and Show Fumaris Preview Here or in All Viewports.
 
 ### Baking and files
 
-- **Faster Scatter Glow grids**: the glow is computed only around gas that
-  glows, in parallel, and smoke far from the fire is skipped (a mushroom bake:
-  glow time 8.4 s to 1.9 s, worst frame 234 to 95 ms, same grids).
-- **Faster, smaller VDB bakes**: only cells holding smoke are read back,
-  VDB files are written by more threads (FUMARIS_VDB_WORKERS limits them),
-  bakes use far less RAM, and **VDB Writers** (Output) trades speed for even
-  less: Balanced (6, the default: as fast as Fastest with ~22% less RAM), Low Memory (4 writers, ~40% less RAM for ~5% more time)
-  or Ultra Low Memory (1 writer, about half the RAM, several times slower).
-- **Smaller files**: VDB Precision (Half by default), temperature below 500 K
-  not stored, a Full / Half / Quarter resolution menu for each grid (Density,
-  Temperature, Fuel, Burn, Velocity; velocity Half by default, Full only with
-  Full-Resolution Velocity), Density can be left out, optional Glow.
-- **Takes**: every bake stores its settings in its cache slot; Restore
-  Settings from Slot puts them back. **Make Lighter Copy** writes a half-
-  resolution copy about 7x smaller.
-- **Sparks** (Output > Add Sparks): sparks and embers flying through the baked
-  velocity, glowing by temperature.
-- A GPU-memory-full warning when the driver starts moving the simulation to
-  system memory. The bar under the controls reads "VRAM in use", its total is
-  the VRAM the simulation reserved (matching the VRAM field), and it notes
-  when a changed VRAM waits for a restart.
+- Versions list: bakes, preview saves and snapshots, pinned first; Bake asks
+  whether to replace a pinned bake or start a new one.
+- Smaller VDBs: Half precision by default, per-grid resolution, optional
+  Density and Glow; Make Lighter Copy; Add Sparks (embers from the bake).
+- Faster VDB writing with bounded RAM (VDB Writers).
+- Escape stops a bake, a playing preview or a save.
 
 ### Workflow
 
-- **Quick Setup**: Rising Smoke, Steady Fire, Explosion (optional Debris
-  Trails), Ground Fog and Chimney Smoke, starting from the new defaults, at
-  2 GB of VRAM with 24 fps preview playback on an RTX 4060 Ti. The Explosion
-  is grander (a longer, stronger burst and more soot) and stands on a stem:
-  after the blast its source vents warm soot that fades out, so the mushroom
-  cloud rises on a column instead of floating off the ground. Chimney Smoke
-  breaks up into turbulent smoke.
-- **Emitter operations**: new emitters Add what they emit (Smoke, Temperature,
-  Fuel, Burn); Velocity gets the operation menu too (Blend by default). The
-  coupling tooltips say what each rate means per operation.
-- **Add Source**: Candle, Burst, Trail and Spreading Fire Geometry Nodes
-  sources. Each starts a few of the domain's cells wide, so it shows at the
-  default Resolution; the Burst bursts into a ball that rolls up into smoke;
-  Trail and Spreading Fire burn brightly. Adding one to a domain whose flame
-  shading is off (Rising Smoke) says so.
-- **User presets** for domains and sources, shared between files; applying
-  one restores the whole saved state.
-- **Narrow panels**: at Blender's default Properties width, paired settings
-  stack one per row instead of cutting their names short; clearer tooltips
-  throughout; the object's Fumaris role is labelled **Role**.
-- **Ground Fog** rolls into billows (a light Disturb layer) instead of
-  spreading in regular rings.
-- **Versions** (top of the domain panel): one list of what the domain has
-  saved: bakes and live previews kept with Save Sequence or Save Frame (VDB
-  sequences that import and render in EEVEE and Cycles), and Save Snapshot
-  images, each with the settings that made it. Bakes are pinned at the top;
-  pin any entry. Select one for Import (or a snapshot's Preview) and View
-  Changes, which lists its settings against the current ones and loads them.
-  Bake asks to replace a pinned bake or make a new one, so nothing piles up
-  unasked, and Play works after a bake. The domain's Presets menu sits at the
-  top of its panel like every other object's.
-- **Participant list** with Enabled and Solo, saying why an object is skipped;
-  effectors are drawn in the viewport.
-- Transport status (Live / Cached / Baked frames).
-- **Loop** (beside the frame range, on by default): the live preview starts over at the end of
-  its range; off, it pauses on the last frame. A cached preview that nothing has
-  changed since replays its cache instead of simulating; a change marks the run
-  as mixed and the next loop simulates again (a change during a replay
-  simulates again at once), replacing the stale frames (the cache is never
-  cleared for it). A replay keeps to the preview frame rate and follows the
-  scene's Sync like Blender's playback (Play Every Frame, or skip ahead with
-  Frame Dropping / Sync to Audio). A strip on the Timeline shows the cached
-  frames, orange where they are stale (the strip is the only warning; the
-  panel no longer shows a red message for it).
-- **Preview While Baking** (on by default): watch the live preview
-  while a bake runs; off keeps bakes fastest.
-- Reorganised domain panel: paired rows, Advanced grouped by solver, moving
-  domain, colliders and memory (Simulation Speed and Trace Steps first, then
-  block allocation). Appearance shows only the chosen Look's controls, side by
-  side, and hides them all when Flame is off. Emitters keep Influence Only and
-  Burning under Advanced.
-- Linux: a failed bridge start says what to fix (missing library, old glibc,
-  no Vulkan driver).
-
-### New defaults
-
-Burn Time 2 s, Cooling Time 2 s, Gas Expansion 0.3, Smoke Amount 1 (3 buried
-the fire in dark smoke within a second), Temperature Diffusion 0.1, Soot
-Radiation 1, Edge Sharpness 0.5, Dissipation 0.2, Smoke Decay 0.1,
-1 Sub-Step with Trace Steps 16 (Cells per Step 8 applies once Max Sub-Steps is
-raised; Trace brings 1 step much closer to a converged result), Simulation
-Memory 4 GB; even burning
-(Oxygen Limit 0, Oxygen Field, Wisp Cooling and Flame Sheets off); look: Full
-Glow 2000 K, Brightness 2, Scatter Glow 1, Glow Shadowing 0.5, Blue Core 0,
-Smoke Density 1, smoke colour 0.45, Anisotropy 0.3; Disturb layers 20 at 1 m.
-Domains show as a wireframe; their sub-sections (Appearance, Output, Preview
-Settings, Advanced) start folded. Emitters:
-Temperature 0.35 (700 K) held by Maximum at coupling 10, so fuel ignites
-within about 0.1 s and burning makes the rest of the heat; Expansion 0.2
-(Maximum); smoke, fuel and burn Add at coupling 2; velocity Blends at 8.
-
-### Removed
-
-Bake on Preview and Scrub Recording (the preview cache replaces them),
-Classic combustion and the Burn look, Upres, Small Sparse Blocks, Sparse
-Block Capacity, Ray Steps (Step Size), the Adaptive toggle (Cells per Step 0),
-Shadow Min Light and Light Scattering, the per-cell Expansion, and the
-separate Turbulence Detail, Control Ramps and Soot Burn-off settings (Detail &
-Shaping layers).
-
-### Fixes
-
-- **Expansion thins fuel and smoke as the gas spreads** (mass is kept): strong
-  Gas Expansion with a lot of fuel no longer runs away (speeds rising to
-  thousands of m/s, the smoke filling the domain). The presets look the same.
-- The Pyro look kept its flame only with Export Glow on: its heat grids are now
-  written with temperature.
-- The generated material is organised: the looks, Scatter Glow, Blue Core and
-  the smoke colour are shared node groups in labelled frames, and each
-  material's Appearance values are the group nodes' inputs (renders unchanged).
-- **Escape** stops a bake, a playing live preview or a save in progress.
-- **Sync Material** (Versions): bakes share Fumaris's material, kept in step
-  with Appearance; saves from the live preview get their own copy (toggle per
-  version).
-- The live preview in the viewport was drawn too bright: its display-encoded
-  image was encoded a second time by the viewport, lifting dark and unlit
-  smoke to grey. It now shows the colours the preview computes (the ones
-  matched to Cycles), the same as Save Snapshot.
-- A new domain's panel no longer logs errors from the Restore Settings and
-  Make Lighter Copy buttons (they wrote the cache identity while drawing).
-- A domain that had never simulated hid the panel below Play and Stop (on the
-  domain and on its participants) until the first run.
-- Fast moving colliders at high resolution no longer blow up the simulation
-  (a car at Resolution 1400 reached 12,000 m/s at frame 89): the pressure
-  solve's coarse levels keep every sealed pocket solvable.
-- Moving and dragged mesh emitters and mesh colliders cost much less: motion
-  stamps share one closest-face pass and faces too far away are skipped (a
-  source dragged 3 m per frame: emitter pass 19 -> 7 ms in a bake, 8 -> 3 ms
-  live; a scene with two mesh colliders: 535 -> 302 ms over 60 frames).
-  Results are unchanged.
-- Preview Scatter Glow widens smoothly as the fire grows instead of jumping
-  to twice its spread.
-
-- OpenVDB sources read temperature grids in Kelvin: re-emitting a Fumaris bake
-  made its gas millions of degrees hot (infinite in Half precision files).
-
-- Simulation Speed now applies to emitter motion measured by the add-on:
-  moving or deforming mesh emitters, collection meshes and points, velocity
-  attributes and closed meshes that grow. At Speed 4 they pushed the air four
-  times too hard (a growing source rose far too high); Speed 4 with 4
-  Sub-Steps now tracks Speed 1 with 1 Sub-Step.
-
-- A VDB bake could stop with "No density readback" when the last smoke
-  vanished while warm air still moved.
-- Frames with fewer Adaptive Sub-Steps no longer flash brighter.
-- Changing Appearance while paused no longer briefly allocates several GB.
-- Keyed emitter Temperature or Fuel starting at 0 no longer loses those
-  channels with Density Storage on Auto.
+- Quick Setup: Rising Smoke, Steady Fire, Explosion, Ground Fog and Chimney
+  Smoke.
+- User presets for domains and sources; a participant list with Enabled and
+  Solo; clearer status and diagnostics; a reorganised panel.
+- The generated material is organised into node groups; Sync Material per
+  version.
 
 ### Compatibility
 
-Fumaris 2.0 runs in Blender 5.2 and 5.3 (tested with 5.2.3 and 5.3.0).
+- Blender 5.2 and 5.3 (tested with 5.2.3 and 5.3.0).
+- 1.x scenes open, but removed settings are dropped and the rest take the new
+  defaults: set the domain and sources up again (Quick Setup is a good start).
+  Expansion values from 1.x push about ten times harder.
+- Defaults changed: Sub-Steps 2 → 1, Dissipation 0.5 → 0.2, Smoke Amount
+  3 → 1, Flame Brightness 5 → 2.
 
-2.0 does not convert anything from 1.x. Scenes open, but settings that were
-removed or renamed are dropped, and settings left at their old defaults take
-the new defaults; set the domain and sources up again (Quick Setup is a good
-start). Presets and takes saved by 1.x restore only the settings that still
-exist, and older bakes in a cache folder's top level are no longer moved into
-cache slots. Expect saved scenes to simulate and look differently:
+### Removed
 
-- The pressure solve now converges with colliders: plumes next to the ground
-  rise less and spread wider, and look the same at any resolution.
-- Heat and smoke no longer drift with the Sub-Steps count (unbiased rounding).
-- Fire follows the new heat law.
-- Expansion is a rate per second at any Resolution: values from 1.x (per cell)
-  push far harder; start from about a tenth.
-- Turbulence Detail, Control Ramps and Soot Burn-off are now Detail & Shaping
-  layers: add them again.
-- Existing bakes need a new bake for Glow Spread, Glow Shadowing and the Pyro
-  look; generated materials rebuild when opened.
+- Bake on Preview and Scrub Recording (the preview cache replaces them).
+- Upres (simulating at a higher Resolution is faster).
+- Classic combustion and the Burn look; Small Sparse Blocks; the Adaptive
+  toggle (Cells per Step 0); Turbulence Detail (now layers); Ray Steps (now
+  Step Size).
 
 ### Known issues
 
-- Results change slightly with Simulation Memory (or Auto): where a block sits
-  in GPU memory shifts texture sampling by rounding, and turbulence grows the
-  difference. Bakes budget like the preview, so a preview and its bake agree.
-- The Pyro look's heat blur shows in renders only, not in the live preview.
-- Smoke lit by a sun previews somewhat brighter than Cycles renders it (about
-  1.3x in a test scene); world lighting matches.
-- The first replay of a large cached preview stutters once while buffers are
-  sized.
+- Results change slightly with VRAM; a preview and its bake agree.
+- The Pyro look's heat blur shows in renders only.
+- Sun-lit smoke previews about 1.3x brighter than Cycles renders it.
+- The first replay of a large cached preview stutters once.
 
 ## 1.3.1 — 2026-10-26
 

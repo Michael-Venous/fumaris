@@ -926,6 +926,8 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
 
     if getattr(props, "emitter_influence", False):
         value_ops = _influence_point_values(values, value_ops)
+    elif getattr(props, "emitter_burning", False):
+        value_ops = _burning_point_values(values, props, _BURN_DOMAIN, value_ops)
 
     sections = {
         "positions": _versioned(payload, positions, frame),
@@ -1110,6 +1112,22 @@ def _influence_point_values(values, value_ops):
             for rate, temperature in zip(rates, temperatures or [0.0] * len(rates))))
     channel = _SOURCE_OPERATION_CHANNELS.index("temperature")
     return (int(value_ops) & ~(1 << channel)) | (1 << (4 + channel))
+
+
+def _burning_point_values(values, props, domain, value_ops):
+    """Burning for point emitters (per-point arrays), as _burning_channels.
+
+    Every point burns at Burn Rate; until 2026-11-10 point clouds ignored
+    Burning and emitted their plain values instead (the Candle source never
+    reached flame temperature)."""
+    channels = {"value_ops": value_ops}
+    ops = _burning_channels(channels, props, domain)
+    count = len(values.get("temperatures") or ())
+    for name, key in (("fuel", "fuels"), ("burn", "burns"), ("temperature", "temperatures"),
+                      ("smoke", "smokes"), ("divergence", "divergences")):
+        values[key] = array("f", [float(channels[name])]) * count
+        values[f"couple_rate_{key}"] = array("f", [float(channels[f"couple_rate_{name}"])]) * count
+    return ops
 
 
 def _closed_surface_source(participant, props, matrix):

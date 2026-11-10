@@ -1586,7 +1586,12 @@ class FUMARIS_OT_add_source(Operator):
         from .gn_sources import add_source
         domain = _active_domain(context)
         obj = add_source(context, self.kind, domain)
-        self.report({"INFO"}, f"Added '{obj.name}' to {domain.name}'s emitters")
+        if not domain.fumaris.shader_flame_enabled:
+            # Every source burns; a smoke setup (Rising Smoke) shows no flames.
+            self.report({"WARNING"}, f"Added '{obj.name}' to {domain.name}'s emitters. Its fire is not shaded: "
+                        "turn on Flame in the domain's Appearance (hot smoke will glow too)")
+        else:
+            self.report({"INFO"}, f"Added '{obj.name}' to {domain.name}'s emitters")
         return {"FINISHED"}
 
 
@@ -1603,22 +1608,6 @@ class FUMARIS_OT_gravity_from_scene(Operator):
     def execute(self, context):
         domain = _active_domain(context)
         domain.fumaris.gravity = tuple(context.scene.gravity)
-        return {"FINISHED"}
-
-
-class FUMARIS_OT_use_biased_volumes(Operator):
-    bl_idname = "fumaris.use_biased_volumes"
-    bl_label = "Use Biased Volumes"
-    bl_description = "Render volumes with Cycles' Biased (ray-marched) method: Scatter Glow renders without the square patches the unbiased method leaves, and smoke renders faster. Render Properties > Light Paths > Volumes > Biased"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return context.scene is not None and hasattr(context.scene, "cycles")
-
-    def execute(self, context):
-        context.scene.cycles.volume_biased = True
-        self.report({"INFO"}, "Cycles volumes set to Biased")
         return {"FINISHED"}
 
 
@@ -1854,7 +1843,6 @@ CLASSES = (
     FUMARIS_OT_cache_slot_restore_settings,
     FUMARIS_OT_cache_make_lighter,
     FUMARIS_OT_add_sparks,
-    FUMARIS_OT_use_biased_volumes,
     FUMARIS_OT_gravity_from_scene,
     FUMARIS_OT_add_source,
     FUMARIS_OT_preset_save,

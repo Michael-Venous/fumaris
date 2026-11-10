@@ -11,8 +11,8 @@ import bpy
 from .sparks import _link, _math, _vmath, _socket
 
 SOURCES = (
-    ("CANDLE", "Candle", "A small flickering flame that burns where it sits (about 4 cm: needs fine cells, Resolution 512 or more for a few-metre domain)"),
-    ("BURST", "Burst", "An expanding shell of fuel and heat over a few frames, for blasts and puffs"),
+    ("CANDLE", "Candle", "A small flickering flame that burns where it sits. Added at least three cells tall: a real candle flame (about 4 cm) needs Resolution 2400 or more"),
+    ("BURST", "Burst", "A ball of fuel and heat that bursts outward over a few frames and rolls up into smoke, for blasts and puffs"),
     ("TRAIL", "Trail", "Fire that travels along a curve: a fuse, a comet, a burning streak"),
     ("SPREADING", "Spreading Fire", "A burning front that spreads across a surface from an ignition point"),
 )
@@ -96,9 +96,11 @@ def build_burst(name="Fumaris Burst"):
     tree = _new_tree(name)
     _socket(tree, "Start Frame", "NodeSocketFloat", 1.0)
     _socket(tree, "Duration", "NodeSocketFloat", 6.0, 1.0)
-    _socket(tree, "Radius", "NodeSocketFloat", 0.5, 0.0)
-    _socket(tree, "Growth", "NodeSocketFloat", 2.0, 0.0)
-    _socket(tree, "Speed", "NodeSocketFloat", 8.0)
+    _socket(tree, "Radius", "NodeSocketFloat", 0.6, 0.0)
+    # A growing shell stamps each point's path, so the ball came out in radial
+    # streaks; Speed and the emitter's Expansion push it out instead (2026-11-10).
+    _socket(tree, "Growth", "NodeSocketFloat", 0.0, 0.0)
+    _socket(tree, "Speed", "NodeSocketFloat", 4.0)
     _socket(tree, "Detail", "NodeSocketInt", 3, 1)
     group_in, group_out, time = _io(tree)
     active, progress = _window(tree, time.outputs["Frame"], group_in.outputs["Start Frame"], group_in.outputs["Duration"], (-1000, -300))
@@ -130,7 +132,7 @@ def build_trail(name="Fumaris Trail"):
     tree.interface.new_socket("Curve", in_out="INPUT", socket_type="NodeSocketObject")
     _socket(tree, "Start Frame", "NodeSocketFloat", 1.0)
     _socket(tree, "End Frame", "NodeSocketFloat", 60.0)
-    _socket(tree, "Head Length", "NodeSocketFloat", 0.08, 0.0)
+    _socket(tree, "Head Length", "NodeSocketFloat", 0.25, 0.0)
     _socket(tree, "Radius", "NodeSocketFloat", 0.1, 0.0)
     _socket(tree, "Points", "NodeSocketInt", 400, 2)
     group_in, group_out, time = _io(tree)
@@ -174,9 +176,9 @@ def build_spreading(name="Fumaris Spreading Fire"):
     tree.interface.new_socket("Surface", in_out="INPUT", socket_type="NodeSocketObject")
     tree.interface.new_socket("Ignition", in_out="INPUT", socket_type="NodeSocketObject")
     _socket(tree, "Start Frame", "NodeSocketFloat", 1.0)
-    _socket(tree, "Spread Speed", "NodeSocketFloat", 0.5, 0.0)
+    _socket(tree, "Spread Speed", "NodeSocketFloat", 0.75, 0.0)
     _socket(tree, "Front Width", "NodeSocketFloat", 0.6, 0.0)
-    _socket(tree, "Density", "NodeSocketFloat", 60.0, 0.0)
+    _socket(tree, "Density", "NodeSocketFloat", 25.0, 0.0)
     _socket(tree, "Flame Rise", "NodeSocketFloat", 0.5)
     group_in, group_out, time = _io(tree)
     surface = tree.nodes.new("GeometryNodeObjectInfo")
@@ -263,6 +265,18 @@ def add_source(context, kind, domain):
     if kind == "SPREADING":
         tree.interface.items_tree["Surface"].default_value = extras[0]
         tree.interface.items_tree["Ignition"].default_value = extras[1]
+    # A source thinner than a couple of cells barely reaches the grid (a 4 cm
+    # candle at Resolution 512, 6 cm cells, heated one cell), so sizes start at
+    # a few of this domain's cells. Set before the modifier copies them.
+    cell = 32.0 / max(1, int(getattr(getattr(domain, "fumaris", None), "resolution", 512)))
+    inputs = tree.interface.items_tree
+    if kind == "CANDLE":
+        inputs["Flame Size"].default_value = max(inputs["Flame Size"].default_value, 3.0 * cell)
+    elif kind == "TRAIL":
+        inputs["Radius"].default_value = max(inputs["Radius"].default_value, 2.5 * cell)
+    elif kind == "SPREADING":
+        # Point radius is 0.75 / sqrt(Density).
+        inputs["Density"].default_value = min(inputs["Density"].default_value, (0.75 / (2.5 * cell)) ** 2)
     modifier = obj.modifiers.new(label, "NODES")
     modifier.node_group = tree
 
@@ -272,18 +286,25 @@ def add_source(context, kind, domain):
     props.gn_subtype = "point_cloud"
     props.point_radius = 1.0
     if kind == "CANDLE":
+        # Rising gas leaves the flame within about a tenth of a second, so it
+        # burns fast to reach Flame Temperature: Burn Rate 2 stayed under 650 K;
+        # 6 reached ~1800 K but rendered as a dim column, 10 a bright flame
+        # base (its smoke follows the domain's Smoke Amount; 2026-11-10).
         props.emitter_burning = True
-        props.emitter_burn_rate = 2.0
+        props.emitter_burn_rate = 10.0
         props.emitter_smoke = 0.5
         props.emitter_fuel = 0.0
     elif kind == "BURST":
         props.emitter_fuel = 2.0
         props.emitter_temperature = 1.0
         props.emitter_smoke = 2.0
+        props.emitter_divergence = 3.0
     else:
         # Trail and Spreading Fire light their own fuel: at Flame Temperature.
+        # Their points pass over a cell briefly, so fuel couples fast.
         props.emitter_fuel = 1.0
         props.emitter_temperature = 1.0
         props.emitter_smoke = 1.0
+        props.couple_rate_fuel = 10.0
     obj.hide_render = True
     return obj

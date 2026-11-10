@@ -13,7 +13,8 @@ below before replacing an installation.
 
 ## Requirements And Compatibility
 
-- Blender 5.2 or newer (officially supported on all platforms)
+- Blender 5.2 or newer (officially supported on all platforms; tested with
+  5.2.3 and 5.3.0)
 - The Windows x64, Linux x64, or macOS ARM64 Fumaris package for your operating system
 - Windows/Linux: a Vulkan-capable GPU with a current driver; Mac: Apple Silicon
 - Enough GPU memory for the selected Simulation Memory
@@ -832,9 +833,9 @@ domain's Appearance settings; changing them does not require a rebake.
   billows glow from inside near the flames. `Glow Spread` blends in the
   wider glow for a long, soft falloff; `Glow Shadowing` lets smoke between a
   spot and the fire block it, so dense outer billows stay dark and fire light
-  shows in the crevices next to the flames. Cycles' unbiased volumes render
-  the glow in square patches; Fumaris then shows a hint and a Use Biased
-  button.
+  shows in the crevices next to the flames. If Cycles' unbiased volumes
+  render the glow in square patches, try Render Properties > Light Paths >
+  Volumes > Biased (often, not always, faster too).
 
 The live preview uses the same settings. The material reads only the density,
 temperature and glow grids (and fuel when Blue Core is on); `burn` stays
@@ -987,8 +988,8 @@ default) the preview starts over at the end of its range:
   changed, the preview **replays the cache** instead of simulating: smooth
   playback, no GPU simulation. The status line says Replaying the cache.
 - If you change a setting, an emitter, collider or effector, or their
-  animation, the run is marked as mixing settings (the status line says from
-  which frame). A simulated pass keeps caching, so a paused preview still shows
+  animation, the run is marked as mixing settings (its frames turn orange on
+  the Timeline). A simulated pass keeps caching, so a paused preview still shows
   the mix, and at the next loop the range simulates again with the current
   settings. A change during a replay simulates again from the first frame at
   once, so it shows straight away. The cache is never cleared for this: the new

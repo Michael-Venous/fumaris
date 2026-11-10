@@ -24,12 +24,19 @@ _IMAGE_UPLOAD_SHAPE = None
 _SCENE_DEPTHS = {}
 _SCENE_DEPTH_SERIAL = 0
 _SCENE_DEPTH_FAILED = False
-# Scene Occlusion depth readback (1-5 ms and a GPU sync per draw): at most this
-# often while the view moves or the scene frame changes, every
-# SCENE_DEPTH_IDLE_INTERVAL otherwise (objects moving in a still view), and once
-# more after the view stops. A changed depth is sent with the next request.
-SCENE_DEPTH_MOVING_INTERVAL = 1.0 / 15.0
+# Scene Occlusion depth readback (a GPU sync and a full-region copy, ~6 ms at
+# 1574x931 on an RTX 4060 Ti): while the view moves or the scene frame changes,
+# as often as SCENE_DEPTH_MOVING_SHARE of the time allows (never more often
+# than SCENE_DEPTH_MOVING_INTERVAL); every SCENE_DEPTH_IDLE_INTERVAL otherwise
+# (objects moving in a still view), and once more after the view stops. A
+# changed depth is sent with the next request. The depth a request carries is
+# that old against the view it renders, so a fast orbit cut the hole where the
+# objects were: 1/15 s left it visibly behind the smoke (2026-11-10).
+SCENE_DEPTH_MOVING_INTERVAL = 1.0 / 60.0
+SCENE_DEPTH_MOVING_SHARE = 0.25
 SCENE_DEPTH_IDLE_INTERVAL = 0.5
+# Duration of the latest readback (seconds).
+_SCENE_DEPTH_CAPTURE_SECONDS = 0.0
 # A draw skipped a due readback (rate limit): redraw at this time to take it.
 _SCENE_DEPTH_RETRY_AT = 0.0
 
@@ -181,9 +188,10 @@ def _scene_depth_due(view_id, size, key, now):
         return True
     elapsed = now - known.get("captured_at", 0.0)
     if key != known.get("key"):
-        if elapsed >= SCENE_DEPTH_MOVING_INTERVAL:
+        interval = max(SCENE_DEPTH_MOVING_INTERVAL, _SCENE_DEPTH_CAPTURE_SECONDS / SCENE_DEPTH_MOVING_SHARE)
+        if elapsed >= interval:
             return True
-        _SCENE_DEPTH_RETRY_AT = known.get("captured_at", 0.0) + SCENE_DEPTH_MOVING_INTERVAL
+        _SCENE_DEPTH_RETRY_AT = known.get("captured_at", 0.0) + interval
         return False
     return elapsed >= SCENE_DEPTH_IDLE_INTERVAL
 
@@ -399,9 +407,10 @@ def _draw_volume_previews():
 
 def _capture_scene_depth(view_id, width, height, key=None):
     """Store the viewport's depth so the bridge can hide smoke behind objects."""
-    global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_FAILED
+    global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_FAILED, _SCENE_DEPTH_CAPTURE_SECONDS
     if np is None or _SCENE_DEPTH_FAILED:
         return
+    started = time.perf_counter()
     try:
         x, y, region_width, region_height = gpu.state.viewport_get()
         buffer = gpu.state.active_framebuffer_get().read_depth(
@@ -421,6 +430,7 @@ def _capture_scene_depth(view_id, width, height, key=None):
         # Standard depth keeps even nearby geometry close to 1. A buffer that
         # never gets there is reversed (far = 0); the bridge expects far = 1.
         sampled = 1.0 - sampled
+    _SCENE_DEPTH_CAPTURE_SECONDS = time.perf_counter() - started
     previous = _SCENE_DEPTHS.get(view_id)
     same_size = previous is not None and previous["size"] == (width, height)
     now = time.monotonic()

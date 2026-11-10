@@ -19,7 +19,9 @@ Removed). This is a beta: please report scenes that look wrong.
   smoke per GB. Bakes of the test scenes run about 30% faster than 1.3.1 while
   holding 36–59% more smoke; Apple silicon bakes up to 80% faster. Advection
   reads across block faces with fewer lookups: about 6% less GPU time per
-  frame on Apple M4 and 8–10% on Intel Arc.
+  frame on Apple M4 and 8–10% on Intel Arc. A profiling pass took another 11%
+  off each frame's GPU time (Explosion at Resolution 1024, RTX 4060 Ti):
+  leaner advection shaders, a faster pressure solve and fewer repeated reads.
 - **Physical fire.** One combustion model: burning releases Fuel Energy times
   the heat that takes cold air to Flame Temperature, per unit of fuel. Burn
   Time sets how long fire lasts and Cooling Time how fast heat fades after it;
@@ -77,7 +79,9 @@ Removed). This is a beta: please report scenes that look wrong.
   filter that removes the cell-sized odd-even pattern (and the straight-edged
   rectangles it caused in flames), and a sign error inherited from Flow fixed.
   15–25% less leftover compression; Projection Filter (Advanced) lets finer
-  motion through.
+  motion through. Its smoothing uses red-black Gauss-Seidel: one sweep does
+  the work of two Jacobi passes, so the solve takes about 12% less time at the
+  same quality (energy, plume height and smoke within 3%).
 - **Colliders are walls**, sitting on the real surface: smoke spreads along
   and wraps around colliders and reaches them, instead of thinning out or
   stopping a few cells short. Open Collider Wall (Advanced, 1 cell) keeps thin
@@ -125,6 +129,8 @@ Removed). This is a beta: please report scenes that look wrong.
   Expansion at the Expansion coupling rate, for gentler pushes) or Replace.
 - **Influence Only**: an emitter can steer, heat or expand the smoke already
   there without adding any (also for points and particles).
+- **Burning** works on point and particle emitters (they emitted their plain
+  values instead).
 - **Velocity attribute** for mesh and Geometry Nodes mesh emitters.
 - Fast point and particle emitters leave joined trails instead of beads.
 - Static emitters are stamped once per step (up to 8x less emitter time);
@@ -142,8 +148,7 @@ Removed). This is a beta: please report scenes that look wrong.
   material, which is leaner (density, temperature and glow grids; fuel only
   for Blue Core).
 - **Scatter Glow**, Glow Spread and Glow Shadowing (bakes add small glow
-  grids; Glow Radius and Glow Resolution in Output). Fumaris shows a hint and a Use Biased button
-  when Cycles' unbiased volumes would render the glow in square patches.
+  grids; Glow Radius and Glow Resolution in Output).
 - **Pyro look** (Appearance > Look): Houdini Pyro-style fire shading with its
   own flame controls (Brightness, Full Glow, Contrast, Blackbody Scale, Blue
   Core, Flame Tint, Scatter Glow; separate from the Temperature look's, using
@@ -184,7 +189,8 @@ Removed). This is a beta: please report scenes that look wrong.
   simulation frames (Rising Smoke: ~23 -> ~130 images/s, 24 fps kept), and
   playback no longer slows as Simulation Memory grows (Flow recreated its
   scratch textures every preview frame). Scene occlusion depth now follows the
-  view while orbiting and playing.
+  view while orbiting and playing, refreshed as often as about a quarter of the
+  viewport's time allows (it lagged up to 1/15 s behind a fast orbit).
 - Scene lighting with a world: the sky-light shading inside the smoke no
   longer shows block-shaped patches that shifted as the smoke grew.
 - Lighting: Custom replaces the scene's lights and world with its one light
@@ -228,7 +234,10 @@ Removed). This is a beta: please report scenes that look wrong.
   Fuel, Burn); Velocity gets the operation menu too (Blend by default). The
   coupling tooltips say what each rate means per operation.
 - **Add Source**: Candle, Burst, Trail and Spreading Fire Geometry Nodes
-  sources.
+  sources. Each starts a few of the domain's cells wide, so it shows at the
+  default Resolution; the Burst bursts into a ball that rolls up into smoke;
+  Trail and Spreading Fire burn brightly. Adding one to a domain whose flame
+  shading is off (Rising Smoke) says so.
 - **User presets** for domains and sources, shared between files; applying
   one restores the whole saved state.
 - **Narrow panels**: at Blender's default Properties width, paired settings
@@ -256,7 +265,8 @@ Removed). This is a beta: please report scenes that look wrong.
   cleared for it). A replay keeps to the preview frame rate and follows the
   scene's Sync like Blender's playback (Play Every Frame, or skip ahead with
   Frame Dropping / Sync to Audio). A strip on the Timeline shows the cached
-  frames, orange where they are stale.
+  frames, orange where they are stale (the strip is the only warning; the
+  panel no longer shows a red message for it).
 - **Preview While Baking** (on by default): watch the live preview
   while a bake runs; off keeps bakes fastest.
 - Reorganised domain panel: paired rows, Advanced grouped by solver, moving
@@ -343,6 +353,8 @@ Shaping layers).
   channels with Density Storage on Auto.
 
 ### Compatibility
+
+Fumaris 2.0 runs in Blender 5.2 and 5.3 (tested with 5.2.3 and 5.3.0).
 
 2.0 does not convert anything from 1.x. Scenes open, but settings that were
 removed or renamed are dropped, and settings left at their old defaults take

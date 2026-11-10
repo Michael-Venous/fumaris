@@ -734,13 +734,10 @@ def _draw_domain(layout, scene, props):
             else:
                 status.label(text="Live preview · Paused" if is_preview_paused else "Live preview",
                              icon="PAUSE" if is_preview_paused else "PLAY")
+            # A run changed mid-pass shows on the Timeline (its frames turn
+            # stale), so the panel says nothing more.
             stale = getattr(job, "_pass_stale_frame", None)
-            if stale is not None:
-                row = status.column(align=True)
-                row.alert = True
-                _wrapped(row, f"Settings changed at frame {stale}: this run mixes earlier and current settings; "
-                              "the next pass simulates again and replaces it", "ERROR")
-            elif job._worker._session.get("preview_cache"):
+            if stale is None and job._worker._session.get("preview_cache"):
                 from .operators import stale_frames
                 behind = len(stale_frames(job, props.id_data))
                 if behind:
@@ -811,13 +808,6 @@ def _draw_domain(layout, scene, props):
             if props.shader_flame_enabled:
                 flame_header.prop(props, "shader_look", text="")
                 _draw_fire_look(appearance.column(align=True), props)
-            if (flame_value(props, "scatter_glow", 0.0) > 0.0 and scene.render.engine == "CYCLES"
-                    and not getattr(getattr(scene, "cycles", None), "volume_biased", True)):
-                # Cycles' unbiased volumes drop the glow in square patches
-                # (2026-11-06); Biased renders it correctly and faster.
-                hint = _pair(appearance)
-                hint.label(text="Patchy Scatter Glow in unbiased Cycles", icon="ERROR")
-                hint.operator("fumaris.use_biased_volumes", text="Use Biased")
             if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
                 appearance.label(
                     text="Custom material overrides this",
@@ -1129,8 +1119,11 @@ class FUMARIS_MT_presets(bpy.types.Menu):
         if not names:
             layout.label(text="No saved presets: use + to save one")
             return
+        # Rows in an aligned column span the menu (as Blender's own preset
+        # menus), so each delete button sits at the right edge.
+        column = layout.column(align=True)
         for name in names:
-            row = layout.row(align=True)
+            row = column.row(align=True)
             row.operator("fumaris.preset_apply", text=name).name = name
             row.operator("fumaris.preset_delete", text="", icon="X").name = name
 

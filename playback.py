@@ -198,7 +198,7 @@ def transport_status(context, domain):
     return ' / '.join(parts)
 
 
-def draw_controls(layout, context, *, compact=False, popover=True):
+def draw_controls(layout, context, *, compact=False, popover=True, details=True):
     domain = resolve_domain(context)
     job = active_job()
     running = active_mode() == 'previewing'
@@ -224,10 +224,10 @@ def draw_controls(layout, context, *, compact=False, popover=True):
             bake.context_pointer_set('object', domain)
         bake.operator('fumaris.bake', text='' if compact else 'Bake', icon='RENDER_ANIMATION')
     # The header shows no status: its changing width would move the buttons.
-    status = '' if compact else transport_status(context, domain)
+    status = '' if compact or not details else transport_status(context, domain)
     if status:
         layout.label(text=status)
-    if not compact:
+    if not compact and details:
         layout.label(text='Domain: ' + domain.name if domain else 'Choose a domain', icon='MOD_FLUID')
         if running:
             layout.label(text='Paused' if paused else 'Playing')

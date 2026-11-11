@@ -1154,6 +1154,12 @@ class FUMARIS_MT_presets(bpy.types.Menu):
             row.operator("fumaris.preset_delete", text="", icon="X").name = name
 
 
+def _sidebar_section(layout, idname):
+    """A collapsible section in a box, so lists stand out like the
+    Properties editor's sections; Blender keeps its open state."""
+    return layout.box().panel(idname, default_closed=False)
+
+
 class FUMARIS_PT_sidebar(bpy.types.Panel):
     """The 3D Viewport sidebar's Fumaris tab: the scene's domains, the chosen
     domain's transport and objects, and one-click setup. Clicking a name
@@ -1170,48 +1176,55 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         layout = self.layout
         domains = playback.scene_domains(context)
         domain = playback.resolve_domain(context)
-        layout.label(text="Domains")
-        create = layout.row(align=True)
-        try:
-            create.prop(context.scene, "fumaris_new_domain_name", text="", placeholder="New domain name")
-        except TypeError:   # no placeholder text in this Blender
-            create.prop(context.scene, "fumaris_new_domain_name", text="")
-        create.operator("fumaris.domain_create", text="", icon="ADD")
-        create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
+        # Collapsible sub-panels (like the Properties editor's) for the lists.
+        header, body = _sidebar_section(layout, "FUMARIS_sidebar_domains")
+        header.label(text="Domains", icon="MOD_FLUID")
+        if body:
+            create = body.row(align=True)
+            try:
+                create.prop(context.scene, "fumaris_new_domain_name", text="", placeholder="New domain name")
+            except TypeError:   # no placeholder text in this Blender
+                create.prop(context.scene, "fumaris_new_domain_name", text="")
+            create.operator("fumaris.domain_create", text="", icon="ADD")
+            create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
+            if not domains:
+                body.label(text="No Fumaris domain in this scene", icon="INFO")
+            listing = body.column(align=True)
+            listing.enabled = not active_job()
+            for obj in domains:
+                row = listing.row(align=True)
+                row.alignment = "LEFT"
+                choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=False,
+                                      icon="RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF")
+                choose.name = obj.name
         if not domains:
-            layout.label(text="No Fumaris domain in this scene", icon="INFO")
             return
-        listing = layout.column(align=True)
-        listing.enabled = not active_job()
-        for obj in domains:
-            row = listing.row(align=True)
-            row.alignment = "LEFT"
-            choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=False,
-                                  icon="RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF")
-            choose.name = obj.name
-        layout.separator(factor=0.5)
-        playback.draw_controls(layout, context, compact=True, popover=False)
+        layout.separator(factor=0.3)
+        playback.draw_controls(layout, context, popover=False, details=False)
+        layout.separator(factor=0.3)
         if domain is None:
             layout.label(text="Choose a domain", icon="INFO")
             return
-        layout.separator(factor=0.5)
-        layout.label(text=f"{domain.name} Objects")
-        draw_participant_rows(layout.column(align=True), domain.fumaris, activate=True)
-        layout.separator(factor=0.5)
-        add = layout.column(align=True)
-        add.enabled = not active_job()
-        add.label(text="Add Selected Objects As")
-        for pair in (("emitter", "collider"), ("effector", "outflow")):
-            row = add.row(align=True)
-            for role in pair:
-                operator = row.operator("fumaris.participants_add_selected", text=role.title(),
-                                        icon=_ROLE_ICONS[role])
-                operator.role = role
-        source = layout.row()
-        source.enabled = not active_job()
-        # Add Source acts on context.object: point it at the chosen domain.
-        source.context_pointer_set("object", domain)
-        source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
+        header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
+        header.label(text=f"{domain.name} Objects", icon="OUTLINER_COLLECTION")
+        if body:
+            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
+        header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")
+        header.label(text="Add Selected Objects", icon="ADD")
+        if body:
+            add = body.column(align=True)
+            add.enabled = not active_job()
+            for pair in (("emitter", "collider"), ("effector", "outflow")):
+                row = add.row(align=True)
+                for role in pair:
+                    operator = row.operator("fumaris.participants_add_selected", text=role.title(),
+                                            icon=_ROLE_ICONS[role])
+                    operator.role = role
+            source = body.row()
+            source.enabled = not active_job()
+            # Add Source acts on context.object: point it at the chosen domain.
+            source.context_pointer_set("object", domain)
+            source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
 
 
 CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_PT_sidebar)

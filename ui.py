@@ -1156,6 +1156,118 @@ class FUMARIS_MT_presets(bpy.types.Menu):
             row.operator("fumaris.preset_delete", text="", icon="X").name = name
 
 
+def _object_index(obj):
+    try:
+        return bpy.data.objects.find(obj.name) if obj is not None else -1
+    except ReferenceError:
+        return -1
+
+
+def _chosen_domain_index(scene):
+    from .playback import resolve_domain
+    return _object_index(resolve_domain(bpy.context))
+
+
+def _choose_domain_index(scene, index):
+    """Clicking beside a domain's name in the list chooses it too."""
+    if active_job() or not 0 <= index < len(bpy.data.objects):
+        return
+    obj = bpy.data.objects[index]
+    if obj.fumaris.smoke_object_type == "domain":
+        scene.fumaris_preview_domain = obj
+        _activate(obj)
+
+
+def _active_object_index(scene):
+    return _object_index(bpy.context.view_layer.objects.active)
+
+
+def _activate_object_index(scene, index):
+    if 0 <= index < len(bpy.data.objects):
+        _activate(bpy.data.objects[index])
+
+
+def _activate(obj):
+    from .operators import _show_physics_tab
+    view_layer = bpy.context.view_layer
+    if obj.name not in view_layer.objects:
+        return
+    for other in bpy.context.selected_objects:
+        other.select_set(False)
+    obj.select_set(True)
+    view_layer.objects.active = obj
+    manager = bpy.context.window_manager
+    if not _show_physics_tab(manager):
+        bpy.app.timers.register(lambda: _show_physics_tab(manager) and None, first_interval=0.05)
+
+
+class FUMARIS_UL_domains(bpy.types.UIList):
+    """The scene's domains; the chosen one is highlighted."""
+
+    def filter_items(self, context, data, property):
+        from .playback import scene_domains
+        names = {obj.name for obj in scene_domains(context)}
+        objects = getattr(data, property)
+        return [self.bitflag_filter_item if obj.name in names else 0 for obj in objects], []
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_property, index=0, flt_flag=0):
+        row = layout.row(align=True)
+        row.alignment = "LEFT"
+        row.enabled = not active_job()
+        # An operator, so right-click offers Delete Domain.
+        choose = row.operator("fumaris.domain_choose", text=item.name, emboss=False, icon="MOD_FLUID")
+        choose.name = item.name
+
+
+# Per draw: the chosen domain's (object, role, reason) rows by object name.
+_LIST_ROWS = {}
+
+
+class FUMARIS_UL_participants(bpy.types.UIList):
+    """The chosen domain's objects; the active object is highlighted."""
+
+    def filter_items(self, context, data, property):
+        from .participants import participant_overview
+        from .playback import resolve_domain
+        domain = resolve_domain(context)
+        _LIST_ROWS.clear()
+        if domain is not None:
+            _LIST_ROWS.update((obj.name, (obj, role, reason))
+                              for obj, role, reason in participant_overview(domain.fumaris))
+        objects = getattr(data, property)
+        return [self.bitflag_filter_item if obj.name in _LIST_ROWS else 0 for obj in objects], []
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_property, index=0, flt_flag=0):
+        from .operators import solo_object_name
+        from .playback import resolve_domain
+        entry = _LIST_ROWS.get(item.name)
+        domain = resolve_domain(context)
+        if entry is None or domain is None:
+            return
+        obj, role, reason = entry
+        usable = reason is None or reason == "disabled"
+        split = layout.split(factor=0.7 if usable else 0.45, align=True)
+        name = split.row(align=True)
+        name.alignment = "LEFT"
+        # An operator, so right-click offers Remove and Delete.
+        select = name.operator("fumaris.participant_select", text=obj.name, emboss=False,
+                               icon=_ROLE_ICONS.get(role, "OBJECT_DATA"))
+        select.name = obj.name
+        select.activate = True
+        row = split.row(align=True)
+        row.alignment = "RIGHT"
+        # Solo and Enabled act on this domain whatever object is active.
+        row.context_pointer_set("object", domain)
+        if usable:
+            row.prop(obj.fumaris, "participant_enabled", text="")
+            solo = row.operator("fumaris.participant_solo", text="", emboss=False,
+                                icon="SOLO_ON" if solo_object_name(domain) == obj.name else "SOLO_OFF")
+            solo.name = obj.name
+        else:
+            row.alert = True
+            row.label(text=reason, icon="ERROR")
+
+
 def _sidebar_section(layout, idname):
     """A collapsible section in a box, so lists stand out like the
     Properties editor's sections; Blender keeps its open state."""
@@ -1191,15 +1303,9 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
             if not domains:
                 body.label(text="No Fumaris domain in this scene", icon="INFO")
-            listing = body.column(align=True)
-            listing.enabled = not active_job()
-            for obj in domains:
-                row = listing.row(align=True)
-                row.alignment = "LEFT"
-                choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=obj == domain,
-                                      depress=obj == domain,
-                                      icon="RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF")
-                choose.name = obj.name
+            if domains:
+                body.template_list("FUMARIS_UL_domains", "", bpy.data, "objects", context.scene,
+                                   "fumaris_domain_index", rows=min(max(len(domains), 2), 6))
         if not domains:
             return
         layout.separator(factor=0.3)
@@ -1211,7 +1317,8 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
         header.label(text=f"{domain.name} Objects", icon="OUTLINER_COLLECTION")
         if body:
-            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
+            body.template_list("FUMARIS_UL_participants", "", bpy.data, "objects", context.scene,
+                               "fumaris_object_index", rows=4)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")
         header.label(text="Add Selected Objects", icon="ADD")
         if body:
@@ -1230,10 +1337,16 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
 
 
-CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_PT_sidebar)
+CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_UL_domains, FUMARIS_UL_participants, FUMARIS_PT_sidebar)
 
 
 def register():
+    # List highlights: the chosen domain and the active object (computed, so
+    # they always match the scene); clicking a row chooses or selects it.
+    bpy.types.Scene.fumaris_domain_index = bpy.props.IntProperty(
+        get=_chosen_domain_index, set=_choose_domain_index, options={"SKIP_SAVE"})
+    bpy.types.Scene.fumaris_object_index = bpy.props.IntProperty(
+        get=_active_object_index, set=_activate_object_index, options={"SKIP_SAVE"})
     for cls in CLASSES:
         bpy.utils.register_class(cls)
 
@@ -1241,3 +1354,5 @@ def register():
 def unregister():
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+    del bpy.types.Scene.fumaris_domain_index
+    del bpy.types.Scene.fumaris_object_index

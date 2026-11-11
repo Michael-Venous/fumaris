@@ -933,7 +933,8 @@ motion that was not represented in the attribute.
 Use the Fumaris controls in the 3D Viewport or Timeline header, or the controls
 above an emitter/collider/effector's Physics settings. Object selection stays
 unchanged. Shift–Alt–Space starts, pauses or resumes the live preview;
-Shift–Alt–X stops it. Both shortcuts can be used with one hand. The current
+Shift–Alt–X stops it, and Shift–Alt–R restarts a running preview from its first
+frame. The shortcuts can be used with one hand. The current
 bindings appear in the button tooltips. Edit these bindings in Preferences → Add-ons →
 Fumaris, or search Fumaris in Preferences → Keymap.
 

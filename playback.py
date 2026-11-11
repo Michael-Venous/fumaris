@@ -266,7 +266,7 @@ def draw_keymaps(layout, context):
     if keymap:
         layout.label(text='Live preview shortcuts (independent of selection)')
         for item in keymap.keymap_items:
-            if item.idname in {'fumaris.preview_toggle', 'fumaris.preview_stop'}:
+            if item.idname in {'fumaris.preview_toggle', 'fumaris.preview_stop', 'fumaris.preview_restart'}:
                 rna_keymap_ui.draw_kmi([], config, keymap, item, layout, 0)
 
 
@@ -281,7 +281,8 @@ def register():
     config = bpy.context.window_manager.keyconfigs.addon
     if config:
         keymap = config.keymaps.new(name='Window', space_type='EMPTY')
-        for operator, key in (('fumaris.preview_toggle', 'SPACE'), ('fumaris.preview_stop', 'X')):
+        for operator, key in (('fumaris.preview_toggle', 'SPACE'), ('fumaris.preview_stop', 'X'),
+                              ('fumaris.preview_restart', 'R')):
             item = keymap.keymap_items.new(operator, key, 'PRESS', shift=True, alt=True)
             _KEYMAPS.append((keymap, item))
 

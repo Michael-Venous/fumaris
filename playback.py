@@ -222,9 +222,10 @@ def draw_controls(layout, context, *, compact=False, popover=True):
         if domain is not None:
             bake.context_pointer_set('object', domain)
         bake.operator('fumaris.bake', text='' if compact else 'Bake', icon='RENDER_ANIMATION')
-    status = transport_status(context, domain)
+    # The header shows no status: its changing width would move the buttons.
+    status = '' if compact else transport_status(context, domain)
     if status:
-        (row if compact else layout).label(text=status)
+        layout.label(text=status)
     if not compact:
         layout.label(text='Domain: ' + domain.name if domain else 'Choose a domain', icon='MOD_FLUID')
         if running:

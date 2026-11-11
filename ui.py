@@ -657,13 +657,14 @@ def _draw_domain(layout, scene, props):
         slot_directory = peek_output_directory_for_object(props.id_data)
         slot_protected = is_protected(slot_directory)
         row = controls.row(align=True)
+        # One button: Bake, or Stop while baking. Tight: words without icons,
+        # so Delete is not cut off.
         sub = row.row(align=True)
-        sub.enabled = mode is None and not slot_protected
-        # Tight: words without icons, so Delete is not cut off.
-        sub.operator("fumaris.bake", icon="NONE" if _TIGHT else "RENDER_ANIMATION", text="Bake")
-        stop = row.row(align=True)
-        stop.enabled = is_baking
-        stop.operator("fumaris.stop", icon="NONE" if _TIGHT else "CANCEL", text="Stop")
+        if is_baking:
+            sub.operator("fumaris.stop", icon="NONE" if _TIGHT else "CANCEL", text="Stop")
+        else:
+            sub.enabled = mode is None and not slot_protected
+            sub.operator("fumaris.bake", icon="NONE" if _TIGHT else "RENDER_ANIMATION", text="Bake")
         delete = row.row(align=True)
         delete.enabled = mode is None and not slot_protected
         delete.operator("fumaris.delete", icon="NONE" if _TIGHT else "TRASH", text="Delete")
@@ -674,16 +675,18 @@ def _draw_domain(layout, scene, props):
         preview = controls.row(align=True)
         # Tight: words without icons, so Resume is not cut off.
         icon = (lambda name: "NONE") if _TIGHT else (lambda name: name)
+        # One button: Play, or Pause / Resume while previewing.
         play = preview.row(align=True)
-        play.enabled = mode is None
-        play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
-        pause = preview.row(align=True)
-        pause.enabled = is_previewing and not is_initializing
-        pause.operator(
-            "fumaris.preview_pause",
-            icon=icon("PLAY" if is_preview_paused else "PAUSE"),
-            text="Resume" if is_preview_paused else "Pause",
-        )
+        if is_previewing:
+            play.enabled = not is_initializing
+            play.operator(
+                "fumaris.preview_pause",
+                icon=icon("PLAY" if is_preview_paused else "PAUSE"),
+                text="Resume" if is_preview_paused else "Pause",
+            )
+        else:
+            play.enabled = mode is None
+            play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
         preview_stop = preview.row(align=True)
         # A preview that is still starting (or paused) can always be stopped.
         preview_stop.enabled = job is not None and not is_baking

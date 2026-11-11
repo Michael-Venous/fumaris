@@ -90,6 +90,21 @@ def _draw_participant_list(layout, props):
     draw_participant_rows(content, props)
 
 
+def _highlight_row(layout, operator, name, icon, highlighted, **properties):
+    """An operator button showing name on the left; highlighted, a blank
+    pressed button joined to it fills the rest of the row (Blender centres
+    the text of a button stretched across a row)."""
+    sub = layout.row(align=True)
+    sub.alignment = "LEFT"
+    buttons = [sub.operator(operator, text=name, icon=icon, emboss=highlighted, depress=highlighted)]
+    if highlighted:
+        buttons.append(layout.operator(operator, text=" ", emboss=True, depress=True))
+    for button in buttons:
+        button.name = name
+        for key, value in properties.items():
+            setattr(button, key, value)
+
+
 def draw_participant_rows(content, props, *, activate=False):
     """One row per object in the domain's collections. activate (the
     sidebar): clicking a name makes it active and shows its settings."""
@@ -105,15 +120,11 @@ def draw_participant_rows(content, props, *, activate=False):
     for obj, role, reason in rows:
         usable = reason is None or reason == "disabled"
         split = content.split(factor=0.8 if usable else 0.45, align=True)
-        name = split.row(align=True)
-        name.alignment = "LEFT"
         icon = _ROLE_ICONS.get(role, "OBJECT_DATA")
-        # Selected objects are highlighted, like in the Outliner.
+        # Selected objects are highlighted across the row, like in the Outliner.
         selected = activate and obj.select_get()
-        select = name.operator("fumaris.participant_select", text=obj.name, icon=icon, emboss=selected,
-                               depress=selected)
-        select.name = obj.name
-        select.activate = activate
+        _highlight_row(split.row(align=True), "fumaris.participant_select", obj.name, icon, selected,
+                       activate=activate)
         row = split.row(align=True)
         row.alignment = "RIGHT" if usable else "LEFT"
         if not usable:
@@ -1156,10 +1167,20 @@ class FUMARIS_MT_presets(bpy.types.Menu):
             row.operator("fumaris.preset_delete", text="", icon="X").name = name
 
 
+_SIDEBAR_SECTIONS = ("FUMARIS_sidebar_domains", "FUMARIS_sidebar_objects", "FUMARIS_sidebar_add")
+
+
 def _sidebar_section(layout, idname):
     """A collapsible section in a box, so lists stand out like the
-    Properties editor's sections; Blender keeps its open state."""
-    return layout.box().panel(idname, default_closed=False)
+    Properties editor's sections. Unlike layout.panel, no gap under the
+    header. Returns (header row, body or None when folded)."""
+    box = layout.box()
+    wm = bpy.context.window_manager
+    opened = getattr(wm, idname)
+    header = box.row(align=True)
+    header.alignment = "LEFT"
+    header.prop(wm, idname, text="", icon="TRIA_DOWN" if opened else "TRIA_RIGHT", emboss=False)
+    return header, box.column() if opened else None
 
 
 class FUMARIS_PT_sidebar(bpy.types.Panel):
@@ -1194,12 +1215,8 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             listing = body.column(align=True)
             listing.enabled = not active_job()
             for obj in domains:
-                row = listing.row(align=True)
-                row.alignment = "LEFT"
-                choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=obj == domain,
-                                      depress=obj == domain,
-                                      icon="RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF")
-                choose.name = obj.name
+                _highlight_row(listing.row(align=True), "fumaris.domain_choose", obj.name,
+                               "RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF", obj == domain)
         if not domains:
             return
         layout.separator(factor=0.3)
@@ -1234,6 +1251,8 @@ CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_PT_sidebar)
 
 
 def register():
+    for idname in _SIDEBAR_SECTIONS:
+        setattr(bpy.types.WindowManager, idname, bpy.props.BoolProperty(default=True, options={"SKIP_SAVE"}))
     for cls in CLASSES:
         bpy.utils.register_class(cls)
 
@@ -1241,3 +1260,5 @@ def register():
 def unregister():
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+    for idname in _SIDEBAR_SECTIONS:
+        delattr(bpy.types.WindowManager, idname)

@@ -536,8 +536,8 @@ class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
         if resolve_domain(context) is None:
             cls.poll_message_set("Choose a domain in the Fumaris tab")
             return False
-        if not context.selected_objects:
-            cls.poll_message_set("Select the objects to add")
+        if not any(obj.fumaris.smoke_object_type != "domain" for obj in context.selected_objects):
+            cls.poll_message_set("Select the objects to add in the viewport or Outliner (a domain cannot be added)")
             return False
         return True
 

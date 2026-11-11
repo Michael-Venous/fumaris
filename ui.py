@@ -105,6 +105,21 @@ def _highlight_row(layout, operator, name, icon, highlighted, **properties):
             setattr(button, key, value)
 
 
+# Long object lists get a search box; Show More pages through them.
+_SEARCH_FROM = 8
+_PAGE = 60
+
+
+class FUMARIS_OT_participant_list_more(bpy.types.Operator):
+    bl_idname = "fumaris.participant_list_more"
+    bl_label = "Show More"
+    bl_description = f"Show {_PAGE} more objects in this list (or type part of a name in the search box)"
+
+    def execute(self, context):
+        context.window_manager.fumaris_participant_limit += _PAGE
+        return {"FINISHED"}
+
+
 def draw_participant_rows(content, props, *, activate=False):
     """One row per object in the domain's collections. activate (the
     sidebar): clicking a name makes it active and shows its settings."""
@@ -112,9 +127,15 @@ def draw_participant_rows(content, props, *, activate=False):
     from .participants import participant_overview
     # Solo and Enabled act on this domain whatever object is active.
     content.context_pointer_set("object", props.id_data)
-    rows = participant_overview(props)
+    wm = bpy.context.window_manager
+    search = wm.fumaris_participant_search.strip().lower()
+    counts = {}
+    rows = participant_overview(props, limit=wm.fumaris_participant_limit, search=search, counts=counts)
+    matching = counts.get("matching", 0)
+    if search or matching > _SEARCH_FROM:
+        content.prop(wm, "fumaris_participant_search", text="", icon="VIEWZOOM")
     if not rows:
-        content.label(text="No objects in these collections", icon="INFO")
+        content.label(text="No matching objects" if search else "No objects in these collections", icon="INFO")
         return
     solo = solo_object_name(props.id_data)
     for obj, role, reason in rows:
@@ -146,8 +167,10 @@ def draw_participant_rows(content, props, *, activate=False):
             solo_op.name = obj.name
         else:
             row.label(text=reason, icon="ERROR")
-    if len(rows) >= 60:
-        content.label(text="Showing the first 60 objects")
+    if matching > len(rows):
+        more = content.row(align=True)
+        more.label(text=f"Showing {len(rows)} of {matching}")
+        more.operator("fumaris.participant_list_more", text="Show More", icon="TRIA_DOWN")
 
 
 def _is_particle_point_cloud(props):
@@ -164,6 +187,28 @@ def _draw_mesh_emitter_options(box, props):
     if props.mesh_emission_mask_attribute.strip():
         box.prop(props, "mesh_emission_mask_threshold")
     box.prop(props, "mesh_velocity_attribute", text="Velocity")
+    _draw_velocity_attribute_problem(box, props)
+
+
+def _draw_velocity_attribute_problem(box, props):
+    """Warn under Velocity when the named attribute is missing, before Play
+    fails on it. Reads the already evaluated scene (no evaluation)."""
+    from .mesh_export import uses_velocity_attribute, velocity_attribute_problem
+    if not uses_velocity_attribute(props):
+        return
+    obj = props.id_data
+    try:
+        evaluated = obj.evaluated_get(bpy.context.view_layer.depsgraph)
+    except (AttributeError, ReferenceError, RuntimeError):
+        return
+    mesh = getattr(evaluated, "data", None)
+    if obj.type != "MESH" or mesh is None or not hasattr(mesh, "attributes"):
+        return
+    problem = velocity_attribute_problem(obj, mesh, props)
+    if problem:
+        row = box.column(align=True)
+        row.alert = True
+        _wrapped(row, problem.replace(f" on {obj.name}", ""), icon="ERROR")
 
 
 def _draw_attribute_mapping(box, props):
@@ -1257,12 +1302,17 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
 
 
-CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_PT_sidebar)
+CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_OT_participant_list_more, FUMARIS_PT_sidebar)
 
 
 def register():
     for idname in _SIDEBAR_SECTIONS:
         setattr(bpy.types.WindowManager, idname, bpy.props.BoolProperty(default=True, options={"SKIP_SAVE"}))
+    bpy.types.WindowManager.fumaris_participant_search = bpy.props.StringProperty(
+        name="Search", description="Show only objects whose name contains this text",
+        options={"TEXTEDIT_UPDATE", "SKIP_SAVE"})
+    bpy.types.WindowManager.fumaris_participant_limit = bpy.props.IntProperty(
+        default=_PAGE, min=_PAGE, options={"SKIP_SAVE"})
     for cls in CLASSES:
         bpy.utils.register_class(cls)
 
@@ -1272,3 +1322,5 @@ def unregister():
         bpy.utils.unregister_class(cls)
     for idname in _SIDEBAR_SECTIONS:
         delattr(bpy.types.WindowManager, idname)
+    del bpy.types.WindowManager.fumaris_participant_search
+    del bpy.types.WindowManager.fumaris_participant_limit

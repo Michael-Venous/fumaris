@@ -1126,6 +1126,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if stderr:
             message = f"{message}: {stderr}"
         console_log(f"Fumaris preview stopped: {message}")
+        self.report({"ERROR"}, message)
         return {"CANCELLED"}
 
 

@@ -485,6 +485,20 @@ def uses_velocity_attribute(props):
     return bool(str(getattr(props, "mesh_velocity_attribute", "") or "").strip())
 
 
+def velocity_attribute_problem(obj, mesh, props):
+    """Why the named Velocity attribute cannot be used on mesh, or None."""
+    name = props.mesh_velocity_attribute.strip()
+    attribute = mesh.attributes.get(name)
+    if attribute is None:
+        return (f'Velocity attribute "{name}" not found on {obj.name}. Leave Velocity empty to measure '
+                "motion, or store the attribute with Geometry Nodes (instances need Realize Instances)")
+    if attribute.data_type != "FLOAT_VECTOR":
+        return f'Velocity attribute "{name}" on {obj.name} must be a vector attribute'
+    if attribute.domain not in {"POINT", "FACE", "CORNER"}:
+        return f'Velocity attribute "{name}" on {obj.name} must be on points, faces or face corners'
+    return None
+
+
 def _mesh_attribute_velocities(obj, mesh, props, matrix):
     """World velocities from the named vector attribute, or None when unset.
 
@@ -494,18 +508,10 @@ def _mesh_attribute_velocities(obj, mesh, props, matrix):
     """
     if not uses_velocity_attribute(props):
         return None
-    name = props.mesh_velocity_attribute.strip()
-    attribute = mesh.attributes.get(name)
-    if attribute is None:
-        raise RuntimeError(
-            f'{obj.name} has no mesh attribute named "{name}" for Velocity. '
-            "Geometry Nodes must store it on the evaluated mesh; instances need Realize Instances"
-        )
-    if attribute.data_type != "FLOAT_VECTOR":
-        raise RuntimeError(f'{obj.name}: Velocity attribute "{name}" must be a vector attribute')
-    if attribute.domain not in {"POINT", "FACE", "CORNER"}:
-        raise RuntimeError(
-            f'{obj.name}: Velocity attribute "{name}" must be on points, faces or face corners')
+    problem = velocity_attribute_problem(obj, mesh, props)
+    if problem:
+        raise RuntimeError(problem)
+    attribute = mesh.attributes[props.mesh_velocity_attribute.strip()]
     vertex_count = len(mesh.vertices)
     values = array("f", [0.0]) * (len(attribute.data) * 3)
     attribute.data.foreach_get("vector", values)

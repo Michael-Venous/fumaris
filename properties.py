@@ -132,11 +132,11 @@ class FumarisSettings(PropertyGroup):
         name="Participant Type",
         description="Emitter source shape used when this object is in a domain emitter collection",
         items=[
-            ("mesh", "Mesh", "Evaluated mesh surface or volume emitter"),
+            ("mesh", "Mesh", "Emit from the object's final mesh, after all modifiers (Geometry Nodes included). A mesh that only moves as an object is sent to the GPU once, then just its transform each frame. Instances that are not realized are ignored"),
             ("box", "Box", "Box emitter using this object's transform"),
             ("sphere", "Sphere", "Sphere emitter at this object's origin"),
             ("particles", "Particles", "Blender particle system emitter"),
-            ("geometry_nodes", "Geometry Nodes", "Use this object's evaluated Geometry Nodes output"),
+            ("geometry_nodes", "Geometry Nodes", "Use this object's Geometry Nodes output as points, a mesh or volume grids, including instances that are not realized. Its geometry is sent again every frame"),
             ("openvdb", "OpenVDB", "Load an OpenVDB file as a volume emitter"),
             ("collection_points", "Collection Points", "Batch mesh objects from a collection as spheres with automatic motion velocity"),
             ("collection_mesh", "Collection Mesh", "Combine collection meshes into one emitter with shared channels and automatic motion velocity"),
@@ -183,7 +183,7 @@ class FumarisSettings(PropertyGroup):
         description="Type of evaluated Geometry Nodes output to use",
         items=[
             ("point_cloud", "Point Cloud", "Use evaluated points as per-point sphere emitters"),
-            ("mesh", "Mesh", "Use the evaluated mesh output as a mesh emitter"),
+            ("mesh", "Mesh", "Emit from the output mesh and its instances (no Realize Instances needed), resent every frame. For an ordinary mesh without instances, Shape Mesh does the same and is cheaper when the mesh does not deform"),
             (
                 "volume",
                 "Volume",
@@ -1125,7 +1125,7 @@ class FumarisSettings(PropertyGroup):
 
     mesh_velocity_attribute: StringProperty(
         name="Velocity Attribute",
-        description="Leave empty to measure velocity from how the mesh moves. Otherwise use a vector attribute on the evaluated mesh, such as one stored by Geometry Nodes: object-space units per second, on points, faces or face corners. It replaces the measured deformation velocity and is scaled by Motion Velocity Scale. Instanced meshes need Realize Instances",
+        description="Usually leave empty: velocity is then measured from how the mesh moves (object animation, armatures, deformation, Geometry Nodes). Type a name only if the mesh carries its own vector attribute, such as one stored by Geometry Nodes or an Alembic cache: object-space units per second, on points, faces or face corners. It replaces the measured motion and is scaled by Motion Velocity Scale. A missing name stops Play with an error (shown below the field). Instanced meshes need Realize Instances",
         default="",
     )
 

@@ -227,6 +227,19 @@ def draw_controls(layout, context, *, compact=False, popover=True, details=True)
             bake.context_pointer_set('object', domain)
         bake.operator('fumaris.bake', text='' if compact else 'Bake', icon='RENDER_ANIMATION')
     # The header shows no status: its changing width would move the buttons.
+    if not compact and domain is not None:
+        # A failed preview or bake is visible wherever its controls are.
+        import textwrap
+        from .diagnostics import error_summary, snapshot
+        state = snapshot(domain)
+        if error_summary(state):
+            errors = [line for line in state['log'] if line.lower().startswith('error:')]
+            text = errors[-1][len('error:'):].strip() if errors else 'Simulation stopped; see Diagnostics'
+            error = layout.column(align=True)
+            error.alert = True
+            # Wrapped, not clipped: the end of a message is often the useful part.
+            for index, line in enumerate(textwrap.wrap(text, 32, max_lines=5, placeholder='…')):
+                error.label(text=line, icon='ERROR' if index == 0 else 'BLANK1')
     status = '' if compact or not details else transport_status(context, domain)
     if status:
         layout.label(text=status)

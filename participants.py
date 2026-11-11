@@ -62,12 +62,14 @@ _ROLE_NAMES = {"emitter": "Emitter", "collider": "Collider", "effector": "Effect
                "outflow": "Outflow", "domain": "Domain", "none": "nothing"}
 
 
-def participant_overview(domain_props, limit=60):
+def participant_overview(domain_props, limit=60, search="", counts=None):
     """(object, role, reason) for the objects in the domain's collections.
 
     reason is None for objects the simulation uses, otherwise why it skips
     them (wrong Fumaris type, unsupported source, disabled). At most limit
-    rows; the panel draws this, so it never evaluates geometry.
+    rows; the panel draws this, so it never evaluates geometry. search
+    (lower case) keeps names containing it; counts, a dict, receives
+    "matching": every match, shown or not.
     """
     rows = []
     seen = set()
@@ -81,6 +83,12 @@ def participant_overview(domain_props, limit=60):
                 if key in seen or not hasattr(obj, "fumaris"):
                     continue
                 seen.add(key)
+                if search and search not in obj.name.lower():
+                    continue
+                if counts is not None:
+                    counts["matching"] = counts.get("matching", 0) + 1
+                if len(rows) >= limit:
+                    continue   # counted, not shown
                 kind = obj.fumaris.smoke_object_type
                 if kind != role:
                     found = _ROLE_NAMES.get(kind, kind)
@@ -94,7 +102,7 @@ def participant_overview(domain_props, limit=60):
                 else:
                     reason = None
                 rows.append((obj, role, reason))
-                if len(rows) >= limit:
+                if len(rows) >= limit and counts is None:
                     return rows
     return rows
 

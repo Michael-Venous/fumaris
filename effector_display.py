@@ -100,6 +100,11 @@ def _draw():
     context = bpy.context
     view_layer = context.view_layer
     space = context.space_data
+    # Shown like Blender's own force fields: hidden with the viewport's
+    # overlays, or with the Extras overlay (empties, lights, force fields).
+    overlay = getattr(space, "overlay", None)
+    if overlay is not None and not (overlay.show_overlays and overlay.show_extras):
+        return
     selected_lines, lines, inner_lines = [], [], []
     for obj in context.scene.objects:
         props = getattr(obj, "fumaris", None)

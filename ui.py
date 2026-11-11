@@ -119,10 +119,20 @@ def draw_participant_rows(content, props, *, activate=False):
     solo = solo_object_name(props.id_data)
     for obj, role, reason in rows:
         usable = reason is None or reason == "disabled"
-        split = content.split(factor=0.8 if usable else 0.45, align=True)
         icon = _ROLE_ICONS.get(role, "OBJECT_DATA")
         # Selected objects are highlighted across the row, like in the Outliner.
         selected = activate and obj.select_get()
+        if selected and usable:
+            # One joined, pressed row: name, filler, Enabled and Solo.
+            row = content.row(align=True)
+            _highlight_row(row, "fumaris.participant_select", obj.name, icon, True, activate=activate)
+            row.prop(obj.fumaris, "participant_enabled", text="", toggle=True,
+                     icon="CHECKBOX_HLT" if obj.fumaris.participant_enabled else "CHECKBOX_DEHLT")
+            solo_op = row.operator("fumaris.participant_solo", text="", depress=True,
+                                   icon="SOLO_ON" if solo == obj.name else "SOLO_OFF")
+            solo_op.name = obj.name
+            continue
+        split = content.split(factor=0.8 if usable else 0.45, align=True)
         _highlight_row(split.row(align=True), "fumaris.participant_select", obj.name, icon, selected,
                        activate=activate)
         row = split.row(align=True)

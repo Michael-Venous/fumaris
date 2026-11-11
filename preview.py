@@ -426,9 +426,12 @@ def _capture_scene_depth(view_id, width, height, key=None):
     columns = ((np.arange(width) + 0.5) * (region_width / width)).astype(np.intp)
     # Blender's rows run bottom to top; the preview image is top row first.
     sampled = np.ascontiguousarray(depth[::-1][rows[:, None], columns[None, :]])
-    if sampled.max() < 0.5:
+    region_3d = getattr(bpy.context, "region_data", None)
+    if sampled.max() < 0.5 and getattr(region_3d, "is_perspective", True):
         # Standard depth keeps even nearby geometry close to 1. A buffer that
         # never gets there is reversed (far = 0); the bridge expects far = 1.
+        # Orthographic depth is linear (about 0.5 at the view's centre), so an
+        # object filling the view can sit below 0.5 there: never flipped.
         sampled = 1.0 - sampled
     _SCENE_DEPTH_CAPTURE_SECONDS = time.perf_counter() - started
     previous = _SCENE_DEPTHS.get(view_id)

@@ -179,17 +179,29 @@ def transport_status(context, domain):
     return ' / '.join(parts)
 
 
-def draw_controls(layout, context, *, compact=False):
+def draw_controls(layout, context, *, compact=False, popover=True):
     domain = resolve_domain(context)
     job = active_job()
     running = active_mode() == 'previewing'
     paused = running and bool(getattr(job, '_pause_requested', False))
     row = layout.row(align=True)
-    if compact:
+    if compact and popover:
         row.popover(panel='FUMARIS_PT_playback', text='Fumaris')
     row.operator('fumaris.preview_toggle', text='' if compact else ('Resume' if paused else 'Pause' if running else 'Play'),
                  icon='PAUSE' if running and not paused else 'PLAY')
-    row.operator('fumaris.preview_stop', text='' if compact else 'Stop', icon='SNAP_FACE')
+    # One button for Bake and Stop: Stop while a preview or bake runs (the
+    # two never run together), else Bake for the same domain (the Bake
+    # operator acts on context.object).
+    if active_mode() == 'baking':
+        row.operator('fumaris.stop', text='' if compact else 'Stop Bake', icon='SNAP_FACE')
+    elif running:
+        row.operator('fumaris.preview_stop', text='' if compact else 'Stop', icon='SNAP_FACE')
+    else:
+        bake = row.row(align=True)
+        bake.enabled = domain is not None and not job
+        if domain is not None:
+            bake.context_pointer_set('object', domain)
+        bake.operator('fumaris.bake', text='' if compact else 'Bake', icon='RENDER_ANIMATION')
     status = transport_status(context, domain)
     if status:
         (row if compact else layout).label(text=status)

@@ -1192,6 +1192,14 @@ class FUMARIS_OT_participant_select(Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     name: bpy.props.StringProperty()
+    # The sidebar list: make it active and show its settings (Physics tab).
+    activate: bpy.props.BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    @classmethod
+    def description(cls, context, properties):
+        if properties.activate:
+            return "Select this object and show its Fumaris settings in the Properties editor (Shift: add to the selection)"
+        return cls.bl_description
 
     def invoke(self, context, event):
         obj = bpy.data.objects.get(self.name)
@@ -1202,7 +1210,21 @@ class FUMARIS_OT_participant_select(Operator):
             for other in context.selected_objects:
                 other.select_set(False)
         obj.select_set(True)
-        # Keep the domain's panel: select without making the object active.
+        if not self.activate:
+            # Keep the domain's panel: select without making the object active.
+            return {"FINISHED"}
+        context.view_layer.objects.active = obj
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type != "PROPERTIES":
+                    continue
+                for space in area.spaces:
+                    if space.type == "PROPERTIES":
+                        try:
+                            space.context = "PHYSICS"
+                        except TypeError:
+                            pass  # this object type has no Physics tab
+                area.tag_redraw()
         return {"FINISHED"}
 
 

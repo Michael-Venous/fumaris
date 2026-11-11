@@ -83,12 +83,20 @@ _ROLE_ICONS = {"emitter": "OUTLINER_OB_FORCE_FIELD", "collider": "MOD_PHYSICS",
 def _draw_participant_list(layout, props):
     """Objects in the domain's collections: select, enable, solo, and why an
     object is not simulated."""
-    from .operators import solo_object_name
-    from .participants import participant_overview
     layout.separator(factor=0.5)
     content, opened = _nested_foldout(layout, props, "show_participant_list", "Objects")
     if not opened:
         return
+    draw_participant_rows(content, props)
+
+
+def draw_participant_rows(content, props, *, activate=False):
+    """One row per object in the domain's collections. activate (the
+    sidebar): clicking a name makes it active and shows its settings."""
+    from .operators import solo_object_name
+    from .participants import participant_overview
+    # Solo and Enabled act on this domain whatever object is active.
+    content.context_pointer_set("object", props.id_data)
     rows = participant_overview(props)
     if not rows:
         content.label(text="No objects in these collections", icon="INFO")
@@ -100,8 +108,10 @@ def _draw_participant_list(layout, props):
         name = split.row(align=True)
         name.alignment = "LEFT"
         icon = _ROLE_ICONS.get(role, "OBJECT_DATA")
-        select = name.operator("fumaris.participant_select", text=obj.name, icon=icon, emboss=False)
+        select = name.operator("fumaris.participant_select", text=obj.name, icon=icon, emboss=False,
+                               depress=activate and obj.select_get())
         select.name = obj.name
+        select.activate = activate
         row = split.row(align=True)
         row.alignment = "RIGHT" if usable else "LEFT"
         if not usable:
@@ -808,6 +818,14 @@ def _draw_domain(layout, scene, props):
             if props.shader_flame_enabled:
                 flame_header.prop(props, "shader_look", text="")
                 _draw_fire_look(appearance.column(align=True), props)
+            cycles = getattr(scene, "cycles", None)
+            if scene.render.engine == "CYCLES" and cycles is not None and hasattr(cycles, "volume_biased"):
+                # Cycles' volume method, as a switch: Biased (ray-marched) or
+                # Unbiased. Which renders faster depends on the scene.
+                volumes = _pair(appearance)
+                volumes.label(text="Cycles Volumes")
+                volumes.prop(cycles, "volume_biased", toggle=True,
+                             text="Biased" if cycles.volume_biased else "Unbiased")
             if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
                 appearance.label(
                     text="Custom material overrides this",
@@ -1128,7 +1146,41 @@ class FUMARIS_MT_presets(bpy.types.Menu):
             row.operator("fumaris.preset_delete", text="", icon="X").name = name
 
 
-CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main)
+class FUMARIS_PT_sidebar(bpy.types.Panel):
+    """The 3D Viewport sidebar's Fumaris tab: the domain, its transport, and
+    its objects; clicking one shows its settings in the Properties editor
+    (no need to find it in the Outliner)."""
+    bl_label = "Fumaris"
+    bl_idname = "FUMARIS_PT_sidebar"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Fumaris"
+
+    def draw(self, context):
+        from . import playback
+        layout = self.layout
+        domains = playback.scene_domains(context)
+        if not domains:
+            layout.label(text="No Fumaris domain in this scene", icon="INFO")
+            layout.operator_menu_enum("fumaris.quick_setup", "preset", text="Quick Setup", icon="ADD")
+            return
+        domain = playback.resolve_domain(context)
+        row = layout.row(align=True)
+        row.enabled = not playback.active_job()
+        row.prop(context.scene, "fumaris_preview_domain", text="")
+        if domain is not None:
+            select = row.operator("fumaris.participant_select", text="", icon="RESTRICT_SELECT_OFF")
+            select.name = domain.name
+            select.activate = True
+        playback.draw_controls(layout, context, compact=True, popover=False)
+        if domain is None:
+            layout.label(text="Choose a domain", icon="INFO")
+            return
+        layout.separator(factor=0.5)
+        draw_participant_rows(layout.column(align=True), domain.fumaris, activate=True)
+
+
+CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_PT_sidebar)
 
 
 def register():

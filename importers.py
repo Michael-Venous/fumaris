@@ -874,6 +874,7 @@ def import_sequence(
         raise RuntimeError("Blender did not create a Volume object")
 
     volume_object = created[0]
+    _move_out_of_participant_collections(volume_object)
     volume_object.name = "Fumaris Volume"
     volume_object.location = (0.0, 0.0, 0.0)
     volume_object[VOLUME_MARKER] = os.path.normpath(directory)
@@ -899,6 +900,44 @@ def import_sequence(
         )
     _restore_selection(previous_selection, previous_active)
     return volume_object
+
+
+def _participant_collections():
+    """Every domain's emitter, collider, effector and outflow collections,
+    with their child collections."""
+    found = set()
+    for obj in bpy.data.objects:
+        props = getattr(obj, "fumaris", None)
+        if props is None or props.smoke_object_type != "domain":
+            continue
+        for name in ("emitter_collection", "collider_collection", "effector_collection", "outflow_collection"):
+            top = getattr(props, name, None)
+            if top is not None:
+                found.add(top)
+                found.update(top.children_recursive)
+    return found
+
+
+def _move_out_of_participant_collections(obj):
+    """Volume Import links to the active collection. Inside a participant
+    collection the volume would be taken for a participant and, because a
+    domain points at that collection, Blender evaluates it (reloading a VDB
+    every frame) even while it is hidden. Move it to the nearest parent
+    collection that is not a participant collection."""
+    participants = _participant_collections()
+    inside = [collection for collection in obj.users_collection if collection in participants]
+    if not inside:
+        return
+    scene = bpy.context.scene
+    parents = {child: parent for parent in bpy.data.collections for child in parent.children}
+    target = inside[0]
+    while target is not None and target in participants:
+        target = parents.get(target)
+    target = target or scene.collection
+    if obj.name not in target.objects:
+        target.objects.link(obj)
+    for collection in inside:
+        collection.objects.unlink(obj)
 
 
 def _files_with_grids(files):

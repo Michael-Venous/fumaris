@@ -189,6 +189,6 @@ def preview_lighting(context, props, domain):
         "sun_radiance": [max(0.0, float(v)) for v in sun],
         "ambient_radiance": [max(0.0, float(v)) for v in ambient],
         "light_direction": [float(v) for v in direction],
-        "phase_g": max(-0.95, min(0.95, float(props.shader_anisotropy))),
+        "phase_g": max(-0.999999, min(0.999999, float(props.shader_anisotropy))),
         "volume_bounces": max(0, bounces),
     }

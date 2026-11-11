@@ -53,7 +53,7 @@ def capture_volume_preview(context, domain, target=None):
         return {"valid": False}
 
     region, region_3d = target
-    scale = max(0.25, min(1.0, float(props.preview_image_scale) / 100.0))
+    scale = max(0.00001, float(props.preview_image_scale) / 100.0)
     width = max(16, int(round(region.width * scale)))
     height = max(16, int(round(region.height * scale)))
     dimension_scale = min(1.0, 2048.0 / width, 2048.0 / height)
@@ -107,7 +107,8 @@ def capture_volume_preview(context, domain, target=None):
         "glow_shadowing": float(flame_value(props, "glow_shadowing", 0.0)),
         "shadows": bool(props.preview_shadows),
         "flame_light": float(props.preview_fire_lighting),
-        "exposure": max(-10.0, min(10.0, _scene_exposure(context) + float(props.preview_exposure_offset))),
+        # exp2 is evaluated as float in the bridge; keep its exponent finite.
+        "exposure": min(126.0, _scene_exposure(context) + float(props.preview_exposure_offset)),
         "tone_mapping": _preview_tone_mapping(context, props),
         "field_view": getattr(props, "preview_field_view", "look"),
         # sun, world, anisotropy, volume bounces and light_direction

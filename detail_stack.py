@@ -114,7 +114,7 @@ class FumarisFieldMask(PropertyGroup):
                                description="Field values mapped from: From Min to From Max")
     values: FloatVectorProperty(name="To", size=2, default=(0.0, 1.0), min=0.0, soft_max=4.0,
                                 description="Factor at From Min and at From Max (clamped between them, never below 0)")
-    noise_size: FloatProperty(name="Noise Size", default=1.0, min=0.001, soft_max=10.0, subtype="DISTANCE",
+    noise_size: FloatProperty(name="Noise Size", default=1.0, min=1e-12, soft_min=0.001, soft_max=10.0, subtype="DISTANCE",
                               description="Feature size of the noise field")
 
 
@@ -126,7 +126,7 @@ class FumarisDetailLayer(PropertyGroup):
                             description="Disturb and Grain: push in scene units per second squared (about 50 "
                                         "is subtle, 300 strong on a fireball a few metres across). Shred and "
                                         "Soot Burn-off: rate per second")
-    size: FloatProperty(name="Size", default=1.0, min=0.001, soft_max=10.0, subtype="DISTANCE",
+    size: FloatProperty(name="Size", default=1.0, min=1e-12, soft_min=0.001, soft_max=10.0, subtype="DISTANCE",
                         description="Disturb: swirl size. Grain: block edge length. In scene units; use a "
                                     "few voxels or more")
     detail: IntProperty(name="Detail", default=1, min=1, max=6,

@@ -250,7 +250,7 @@ def build_frame(
     global _BURN_DOMAIN, _RESOLUTION_SCALE
     owner = domain or getattr(context, "object", None)
     _BURN_DOMAIN = getattr(owner, "fumaris", None)
-    _RESOLUTION_SCALE = max(1e-3, float(resolution_scale))
+    _RESOLUTION_SCALE = max(1e-12, float(resolution_scale))
     depsgraph = context.evaluated_depsgraph_get()
     payload = bytearray()
     preview_request = volume_preview or {"valid": False}
@@ -383,11 +383,13 @@ def _domain_frame(domain, depsgraph):
 
 
 def _domain_state(props, resolution_scale=1.0):
-    resolution = max(1, int(round(props.resolution * max(0.0, float(resolution_scale)))))
+    # The bridge protocol stores resolution as a signed 32-bit integer.
+    resolution = max(1, min(2147483647, int(round(props.resolution * max(0.0, float(resolution_scale))))))
     generated_material = props.volume_material is None
     return {
         "resolution": resolution,
         "simulation_speed": props.simulation_speed,
+        "simulation_scale": float(getattr(props, "simulation_scale", 1.0)),
         "num_sub_steps": props.num_sub_steps,
         # Cells per Step 0 is off.
         "adaptive_sub_steps": props.adaptive_cfl > 0.0,
@@ -629,7 +631,7 @@ def _sphere_state(participant, depsgraph):
     if not enabled:
         participant.pop("previous_matrix", None)
     elif participant["role"] == "emitter":
-        r = max(radius, 0.001)
+        r = max(radius, 1e-12)
         channels.update(_primitive_surface_source(
             props, 4.0 * math.pi * r * r, 4.0 / 3.0 * math.pi * r ** 3))
 
@@ -638,7 +640,7 @@ def _sphere_state(participant, depsgraph):
         "role": participant["role"],
         "enabled": enabled,
         "position": [position.x, position.y, position.z],
-        "radius": max(radius, 0.001),
+        "radius": max(radius, 1e-12),
         "is_collision": participant["role"] == "collider",
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
         "motion_substeps": props.motion_substeps,
@@ -654,7 +656,7 @@ def _box_state(participant, depsgraph):
     matrix, half_size = _evaluated_box(obj.evaluated_get(depsgraph))
     wall_half_size = list(half_size)
     if participant["role"] == "collider":
-        scales = [max(abs(value), 1e-6) for value in matrix.to_scale()]
+        scales = [max(abs(value), 1e-12) for value in matrix.to_scale()]
         half_size = [
             value + props.collider_margin / scale
             for value, scale in zip(half_size, scales)
@@ -696,10 +698,10 @@ def _evaluated_box(obj):
         return obj.matrix_world.copy(), [1.0, 1.0, 1.0]
     minimum = Vector(tuple(min(corner[axis] for corner in corners) for axis in range(3)))
     maximum = Vector(tuple(max(corner[axis] for corner in corners) for axis in range(3)))
-    if (maximum - minimum).length_squared <= 1e-12:
+    if (maximum - minimum).length_squared == 0.0:
         return obj.matrix_world.copy(), [1.0, 1.0, 1.0]
     center = (minimum + maximum) * 0.5
-    half_size = [max(0.001, value) for value in ((maximum - minimum) * 0.5)]
+    half_size = [max(1e-12, value) for value in ((maximum - minimum) * 0.5)]
     return obj.matrix_world @ Matrix.Translation(center), half_size
 
 
@@ -821,14 +823,14 @@ def _effector_state(participant, depsgraph):
     local_to_world = matrix.to_quaternion().to_matrix().to_4x4()
     local_to_world.translation = position
 
-    radius = max(0.001, props.effector_radius)
+    radius = max(1e-12, props.effector_radius)
     is_vortex = props.effector_type == "vortex"
     if (
         not is_vortex
         and props.effector_use_max_distance
         and props.effector_max_distance > 0.0
     ):
-        radius = max(0.001, props.effector_max_distance)
+        radius = max(1e-12, props.effector_max_distance)
     minimum = 0.0
     if not is_vortex and props.effector_use_min_distance:
         minimum = min(radius, max(0.0, props.effector_min_distance))
@@ -840,8 +842,8 @@ def _effector_state(participant, depsgraph):
         "local_to_world": [value for row in local_to_world for value in row],
         "strength": props.effector_strength,
         "radius": radius,
-        "height": max(0.001, props.effector_vortex_height),
-        "core_radius": min(radius, max(0.001, props.effector_vortex_core_radius)),
+        "height": max(1e-12, props.effector_vortex_height),
+        "core_radius": min(radius, max(1e-12, props.effector_vortex_core_radius)),
         "inflow": max(0.0, props.effector_vortex_inflow),
         "lift": props.effector_vortex_lift,
         "coupling": max(0.0, props.effector_coupling),
@@ -849,7 +851,7 @@ def _effector_state(participant, depsgraph):
         "min_distance": minimum,
         "z_direction": _effector_z_direction_id(props.effector_z_direction),
         "noise_amount": max(0.0, props.effector_noise_amount),
-        "noise_size": max(0.001, props.effector_noise_size),
+        "noise_size": max(1e-12, props.effector_noise_size),
         "noise_w": props.effector_noise_w,
         "noise_seed": props.effector_noise_seed,
         "samples": max(8, min(256, props.effector_samples)),
@@ -1093,7 +1095,7 @@ def _point_normal_velocity(props, radii, values):
     for index, radius in enumerate(radii):
         if index >= len(divergences):
             break
-        r = max(float(radius), 1e-6)
+        r = max(float(radius), 1e-12)
         divergences[index] += 3.0 * speed * r * r / max(r, cell) ** 3
         if index < len(rates) and rates[index] <= 0.0:
             rates[index] = 1.0

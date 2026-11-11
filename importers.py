@@ -194,7 +194,7 @@ def apply_generated_material_settings(material, settings):
     shader.inputs["Density"].default_value = density
     nodes[NODE_DENSITY_GAIN].inputs[1].default_value = density
     shader.inputs["Anisotropy"].default_value = max(
-        -0.95, min(0.95, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
+        -0.999999, min(0.999999, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
 
     enabled = bool(_appearance_value(settings, "shader_flame_enabled", True))
     # With Flame off the (hidden) Look must not change the smoke: no dark hot soot.

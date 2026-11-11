@@ -1976,7 +1976,7 @@ def _preview_frame_duration(scene, props):
 
 def _preview_resolution_scale(domain):
     percent = float(getattr(domain.fumaris, "preview_resolution_percent", 100.0))
-    return max(0.0, min(100.0, percent)) / 100.0
+    return max(0.0, percent) / 100.0
 
 
 @persistent

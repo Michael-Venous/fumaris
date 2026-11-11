@@ -599,6 +599,99 @@ class FUMARIS_OT_domain_choose(bpy.types.Operator):
         return bpy.ops.fumaris.participant_select("INVOKE_DEFAULT", name=domain.name, activate=True)
 
 
+class FUMARIS_OT_participant_remove(bpy.types.Operator):
+    bl_idname = "fumaris.participant_remove"
+    bl_label = "Remove from Domain"
+    bl_description = ("Take this object out of the chosen domain: unlink it from the domain's collections and clear "
+                      "its Fumaris role. The object stays in the scene")
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        return not active_job()
+
+    def execute(self, context):
+        from .playback import resolve_domain
+        obj = bpy.data.objects.get(self.name)
+        domain = resolve_domain(context)
+        if obj is None or domain is None:
+            return {"CANCELLED"}
+        props = domain.fumaris
+        for role, _label in _ROLE_LABELS:
+            top = getattr(props, f"{role}_collection")
+            if top is None:
+                continue
+            for collection in [top, *top.children_recursive]:
+                if obj.name in collection.objects:
+                    if len(obj.users_collection) == 1:
+                        # Its only collection: keep it in the scene.
+                        context.scene.collection.objects.link(obj)
+                    collection.objects.unlink(obj)
+        obj.fumaris.smoke_object_type = "none"
+        self.report({"INFO"}, f"Removed {obj.name} from {domain.name}")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_object_delete(bpy.types.Operator):
+    bl_idname = "fumaris.object_delete"
+    bl_label = "Delete"
+    bl_description = "Delete this object from the file"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(options={"HIDDEN"})
+
+    @classmethod
+    def description(cls, context, properties):
+        obj = bpy.data.objects.get(properties.name)
+        if obj is not None and obj.fumaris.smoke_object_type == "domain":
+            return ("Delete this domain object. Its collections and the objects in them are kept; "
+                    "its baked files stay on disk")
+        return "Delete this object"
+
+    @classmethod
+    def poll(cls, context):
+        if active_job():
+            cls.poll_message_set("Stop the active Fumaris simulation first")
+            return False
+        return True
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.name)
+        if obj is None:
+            return {"CANCELLED"}
+        name = obj.name
+        if getattr(context.scene, "fumaris_preview_domain", None) == obj:
+            context.scene.fumaris_preview_domain = None
+        bpy.data.objects.remove(obj, do_unlink=True)
+        self.report({"INFO"}, f"Deleted {name}")
+        return {"FINISHED"}
+
+
+def _button_context_menu(self, context):
+    """Right-click on a domain or object in the Fumaris tab: delete it."""
+    op = getattr(context, "button_operator", None)
+    try:
+        identifier = op.bl_rna.identifier if op is not None else ""
+    except (AttributeError, ReferenceError):
+        return
+    if identifier not in {"FUMARIS_OT_domain_choose", "FUMARIS_OT_participant_select"}:
+        return
+    obj = bpy.data.objects.get(op.name)
+    if obj is None:
+        return
+    layout = self.layout
+    layout.separator()
+    layout.label(text=obj.name, icon="OBJECT_DATA")
+    if identifier == "FUMARIS_OT_domain_choose":
+        layout.operator("fumaris.object_delete", text="Delete Domain (keeps its collections)",
+                        icon="TRASH").name = obj.name
+        return
+    layout.operator("fumaris.participant_remove", icon="REMOVE").name = obj.name
+    layout.operator("fumaris.object_delete", text="Delete Object", icon="TRASH").name = obj.name
+
+
 def _draw_add_menu(self, context):
     obj = context.object
     if obj is None or obj.fumaris.smoke_object_type == "none":
@@ -606,7 +699,7 @@ def _draw_add_menu(self, context):
 
 
 _CLASSES = (FUMARIS_OT_quick_setup, FUMARIS_OT_domain_create, FUMARIS_OT_participants_add_selected,
-            FUMARIS_OT_domain_choose)
+            FUMARIS_OT_domain_choose, FUMARIS_OT_participant_remove, FUMARIS_OT_object_delete)
 
 
 def register():
@@ -614,11 +707,13 @@ def register():
         name="Domain Name", description="Name for the next New Domain (empty: Simulation)")
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    bpy.types.UI_MT_button_context_menu.append(_button_context_menu)
     bpy.types.VIEW3D_MT_add.append(_draw_add_menu)
 
 
 def unregister():
     bpy.types.VIEW3D_MT_add.remove(_draw_add_menu)
+    bpy.types.UI_MT_button_context_menu.remove(_button_context_menu)
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.fumaris_new_domain_name

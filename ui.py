@@ -108,8 +108,10 @@ def draw_participant_rows(content, props, *, activate=False):
         name = split.row(align=True)
         name.alignment = "LEFT"
         icon = _ROLE_ICONS.get(role, "OBJECT_DATA")
-        select = name.operator("fumaris.participant_select", text=obj.name, icon=icon, emboss=False,
-                               depress=activate and obj.select_get())
+        # Selected objects are highlighted, like in the Outliner.
+        selected = activate and obj.select_get()
+        select = name.operator("fumaris.participant_select", text=obj.name, icon=icon, emboss=selected,
+                               depress=selected)
         select.name = obj.name
         select.activate = activate
         row = split.row(align=True)
@@ -1194,7 +1196,8 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             for obj in domains:
                 row = listing.row(align=True)
                 row.alignment = "LEFT"
-                choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=False,
+                choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=obj == domain,
+                                      depress=obj == domain,
                                       icon="RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF")
                 choose.name = obj.name
         if not domains:

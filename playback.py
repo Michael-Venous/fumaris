@@ -126,6 +126,25 @@ class FUMARIS_OT_preview_toggle(bpy.types.Operator):
         return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
 
 
+class FUMARIS_OT_preview_restart(bpy.types.Operator):
+    bl_idname = 'fumaris.preview_restart'
+    bl_label = 'Fumaris Restart Preview'
+    bl_description = 'Stop the preview and start it again from the simulation start frame'
+
+    @classmethod
+    def poll(cls, context):
+        return active_mode() == 'previewing'
+
+    def execute(self, context):
+        domain = resolve_domain(context)
+        if domain is None:
+            return {'CANCELLED'}
+        name = domain.name
+        bpy.ops.fumaris.preview_stop()
+        result = bpy.ops.fumaris.preview_play(domain_name=name)
+        return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
+
+
 def recorded_volume(domain):
     """The domain's visible imported bake, or None. Its folders all live below
     the domain's output folder."""
@@ -196,6 +215,7 @@ def draw_controls(layout, context, *, compact=False, popover=True):
         row.operator('fumaris.stop', text='' if compact else 'Stop Bake', icon='SNAP_FACE')
     elif running:
         row.operator('fumaris.preview_stop', text='' if compact else 'Stop', icon='SNAP_FACE')
+        row.operator('fumaris.preview_restart', text='' if compact else 'Restart', icon='FILE_REFRESH')
     else:
         bake = row.row(align=True)
         bake.enabled = domain is not None and not job
@@ -252,7 +272,7 @@ def register():
     bpy.types.Scene.fumaris_preview_domain = PointerProperty(
         name='Preview Domain', type=bpy.types.Object, poll=_domain_poll,
         description='Domain controlled while editing other objects. A single available domain is chosen automatically')
-    for cls in (FUMARIS_OT_preview_toggle, FUMARIS_PT_playback):
+    for cls in (FUMARIS_OT_preview_toggle, FUMARIS_OT_preview_restart, FUMARIS_PT_playback):
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_HT_header.append(draw_header)
     bpy.types.DOPESHEET_HT_header.append(draw_header)
@@ -270,6 +290,6 @@ def unregister():
     _KEYMAPS.clear()
     bpy.types.DOPESHEET_HT_header.remove(draw_header)
     bpy.types.VIEW3D_HT_header.remove(draw_header)
-    for cls in (FUMARIS_PT_playback, FUMARIS_OT_preview_toggle):
+    for cls in (FUMARIS_PT_playback, FUMARIS_OT_preview_restart, FUMARIS_OT_preview_toggle):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.fumaris_preview_domain

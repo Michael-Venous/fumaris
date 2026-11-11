@@ -691,6 +691,9 @@ def _draw_domain(layout, scene, props):
         # A preview that is still starting (or paused) can always be stopped.
         preview_stop.enabled = job is not None and not is_baking
         preview_stop.operator("fumaris.preview_stop", icon=icon("CANCEL"), text="Stop")
+        restart = preview.row(align=True)
+        restart.enabled = is_previewing and not is_initializing
+        restart.operator("fumaris.preview_restart", icon=icon("FILE_REFRESH"), text="Restart")
         controls.separator(factor=0.5)
         cache_preview = controls.row(align=True)
         cache_preview.enabled = mode is None

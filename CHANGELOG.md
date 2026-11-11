@@ -79,7 +79,8 @@ Compatibility). This is a beta: please report scenes that look wrong.
 - User presets for domains and sources; a participant list with Enabled and
   Solo; clearer status and diagnostics; a reorganised panel.
 - A Fumaris tab in the 3D Viewport sidebar lists the domain's objects: click
-  one to show its settings. Bake from the Timeline and viewport headers.
+  one to show its settings. Bake from the Timeline and viewport headers, and
+  Restart a running preview from its first frame in one click.
 - A Biased/Unbiased switch for Cycles volumes in Appearance.
 - The generated material is organised into node groups; Sync Material per
   version.

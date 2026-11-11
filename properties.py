@@ -1784,7 +1784,7 @@ class FumarisSettings(PropertyGroup):
         default=2.0,
         min=0.0,
         max=100.0,
-        soft_max=10.0,
+        soft_max=100.0,
         update=_appearance_updated,
     )
 
@@ -1900,7 +1900,7 @@ class FumarisSettings(PropertyGroup):
         default=2.0,
         min=0.0,
         max=100.0,
-        soft_max=10.0,
+        soft_max=100.0,
         update=_appearance_updated,
     )
     pyro_glow_temperature: FloatProperty(

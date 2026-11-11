@@ -460,14 +460,19 @@ class FUMARIS_OT_domain_create(bpy.types.Operator):
                       "and Outflows collections under the Fumaris collection, and choose it in the Fumaris tab")
     bl_options = {"REGISTER", "UNDO"}
 
-    name: bpy.props.StringProperty(name="Name", default="Simulation")
+    # Empty: the Fumaris tab's name box (then Simulation).
+    name: bpy.props.StringProperty(name="Name")
 
     @classmethod
     def poll(cls, context):
         return FUMARIS_OT_quick_setup.poll(context)
 
     def execute(self, context):
-        name = _unique_group_name(self.name.strip() or "Simulation")
+        scene = context.scene
+        typed = getattr(scene, "fumaris_new_domain_name", "").strip()
+        name = _unique_group_name(self.name.strip() or typed or "Simulation")
+        if typed:
+            scene.fumaris_new_domain_name = ""   # used once
         group, collections = new_domain_group(context.scene, name)
         cursor = context.scene.cursor.location
         domain = _new_domain(group, f"{name} Domain", cursor - Vector((1, 1, 1)), cursor + Vector((1, 1, 1)))
@@ -605,6 +610,8 @@ _CLASSES = (FUMARIS_OT_quick_setup, FUMARIS_OT_domain_create, FUMARIS_OT_partici
 
 
 def register():
+    bpy.types.Scene.fumaris_new_domain_name = bpy.props.StringProperty(
+        name="Domain Name", description="Name for the next New Domain (empty: Simulation)")
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_MT_add.append(_draw_add_menu)
@@ -614,3 +621,4 @@ def unregister():
     bpy.types.VIEW3D_MT_add.remove(_draw_add_menu)
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
+    del bpy.types.Scene.fumaris_new_domain_name

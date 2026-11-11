@@ -1170,13 +1170,16 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         layout = self.layout
         domains = playback.scene_domains(context)
         domain = playback.resolve_domain(context)
-        header = layout.row(align=True)
-        header.label(text="Domains")
-        header.operator("fumaris.domain_create", text="", icon="ADD")
-        header.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
+        layout.label(text="Domains")
+        create = layout.row(align=True)
+        try:
+            create.prop(context.scene, "fumaris_new_domain_name", text="", placeholder="New domain name")
+        except TypeError:   # no placeholder text in this Blender
+            create.prop(context.scene, "fumaris_new_domain_name", text="")
+        create.operator("fumaris.domain_create", text="", icon="ADD")
+        create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
         if not domains:
             layout.label(text="No Fumaris domain in this scene", icon="INFO")
-            layout.operator("fumaris.domain_create", text="New Domain", icon="ADD")
             return
         listing = layout.column(align=True)
         listing.enabled = not active_job()

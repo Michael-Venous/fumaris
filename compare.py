@@ -1120,11 +1120,8 @@ class FUMARIS_OT_entry_import(_DomainOperator, Operator):
         if entry is None or entry["kind"] != "vdb":
             return {"CANCELLED"}
         if _entry_volumes(entry):
-            # The bake the domain shows stays: removing it by mistake would
-            # leave nothing to render. Its eye hides it; Delete is in the menu.
-            if os.path.normpath(entry["path"]) == _current_directory(domain):
-                self.report({"ERROR"}, "This is the bake the domain shows; hide it with its eye instead")
-                return {"CANCELLED"}
+            # Any version can leave the scene, the bake the domain shows too
+            # (its files stay; Import brings it back).
             remove_entry_from_scene(entry)
             return {"FINISHED"}
         try:

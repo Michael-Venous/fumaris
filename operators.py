@@ -1214,18 +1214,29 @@ class FUMARIS_OT_participant_select(Operator):
             # Keep the domain's panel: select without making the object active.
             return {"FINISHED"}
         context.view_layer.objects.active = obj
-        for window in context.window_manager.windows:
-            for area in window.screen.areas:
-                if area.type != "PROPERTIES":
-                    continue
-                for space in area.spaces:
-                    if space.type == "PROPERTIES":
-                        try:
-                            space.context = "PHYSICS"
-                        except TypeError:
-                            pass  # this object type has no Physics tab
-                area.tag_redraw()
+        if not _show_physics_tab(context.window_manager):
+            # The editor offers the new object's tabs only once it redraws.
+            manager = context.window_manager
+            bpy.app.timers.register(lambda: _show_physics_tab(manager) and None, first_interval=0.05)
         return {"FINISHED"}
+
+
+def _show_physics_tab(manager):
+    """Show the Physics tab in every Properties editor; False if one did not
+    offer it yet."""
+    shown = True
+    for window in manager.windows:
+        for area in window.screen.areas:
+            if area.type != "PROPERTIES":
+                continue
+            for space in area.spaces:
+                if space.type == "PROPERTIES":
+                    try:
+                        space.context = "PHYSICS"
+                    except TypeError:
+                        shown = False  # no Physics tab (yet) for this object
+            area.tag_redraw()
+    return shown
 
 
 class FUMARIS_OT_participant_solo(Operator):

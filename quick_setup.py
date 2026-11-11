@@ -145,6 +145,29 @@ def _new_collection(name, parent):
     return collection
 
 
+_ROOT_MARKER = "fumaris_root"
+_ROLE_LABELS = (("emitter", "Emitters"), ("collider", "Colliders"),
+                ("effector", "Effectors"), ("outflow", "Outflows"))
+
+
+def fumaris_root(scene):
+    """The scene's top-level Fumaris collection, which holds one group per
+    domain: found by its marker (a renamed root still works), else made."""
+    for child in scene.collection.children:
+        if child.get(_ROOT_MARKER):
+            return child
+    root = _new_collection("Fumaris", scene.collection)
+    root[_ROOT_MARKER] = True
+    return root
+
+
+def new_domain_group(scene, name):
+    """Fumaris > name > the domain's Emitters, Colliders, Effectors and
+    Outflows collections. Returns (group, {role: collection})."""
+    group = _new_collection(name, fumaris_root(scene))
+    return group, {role: _new_collection(f"{group.name} {label}", group) for role, label in _ROLE_LABELS}
+
+
 def _new_source(collection, name, position):
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
@@ -368,7 +391,7 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
                 layout.label(text=f"{len(context.selected_objects)} selected mesh source(s)", icon="MESH_DATA")
         if self.preset == "EXPLOSION":
             layout.prop(self, "debris")
-        layout.label(text="Creates a simulation empty and participant collections", icon="MOD_FLUID")
+        layout.label(text="Creates a simulation empty and its collections under Fumaris", icon="MOD_FLUID")
 
     def execute(self, context):
         sources = list(context.selected_objects) if self.source_mode == "SELECTED" else []
@@ -378,15 +401,9 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
                 self.report({"WARNING"}, error)
                 return {"CANCELLED"}
         preset = PRESETS[self.preset]
-        name = preset["name"]
-        root = _new_collection(f"Fumaris {name}", context.scene.collection)
-        collections = {
-            role: _new_collection(f"{name} {label}", root)
-            for role, label in (
-                ("emitter", "Emitters"), ("collider", "Colliders"),
-                ("effector", "Effectors"), ("outflow", "Outflows"),
-            )
-        }
+        # A second Rising Smoke is "Rising Smoke 2", its objects named to match.
+        name = _unique_group_name(preset["name"])
+        root, collections = new_domain_group(context.scene, name)
         if not sources:
             sources = [_new_source(collections["emitter"], f"{name} Source", context.scene.cursor.location)]
         else:
@@ -427,17 +444,173 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _unique_group_name(base):
+    if base not in bpy.data.collections:
+        return base
+    number = 2
+    while f"{base} {number}" in bpy.data.collections:
+        number += 1
+    return f"{base} {number}"
+
+
+class FUMARIS_OT_domain_create(bpy.types.Operator):
+    bl_idname = "fumaris.domain_create"
+    bl_label = "New Domain"
+    bl_description = ("Create an empty simulation domain at the 3D cursor, with its Emitters, Colliders, Effectors "
+                      "and Outflows collections under the Fumaris collection, and choose it in the Fumaris tab")
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(name="Name", default="Simulation")
+
+    @classmethod
+    def poll(cls, context):
+        return FUMARIS_OT_quick_setup.poll(context)
+
+    def execute(self, context):
+        name = _unique_group_name(self.name.strip() or "Simulation")
+        group, collections = new_domain_group(context.scene, name)
+        cursor = context.scene.cursor.location
+        domain = _new_domain(group, f"{name} Domain", cursor - Vector((1, 1, 1)), cursor + Vector((1, 1, 1)))
+        props = domain.fumaris
+        props.smoke_object_type = "domain"
+        props.sim_start_frame = context.scene.frame_start
+        props.sim_end_frame = context.scene.frame_end
+        _apply_settings(props, _DOMAIN_DEFAULTS)
+        for role, collection in collections.items():
+            setattr(props, f"{role}_collection", collection)
+        for obj in context.selected_objects:
+            obj.select_set(False)
+        domain.select_set(True)
+        context.view_layer.objects.active = domain
+        context.scene.fumaris_preview_domain = domain
+        self.report({"INFO"}, f"{domain.name} ready: add emitters from the Fumaris tab")
+        return {"FINISHED"}
+
+
+_ROLE_NAMES = dict(_ROLE_LABELS)
+
+
+def _add_error(obj, role, domain):
+    """Why obj cannot join domain as role, or None."""
+    from .participants import participant_for_object
+    if obj.fumaris.smoke_object_type == "domain":
+        return "a domain"
+    if not obj.is_editable:
+        return "linked from a library"
+    kind = obj.fumaris.smoke_object_type
+    if kind not in {"none", role}:
+        return f"already a Fumaris {kind}"
+    if participant_for_object(obj, role, 0, "") is None:
+        return f"{obj.type.lower()} objects cannot be {_ROLE_NAMES[role].lower()} yet"
+    return None
+
+
+class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
+    bl_idname = "fumaris.participants_add_selected"
+    bl_label = "Add Selected"
+    bl_description = ("Make the selected objects participants of the chosen domain: each is linked into the "
+                      "domain's collection for that role and keeps its other collections")
+    bl_options = {"REGISTER", "UNDO"}
+
+    role: EnumProperty(name="Role", items=[(role, label[:-1], "") for role, label in _ROLE_LABELS])
+
+    @classmethod
+    def description(cls, context, properties):
+        return (f"Make the selected objects {_ROLE_NAMES[properties.role].lower()} of the chosen domain: each is "
+                "linked into the domain's collection for that role and keeps its other collections")
+
+    @classmethod
+    def poll(cls, context):
+        from .playback import resolve_domain
+        if context.mode != "OBJECT":
+            cls.poll_message_set("Switch to Object Mode")
+            return False
+        if active_job():
+            cls.poll_message_set("Stop the active Fumaris simulation first")
+            return False
+        if resolve_domain(context) is None:
+            cls.poll_message_set("Choose a domain in the Fumaris tab")
+            return False
+        if not context.selected_objects:
+            cls.poll_message_set("Select the objects to add")
+            return False
+        return True
+
+    def execute(self, context):
+        from .playback import resolve_domain
+        domain = resolve_domain(context)
+        props = domain.fumaris
+        attribute = f"{self.role}_collection"
+        collection = getattr(props, attribute)
+        if collection is None:
+            # A domain made by hand: give it the role's collection beside it.
+            parent = domain.users_collection[0] if domain.users_collection else context.scene.collection
+            collection = _new_collection(f"{domain.name} {_ROLE_NAMES[self.role]}", parent)
+            setattr(props, attribute, collection)
+        added, skipped = [], []
+        for obj in sorted(context.selected_objects, key=lambda item: item.name):
+            error = _add_error(obj, self.role, domain)
+            if error:
+                skipped.append(f"{obj.name} ({error})")
+                continue
+            if obj.name not in collection.all_objects:
+                collection.objects.link(obj)
+            obj.fumaris.smoke_object_type = self.role
+            added.append(obj.name)
+        role = _ROLE_NAMES[self.role].lower() if len(added) != 1 else _ROLE_NAMES[self.role][:-1].lower()
+        if not added:
+            self.report({"WARNING"}, "Nothing added: " + "; ".join(skipped))
+            return {"CANCELLED"}
+        message = f"Added {len(added)} {role} to {domain.name}"
+        if skipped:
+            self.report({"WARNING"}, message + "; skipped " + "; ".join(skipped))
+        else:
+            self.report({"INFO"}, message)
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_domain_choose(bpy.types.Operator):
+    bl_idname = "fumaris.domain_choose"
+    bl_label = "Choose Domain"
+    bl_description = ("Choose this domain for the Fumaris tab, playback and Add actions, select it and show its "
+                      "settings. It stays chosen while you select its emitters and colliders")
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        if active_job():
+            cls.poll_message_set("Stop the active Fumaris simulation to choose another domain")
+            return False
+        return True
+
+    def invoke(self, context, event):
+        domain = bpy.data.objects.get(self.name)
+        if domain is None or domain.name not in context.view_layer.objects:
+            self.report({"WARNING"}, f"{self.name} is not in this view layer")
+            return {"CANCELLED"}
+        context.scene.fumaris_preview_domain = domain
+        return bpy.ops.fumaris.participant_select("INVOKE_DEFAULT", name=domain.name, activate=True)
+
+
 def _draw_add_menu(self, context):
     obj = context.object
     if obj is None or obj.fumaris.smoke_object_type == "none":
         self.layout.operator(FUMARIS_OT_quick_setup.bl_idname, text="Fumaris Quick Setup…", icon="MOD_FLUID")
 
 
+_CLASSES = (FUMARIS_OT_quick_setup, FUMARIS_OT_domain_create, FUMARIS_OT_participants_add_selected,
+            FUMARIS_OT_domain_choose)
+
+
 def register():
-    bpy.utils.register_class(FUMARIS_OT_quick_setup)
+    for cls in _CLASSES:
+        bpy.utils.register_class(cls)
     bpy.types.VIEW3D_MT_add.append(_draw_add_menu)
 
 
 def unregister():
     bpy.types.VIEW3D_MT_add.remove(_draw_add_menu)
-    bpy.utils.unregister_class(FUMARIS_OT_quick_setup)
+    for cls in reversed(_CLASSES):
+        bpy.utils.unregister_class(cls)

@@ -1155,9 +1155,10 @@ class FUMARIS_MT_presets(bpy.types.Menu):
 
 
 class FUMARIS_PT_sidebar(bpy.types.Panel):
-    """The 3D Viewport sidebar's Fumaris tab: the domain, its transport, and
-    its objects; clicking one shows its settings in the Properties editor
-    (no need to find it in the Outliner)."""
+    """The 3D Viewport sidebar's Fumaris tab: the scene's domains, the chosen
+    domain's transport and objects, and one-click setup. Clicking a name
+    shows its settings in the Properties editor (no need to find it in the
+    Outliner); the chosen domain stays chosen while its objects are selected."""
     bl_label = "Fumaris"
     bl_idname = "FUMARIS_PT_sidebar"
     bl_space_type = "VIEW_3D"
@@ -1168,24 +1169,46 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         from . import playback
         layout = self.layout
         domains = playback.scene_domains(context)
+        domain = playback.resolve_domain(context)
+        header = layout.row(align=True)
+        header.label(text="Domains")
+        header.operator("fumaris.domain_create", text="", icon="ADD")
+        header.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
         if not domains:
             layout.label(text="No Fumaris domain in this scene", icon="INFO")
-            layout.operator_menu_enum("fumaris.quick_setup", "preset", text="Quick Setup", icon="ADD")
+            layout.operator("fumaris.domain_create", text="New Domain", icon="ADD")
             return
-        domain = playback.resolve_domain(context)
-        row = layout.row(align=True)
-        row.enabled = not playback.active_job()
-        row.prop(context.scene, "fumaris_preview_domain", text="")
-        if domain is not None:
-            select = row.operator("fumaris.participant_select", text="", icon="RESTRICT_SELECT_OFF")
-            select.name = domain.name
-            select.activate = True
+        listing = layout.column(align=True)
+        listing.enabled = not active_job()
+        for obj in domains:
+            row = listing.row(align=True)
+            row.alignment = "LEFT"
+            choose = row.operator("fumaris.domain_choose", text=obj.name, emboss=False,
+                                  icon="RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF")
+            choose.name = obj.name
+        layout.separator(factor=0.5)
         playback.draw_controls(layout, context, compact=True, popover=False)
         if domain is None:
             layout.label(text="Choose a domain", icon="INFO")
             return
         layout.separator(factor=0.5)
+        layout.label(text=f"{domain.name} Objects")
         draw_participant_rows(layout.column(align=True), domain.fumaris, activate=True)
+        layout.separator(factor=0.5)
+        add = layout.column(align=True)
+        add.enabled = not active_job()
+        add.label(text="Add Selected Objects As")
+        for pair in (("emitter", "collider"), ("effector", "outflow")):
+            row = add.row(align=True)
+            for role in pair:
+                operator = row.operator("fumaris.participants_add_selected", text=role.title(),
+                                        icon=_ROLE_ICONS[role])
+                operator.role = role
+        source = layout.row()
+        source.enabled = not active_job()
+        # Add Source acts on context.object: point it at the chosen domain.
+        source.context_pointer_set("object", domain)
+        source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
 
 
 CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_PT_sidebar)

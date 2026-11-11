@@ -580,14 +580,19 @@ def _mesh_state(participant, depsgraph, payload, frame):
             channels["couple_rate_velocity"] = max(
                 channels["couple_rate_velocity"], OPEN_SURFACE_FAN_COUPLING)
 
+    if enabled and participant["role"] == "emitter":
+        _scale_emitter_channels(channels, props)
+    effective_enabled = enabled and (participant["role"] != "emitter" or _emitter_strength(props) > 0.0)
+
     state = {
         "id": participant["id"],
         "role": participant["role"],
-        "enabled": enabled,
+        "enabled": effective_enabled,
         "local_to_world": [value for row in matrix for value in row],
         "min_distance": minimum,
         "max_distance": maximum,
         "is_collision": participant["role"] == "collider",
+        "collision_solid": bool(getattr(props, "collider_solid", True)),
         # Open (non-manifold) collider meshes have no inside (Open Collider Wall).
         "open_surface": participant["role"] == "collider" and participant.get("closed_surface") is None,
         "is_outflow": participant["role"] == "outflow",
@@ -635,13 +640,17 @@ def _sphere_state(participant, depsgraph):
         channels.update(_primitive_surface_source(
             props, 4.0 * math.pi * r * r, 4.0 / 3.0 * math.pi * r ** 3))
 
+    if enabled and participant["role"] == "emitter":
+        _scale_emitter_channels(channels, props)
+    effective_enabled = enabled and (participant["role"] != "emitter" or _emitter_strength(props) > 0.0)
     return {
         "id": participant["id"],
         "role": participant["role"],
-        "enabled": enabled,
+        "enabled": effective_enabled,
         "position": [position.x, position.y, position.z],
         "radius": max(radius, 1e-12),
         "is_collision": participant["role"] == "collider",
+        "collision_solid": bool(getattr(props, "collider_solid", True)),
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
         "motion_substeps": props.motion_substeps,
         "multisample": props.sphere_multisample,
@@ -679,14 +688,18 @@ def _box_state(participant, depsgraph):
         x, y, z = (2.0 * abs(h * s) for h, s in zip(half_size, scale))
         channels.update(_primitive_surface_source(
             props, 2.0 * (x * y + y * z + z * x), x * y * z))
+    if enabled and participant["role"] == "emitter":
+        _scale_emitter_channels(channels, props)
+    effective_enabled = enabled and (participant["role"] != "emitter" or _emitter_strength(props) > 0.0)
     return {
         "id": participant["id"],
         "role": participant["role"],
-        "enabled": enabled,
+        "enabled": effective_enabled,
         "local_to_world": [value for row in matrix for value in row],
         "half_size": half_size,
         "wall_half_size": wall_half_size,
         "is_collision": participant["role"] == "collider",
+        "collision_solid": bool(getattr(props, "collider_solid", True)),
         "physics_velocity_scale": props.collider_velocity_influence if participant["role"] == "collider" else props.motion_velocity_scale,
         **channels,
     }
@@ -720,6 +733,8 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
     }
     if not enabled:
         return disabled
+    if participant["role"] == "emitter" and _emitter_strength(props) == 0.0:
+        return disabled
     if _is_geometry_nodes(props, "volume"):
         filepath = _stage_gn_volume(obj, depsgraph, frame, volume_stage_dir)
     else:
@@ -735,6 +750,12 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
 
     file_version = _volume_file_version(filepath)
 
+    channels = _participant_channels(
+        props, participant["role"],
+        velocity_active=bool(getattr(props, "volume_use_velocity", False)),
+    )
+    if participant["role"] == "emitter":
+        _scale_emitter_channels(channels, props)
     return {
         "id": participant["id"],
         "enabled": True,
@@ -742,11 +763,7 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
         "file_version": file_version,
         "grids": _volume_grid_names(props),
         "local_to_world": [value for row in matrix for value in row],
-        **_participant_channels(
-            props,
-            participant["role"],
-            velocity_active=bool(getattr(props, "volume_use_velocity", False)),
-        ),
+        **channels,
     }
 
 
@@ -932,6 +949,10 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
     elif getattr(props, "emitter_burning", False):
         value_ops = _burning_point_values(values, props, _BURN_DOMAIN, value_ops)
 
+    strength = _emitter_strength(props)
+    _scale_point_emitter_values(values, value_ops, strength, props)
+    effective_enabled = enabled and strength > 0.0
+
     sections = {
         "positions": _versioned(payload, positions, frame),
         "radii": _versioned(payload, radii, frame),
@@ -942,7 +963,8 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
 
     return {
         "id": participant["id"],
-        "enabled": enabled,
+        "enabled": effective_enabled,
+        "global_influence": strength,
         "multisample": bool(
             _is_particles(props, "point_cloud") and props.point_enable_interpolation
         ),
@@ -1052,6 +1074,68 @@ def _burning_channels(channels, props, domain):
     ops &= ~(1 << (4 + smoke))
     ops |= 1 << smoke  # Add
     return ops
+
+
+def _emitter_strength(props):
+    return max(0.0, float(getattr(props, "emitter_global_influence", 1.0)))
+
+
+def _scaled_emitter_rate(rate, strength, replace):
+    # Replace normally uses an effectively instantaneous coupling. Scaling that
+    # sentinel directly would still be instantaneous even at 0.001 influence.
+    # Below 1, blend the selected fraction over one scene frame instead.
+    if replace and rate == _REPLACE_COUPLE_RATE and strength < 1.0:
+        if strength <= 0.0:
+            return 0.0
+        scene = bpy.context.scene
+        fps = scene.render.fps / max(1e-6, scene.render.fps_base)
+        speed = max(1e-4, float(getattr(_BURN_DOMAIN, "simulation_speed", 1.0)))
+        return -math.log1p(-strength) * fps / speed
+    return rate * strength
+
+
+def _scale_emitter_channels(channels, props):
+    strength = _emitter_strength(props)
+    channels["global_influence"] = strength
+    if strength == 1.0:
+        return
+    for name in ("smoke", "temperature", "fuel", "burn", "velocity"):
+        key = f"couple_rate_{name}"
+        channels[key] = _scaled_emitter_rate(
+            channels[key], strength, getattr(props, f"source_op_{name}", "blend") == "replace")
+    if channels.get("value_ops", 0) & EXPANSION_BLEND_OP:
+        channels["couple_rate_divergence"] = _scaled_emitter_rate(
+            channels["couple_rate_divergence"], strength,
+            getattr(props, "source_op_divergence", "max") == "replace")
+    else:
+        channels["divergence"] *= strength
+        if "surface_flux" in channels:
+            channels["surface_flux"] *= strength
+
+
+def _scale_point_emitter_values(values, value_ops, strength, props):
+    if strength == 1.0:
+        return
+    keys = {"couple_rate_velocities": "velocity", "couple_rate_temperatures": "temperature",
+            "couple_rate_fuels": "fuel", "couple_rate_burns": "burn", "couple_rate_smokes": "smoke"}
+    keys["couple_rate_divergences" if value_ops & EXPANSION_BLEND_OP else "divergences"] = "divergence"
+    for key, channel in keys.items():
+        if key not in values:
+            continue
+        replace = (key != "divergences" and strength < 1.0 and
+                   getattr(props, f"source_op_{channel}", "blend") == "replace")
+        replacement = _scaled_emitter_rate(_REPLACE_COUPLE_RATE, strength, True) if replace else 0.0
+        if np is not None:
+            scaled = array("f", values[key])
+            samples = np.frombuffer(scaled, dtype=np.float32)
+            replace_mask = samples == _REPLACE_COUPLE_RATE if replace else None
+            samples *= strength
+            if replace:
+                samples[replace_mask] = replacement
+            values[key] = scaled
+        else:
+            values[key] = array("f", (replacement if replace and value == _REPLACE_COUPLE_RATE
+                                      else value * strength for value in values[key]))
 
 
 def _influence_channels(channels):

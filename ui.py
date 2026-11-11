@@ -183,6 +183,7 @@ def _is_particle_point_cloud(props):
 def _draw_mesh_emitter_options(box, props):
     box.prop(props, "mesh_emission_mode", text="Region")
     box.prop(props, "mesh_emission_distance")
+    box.prop(props, "emitter_global_influence", slider=True)
     box.prop(props, "mesh_emission_mask_attribute", text="Mask")
     if props.mesh_emission_mask_attribute.strip():
         box.prop(props, "mesh_emission_mask_threshold")
@@ -296,6 +297,12 @@ def _draw_emitter_shape(box, obj, props):
         box.label(text="Combined geometry, shared settings")
         box.label(text="Source meshes need no Fumaris role")
 
+    mesh_options = (props.participant_type in {"mesh", "collection_mesh"} or
+                    (props.participant_type == "particles" and props.particle_subtype == "mesh") or
+                    (props.participant_type == "geometry_nodes" and props.gn_subtype == "mesh"))
+    if not mesh_options:
+        box.prop(props, "emitter_global_influence", slider=True)
+
 
 def _hot_fuel_without_air(obj, props):
     # With an Oxygen Limit and no Oxygen Field the air left is judged from
@@ -371,8 +378,8 @@ def _draw_emitter(layout, obj, props):
     box = layout.box()
     # A box of its own: the arrow at the box edge, like the domain's Advanced.
     opened = _foldout(box, props, "show_emitter_coupling", "Channel Coupling")
-    column = box.column(align=True)
     if opened:
+        column = box.column(align=True)
         # The rate gets the room: its label is the channel's name.
         for channel in ("smoke", "temperature", "fuel", "burn", "velocity", "divergence"):
             row = column.split(factor=0.64 if _NARROW else 0.6, align=True)
@@ -381,8 +388,8 @@ def _draw_emitter(layout, obj, props):
 
     box = layout.box()
     opened = _foldout(box, props, "show_emitter_advanced", "Advanced")
-    column = box.column(align=True)
     if opened:
+        column = box.column(align=True)
         column.prop(props, "emitter_influence")
         column.prop(props, "emitter_burning")
         if props.emitter_burning:
@@ -414,6 +421,7 @@ def _draw_collider(layout, props):
             box.prop(props, "collider_margin")
         elif props.collider_type == "sphere":
             box.prop(props, "collider_radius")
+        box.prop(props, "collider_solid")
         box.prop(props, "collider_velocity_influence")
 
 

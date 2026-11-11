@@ -286,6 +286,14 @@ class FumarisSettings(PropertyGroup):
         soft_max=10.0,
     )
 
+    emitter_global_influence: FloatProperty(
+        name="Influence",
+        description="Scale this emitter's channel coupling and expansion together. 0 turns the emitter off; 1 keeps its usual strength",
+        default=1.0,
+        min=0.0,
+        soft_max=1.0,
+    )
+
     # Flow exposes an independent coupling rate for every emitted channel.
     couple_rate_velocity: FloatProperty(
         name="Velocity",
@@ -932,6 +940,12 @@ class FumarisSettings(PropertyGroup):
         soft_max=20.0,
         subtype="DISTANCE",
         soft_min=0.01,
+    )
+
+    collider_solid: BoolProperty(
+        name="Solid Boundary",
+        description="Block smoke and remove it from inside the collider. Turn off to keep only the influence of collider motion on nearby velocity",
+        default=True,
     )
 
     collider_velocity_influence: FloatProperty(

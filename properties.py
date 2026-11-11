@@ -1783,7 +1783,6 @@ class FumarisSettings(PropertyGroup):
         description="Emission strength multiplier for generated fire",
         default=2.0,
         min=0.0,
-        max=100.0,
         soft_max=100.0,
         update=_appearance_updated,
     )
@@ -1899,7 +1898,6 @@ class FumarisSettings(PropertyGroup):
         description="Pyro look: emission strength of the fire",
         default=2.0,
         min=0.0,
-        max=100.0,
         soft_max=100.0,
         update=_appearance_updated,
     )

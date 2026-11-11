@@ -1066,40 +1066,41 @@ def _draw_domain(layout, scene, props):
         mask = vorticity_row.row(align=True)
         mask.active = props.vorticity > 0.0
         mask.prop(props, "vorticity_mask", text="")
-        behavior.separator()
 
-        # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
-        # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
-        stack, stack_open = _nested_foldout(behavior, props, "show_domain_detail_stack", "Detail & Shaping")
-        if stack_open:
-            detail_stack.draw(stack, props.id_data)
+    # Same card, but their own dropdowns (not nested in Smoke Behavior).
+    behavior_box.separator(factor=0.3)
+    # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
+    # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
+    if _section(behavior_box, props, "show_domain_detail_stack", "Detail & Shaping", "FORCE_TURBULENCE"):
+        detail_stack.draw(behavior_box.column(align=True), props.id_data)
 
-        combustion, combustion_open = _nested_foldout(behavior, props, "show_domain_combustion", "Combustion")
-        if combustion_open:
-            combustion.prop(props, "flame_temperature")
-            combustion.prop(props, "fuel_energy")
-            combustion.prop(props, "ignition_temperature_k")
-            combustion.separator()
-            times = _pair(combustion)
-            times.prop(props, "burn_time")
-            times.prop(props, "cooling_time")
-            combustion.prop(props, "temperature_diffusion")
-            combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
-            combustion.separator()
-            combustion.prop(props, "gas_expansion")
-            shaping = _pair(combustion)
-            shaping.prop(props, "wisp_cooling")
-            shaping.prop(props, "fuel_threshold")
-            air = _pair(combustion)
-            air.prop(props, "oxygen_limit")
-            air.prop(props, "soot_radiation")
-            oxygen = combustion.row(align=True)
-            oxygen.active = props.oxygen_limit > 0.0
-            oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
-            field = oxygen.row(align=True)
-            field.active = props.oxygen_field and props.oxygen_limit > 0.0
-            field.prop(props, "oxygen_use", text="Use")
-            field.prop(props, "oxygen_mixing", text="Mixing")
+    behavior_box.separator(factor=0.3)
+    if _section(behavior_box, props, "show_domain_combustion", "Combustion", "LIGHT_SUN"):
+        combustion = behavior_box.column(align=True)
+        combustion.prop(props, "flame_temperature")
+        combustion.prop(props, "fuel_energy")
+        combustion.prop(props, "ignition_temperature_k")
+        combustion.separator()
+        times = _pair(combustion)
+        times.prop(props, "burn_time")
+        times.prop(props, "cooling_time")
+        combustion.prop(props, "temperature_diffusion")
+        combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
+        combustion.separator()
+        combustion.prop(props, "gas_expansion")
+        shaping = _pair(combustion)
+        shaping.prop(props, "wisp_cooling")
+        shaping.prop(props, "fuel_threshold")
+        air = _pair(combustion)
+        air.prop(props, "oxygen_limit")
+        air.prop(props, "soot_radiation")
+        oxygen = combustion.row(align=True)
+        oxygen.active = props.oxygen_limit > 0.0
+        oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
+        field = oxygen.row(align=True)
+        field.active = props.oxygen_field and props.oxygen_limit > 0.0
+        field.prop(props, "oxygen_use", text="Use")
+        field.prop(props, "oxygen_mixing", text="Mixing")
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking

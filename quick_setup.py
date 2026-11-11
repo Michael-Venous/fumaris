@@ -669,6 +669,35 @@ class FUMARIS_OT_object_delete(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class FUMARIS_OT_object_rename(bpy.types.Operator):
+    bl_idname = "fumaris.object_rename"
+    bl_label = "Rename"
+    bl_description = "Rename this object"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(options={"HIDDEN"})
+    new_name: bpy.props.StringProperty(name="Name")
+
+    def invoke(self, context, event):
+        obj = bpy.data.objects.get(self.name)
+        if obj is None:
+            return {"CANCELLED"}
+        self.new_name = obj.name
+        return context.window_manager.invoke_props_dialog(self, width=260)
+
+    def draw(self, context):
+        self.layout.activate_init = True   # type at once
+        self.layout.prop(self, "new_name", text="")
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.name)
+        new_name = self.new_name.strip()
+        if obj is None or not new_name:
+            return {"CANCELLED"}
+        obj.name = new_name
+        return {"FINISHED"}
+
+
 def _button_context_menu(self, context):
     """Right-click on a domain or object in the Fumaris tab: delete it."""
     op = getattr(context, "button_operator", None)
@@ -684,6 +713,7 @@ def _button_context_menu(self, context):
     layout = self.layout
     layout.separator()
     layout.label(text=obj.name, icon="OBJECT_DATA")
+    layout.operator("fumaris.object_rename", text="Rename…", icon="GREASEPENCIL").name = obj.name
     if identifier == "FUMARIS_OT_domain_choose":
         layout.operator("fumaris.object_delete", text="Delete Domain (keeps its collections)",
                         icon="TRASH").name = obj.name
@@ -699,7 +729,8 @@ def _draw_add_menu(self, context):
 
 
 _CLASSES = (FUMARIS_OT_quick_setup, FUMARIS_OT_domain_create, FUMARIS_OT_participants_add_selected,
-            FUMARIS_OT_domain_choose, FUMARIS_OT_participant_remove, FUMARIS_OT_object_delete)
+            FUMARIS_OT_domain_choose, FUMARIS_OT_participant_remove, FUMARIS_OT_object_delete,
+            FUMARIS_OT_object_rename)
 
 
 def register():

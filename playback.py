@@ -129,18 +129,21 @@ class FUMARIS_OT_preview_toggle(bpy.types.Operator):
 class FUMARIS_OT_preview_restart(bpy.types.Operator):
     bl_idname = 'fumaris.preview_restart'
     bl_label = 'Fumaris Restart Preview'
-    bl_description = 'Stop the preview and start it again from the simulation start frame'
+    bl_description = ('Start the preview again from the simulation start frame '
+                      '(starts it when it is not running)')
 
     @classmethod
     def poll(cls, context):
-        return active_mode() == 'previewing'
+        # Not running: the same checks as Play.
+        return active_mode() == 'previewing' or FUMARIS_OT_preview_toggle.poll(context)
 
     def execute(self, context):
         domain = resolve_domain(context)
         if domain is None:
             return {'CANCELLED'}
         name = domain.name
-        bpy.ops.fumaris.preview_stop()
+        if active_mode() == 'previewing':
+            bpy.ops.fumaris.preview_stop()
         result = bpy.ops.fumaris.preview_play(domain_name=name)
         return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
 

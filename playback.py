@@ -215,7 +215,8 @@ def draw_controls(layout, context, *, compact=False, popover=True):
         row.operator('fumaris.stop', text='' if compact else 'Stop Bake', icon='SNAP_FACE')
     elif running:
         row.operator('fumaris.preview_stop', text='' if compact else 'Stop', icon='SNAP_FACE')
-        row.operator('fumaris.preview_restart', text='' if compact else 'Restart', icon='FILE_REFRESH')
+        # Small, as in the Simulate panel.
+        row.row(align=True).operator('fumaris.preview_restart', text='', icon='FILE_REFRESH')
     else:
         bake = row.row(align=True)
         bake.enabled = domain is not None and not job

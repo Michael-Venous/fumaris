@@ -59,6 +59,7 @@ Compatibility). This is a beta: please report scenes that look wrong.
 - Smoother: panning while playing re-renders between frames, occlusion
   follows fast orbits, and Preview While Baking.
 - Preview Frame Rate, and Show Fumaris Preview Here or in All Viewports.
+- The preview works in orthographic views (it showed nothing).
 
 ### Baking and files
 
@@ -75,6 +76,9 @@ Compatibility). This is a beta: please report scenes that look wrong.
   Smoke.
 - User presets for domains and sources; a participant list with Enabled and
   Solo; clearer status and diagnostics; a reorganised panel.
+- A Fumaris tab in the 3D Viewport sidebar lists the domain's objects: click
+  one to show its settings. Bake from the Timeline and viewport headers.
+- A Biased/Unbiased switch for Cycles volumes in Appearance.
 - The generated material is organised into node groups; Sync Material per
   version.
 

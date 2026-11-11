@@ -1019,7 +1019,7 @@ def _draw_domain(layout, scene, props):
         participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
         _draw_participant_list(participants, props)
 
-    behavior_box = layout.box()
+    behavior_box = layout.box().column(align=True)
     behavior_box.enabled = not is_baking
     if _section(behavior_box, props, "show_panel_behavior", "Smoke Behavior", "MOD_FLUID"):
         behavior = behavior_box.column(align=True)
@@ -1068,13 +1068,11 @@ def _draw_domain(layout, scene, props):
         mask.prop(props, "vorticity_mask", text="")
 
     # Same card, but their own dropdowns (not nested in Smoke Behavior).
-    behavior_box.separator(factor=0.3)
     # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
     # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
     if _section(behavior_box, props, "show_domain_detail_stack", "Detail & Shaping", "FORCE_TURBULENCE"):
         detail_stack.draw(behavior_box.column(align=True), props.id_data)
 
-    behavior_box.separator(factor=0.3)
     if _section(behavior_box, props, "show_domain_combustion", "Combustion", "LIGHT_SUN"):
         combustion = behavior_box.column(align=True)
         combustion.prop(props, "flame_temperature")
@@ -1286,7 +1284,7 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         if body:
             draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")
-        header.label(text="Add Selected Objects", icon="ADD")
+        header.label(text="Add Objects", icon="ADD")
         if body:
             add = body.column(align=True)
             add.enabled = not active_job()

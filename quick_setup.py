@@ -512,15 +512,16 @@ def _add_error(obj, role, domain):
 
 class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
     bl_idname = "fumaris.participants_add_selected"
-    bl_label = "Add Selected"
-    bl_description = ("Make the selected objects participants of the chosen domain: each is linked into the "
-                      "domain's collection for that role and keeps its other collections")
+    bl_label = "Add Participant"
+    bl_description = "Add selected objects to the chosen domain, or create a participant at the 3D cursor"
     bl_options = {"REGISTER", "UNDO"}
 
     role: EnumProperty(name="Role", items=[(role, label[:-1], "") for role, label in _ROLE_LABELS])
 
     @classmethod
     def description(cls, context, properties):
+        if not any(obj.fumaris.smoke_object_type != "domain" for obj in context.selected_objects):
+            return f"Create a new {_ROLE_NAMES[properties.role][:-1].lower()} at the 3D cursor in the chosen domain"
         return (f"Make the selected objects {_ROLE_NAMES[properties.role].lower()} of the chosen domain: each is "
                 "linked into the domain's collection for that role and keeps its other collections")
 
@@ -536,9 +537,6 @@ class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
         if resolve_domain(context) is None:
             cls.poll_message_set("Choose a domain in the Fumaris tab")
             return False
-        if not any(obj.fumaris.smoke_object_type != "domain" for obj in context.selected_objects):
-            cls.poll_message_set("Select the objects to add in the viewport or Outliner (a domain cannot be added)")
-            return False
         return True
 
     def execute(self, context):
@@ -552,6 +550,34 @@ class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
             parent = domain.users_collection[0] if domain.users_collection else context.scene.collection
             collection = _new_collection(f"{domain.name} {_ROLE_NAMES[self.role]}", parent)
             setattr(props, attribute, collection)
+        selected = [obj for obj in context.selected_objects if obj.fumaris.smoke_object_type != "domain"]
+        if not selected:
+            name = f"{domain.name} {_ROLE_NAMES[self.role][:-1]}"
+            if self.role == "effector":
+                obj = bpy.data.objects.new(name, None)
+                collection.objects.link(obj)
+                obj.empty_display_type = "SPHERE"
+            elif self.role == "collider":
+                mesh = bpy.data.meshes.new(name)
+                bm = bmesh.new()
+                try:
+                    bmesh.ops.create_cube(bm, size=2.0)
+                    bm.to_mesh(mesh)
+                finally:
+                    bm.free()
+                obj = bpy.data.objects.new(name, mesh)
+                collection.objects.link(obj)
+            else:
+                obj = _new_source(collection, name, context.scene.cursor.location)
+            obj.location = context.scene.cursor.location
+            obj.fumaris.smoke_object_type = self.role
+            obj.fumaris.participant_enabled = True
+            for other in context.selected_objects:
+                other.select_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+            self.report({"INFO"}, f"Created {obj.name} in {domain.name}")
+            return {"FINISHED"}
         added, skipped = [], []
         for obj in sorted(context.selected_objects, key=lambda item: item.name):
             error = _add_error(obj, self.role, domain)

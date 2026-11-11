@@ -60,6 +60,8 @@ Compatibility). This is a beta: please report scenes that look wrong.
   follows fast orbits, and Preview While Baking.
 - Preview Frame Rate, and Show Fumaris Preview Here or in All Viewports.
 - The preview works in orthographic views (it showed nothing).
+- A looping preview repeats exactly: Disturb and Grain restarted their noise
+  only when Blender did, so each loop came out different.
 
 ### Baking and files
 

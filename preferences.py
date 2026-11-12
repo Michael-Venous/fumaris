@@ -77,6 +77,12 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         description="GPU for new Preview and Bake jobs; saved in Blender preferences",
     )
 
+    default_output_dir: StringProperty(
+        name="Default Cache Directory",
+        description="Cache directory new domains start with, in any scene. Setting a domain's Cache Directory updates it; empty uses a fumaris_cache folder next to the .blend file",
+        default="", subtype="DIR_PATH",
+    )
+
     preview_cache_memory_gb: FloatProperty(
         name="Preview Cache RAM",
         description="Most system memory a cached live preview keeps its frames in (compressed, full detail). 0 uses a quarter of the RAM, from 1 to 16 GB. When it is full the oldest frames are dropped, so the cache holds the most recent part of the preview. Whatever this is set to, the cache also drops its oldest frames when the system is short of free memory (it leaves 2 GB or an eighth of the RAM, whichever is more, free)",
@@ -93,6 +99,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         box.label(text="Applies to the next Preview or Bake. Save Preferences to keep this choice.")
         cache = layout.row(align=True)
         cache.prop(self, "preview_cache_memory_gb", text="Preview Cache RAM (GB, 0 = Auto)")
+        layout.prop(self, "default_output_dir")
         if not _devices:
             box.label(text="Refresh GPUs to list available devices", icon='INFO')
         if self.gpu_device_uuid and _devices and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):

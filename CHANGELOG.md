@@ -2,7 +2,12 @@
 
 All notable customer-facing changes are recorded here.
 
-## 2.0.0 beta 1 — Unreleased
+## 2.0.0 beta 2 — Unreleased
+
+- New domains start with the cache directory you last set, in any scene
+  (stored in the Fumaris preferences as Default Cache Directory).
+
+## 2.0.0 beta 1 — 2026-11-12
 
 The first Fumaris 2.0 release: a new solver core, physical fire and a live
 preview that looks like the render. **Scenes from 1.x are not converted** (see

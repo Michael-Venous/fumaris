@@ -35,6 +35,26 @@ def _object_type_updated(self, _context):
     obj = self.id_data
     if self.smoke_object_type == "domain" and getattr(obj, "type", "") != "EMPTY":
         obj.display_type = "WIRE"
+    # A new domain starts with the last cache directory chosen, in any scene.
+    if self.smoke_object_type == "domain" and not self.output_dir.strip():
+        from .utils import get_addon_preferences
+        prefs = get_addon_preferences()
+        remembered = getattr(prefs, "default_output_dir", "").strip() if prefs else ""
+        if remembered:
+            self.output_dir = remembered
+
+
+def _output_dir_updated(self, context):
+    """Remember a domain's cache directory for new domains (saved with the
+    preferences)."""
+    if self.smoke_object_type != "domain":
+        return
+    from .utils import get_addon_preferences
+    prefs = get_addon_preferences()
+    value = self.output_dir.strip()
+    if prefs is not None and value and prefs.default_output_dir != value:
+        prefs.default_output_dir = value
+        context.preferences.is_dirty = True
 
 
 def _compare_view_updated(self, _context):
@@ -791,9 +811,10 @@ class FumarisSettings(PropertyGroup):
 
     output_dir: StringProperty(
         name="Output Directory",
-        description="Directory for output files",
+        description="Directory for output files. New domains start with the last one you set (Fumaris preferences)",
         default="",
         subtype="DIR_PATH",
+        update=_output_dir_updated,
     )
 
     density_storage: EnumProperty(

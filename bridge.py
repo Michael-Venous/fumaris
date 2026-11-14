@@ -1,5 +1,6 @@
 import os
 import queue
+import sys
 import subprocess
 import threading
 from collections import deque
@@ -31,6 +32,7 @@ from .protocol import (
     PREVIEW_CACHE_EXPORT,
     PREVIEW_RENDER,
     SESSION_BEGIN,
+    SESSION_COMPLETE,
     SESSION_END,
     SESSION_RESET,
     read_message,
@@ -42,6 +44,8 @@ from .protocol import (
 from .utils import process_environment, get_addon_preferences
 from .devices import device_environment, discover_devices
 from .memory_auto import update_readings as update_memory_readings
+
+_TRACE = bool(os.environ.get("FUMARIS_WORKER_TRACE"))
 
 
 class BridgeWorker:
@@ -63,6 +67,9 @@ class BridgeWorker:
         self._stderr_lock = threading.Lock()
         self._stderr_thread = None
         self._cancel_requested = threading.Event()
+        self._failed = threading.Event()
+        self._closing = threading.Event()
+        self._reader_thread = None
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
@@ -141,6 +148,10 @@ class BridgeWorker:
         return process_memory_bytes(process.pid) if process else 0
 
     def _run(self):
+        """Writer thread: starts the bridge and writes every request as soon as
+        it is queued. Replies come back on their own thread (_read_responses),
+        so a frame can be sent while the one before it is still running: the
+        bridge overlaps the next frame's CPU work with a frame's GPU time."""
         try:
             if self._gpu_uuid:
                 available = discover_devices(self._executable, self._environment)
@@ -161,12 +172,12 @@ class BridgeWorker:
                 )
             self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
             self._stderr_thread.start()
+            self._reader_thread = threading.Thread(target=self._read_responses, daemon=True)
+            self._reader_thread.start()
 
-            self._receive()
             write_message(self._process.stdin, SESSION_BEGIN, self._session)
-            self._receive()
 
-            while True:
+            while not self._failed.is_set():
                 try:
                     message_type, data, payload = self._requests.get(timeout=0.1)
                 except queue.Empty:
@@ -175,37 +186,68 @@ class BridgeWorker:
                     continue
                 if self._process.poll() is not None:
                     raise RuntimeError("Bridge exited before the next frame was sent")
+                if message_type in {CANCEL, SESSION_END} and not self._keep_alive:
+                    self._closing.set()
                 write_message(self._process.stdin, message_type, data, payload)
-                self._receive()
+                if _TRACE:
+                    print(f"WORKER sent {message_type} frame={data.get('frame') if isinstance(data, dict) else None}", file=sys.stderr, flush=True)
                 if (
                     message_type == FRAME
                     and int(data["frame"]) >= self._session["end_frame"]
                     and not self._keep_alive
                 ):
+                    # The bridge answers the frames first, then the session end.
+                    self._closing.set()
                     write_message(self._process.stdin, SESSION_END, {})
-                    self._receive()
                     break
-                if message_type in {SESSION_BEGIN, SESSION_RESET}:
-                    continue
                 if message_type in {CANCEL, SESSION_END} and not self._keep_alive:
                     break
+            # Every request is written: the replies still to come end the
+            # reader (the session's completion, or the stream closing).
+            if self._reader_thread is not None:
+                self._reader_thread.join(timeout=30.0)
         except Exception as error:
-            message_type = (
-                CANCELLED if self._cancel_requested.is_set() else FAILED
-            )
-            message = "Bake stopped"
-            if message_type == FAILED:
-                message = self._failure_message(error)
-            self.responses.put((
-                message_type,
-                {
-                    "message": message,
-                    "stderr": self.stderr(),
-                },
-                b"",
-            ))
+            self._report_failure(error)
         finally:
+            self._closing.set()
             self._close_process()
+
+    def _read_responses(self):
+        """Reader thread: every reply, in order, to self.responses."""
+        try:
+            while True:
+                response = read_message(self._process.stdout)
+                if _TRACE:
+                    print(f"WORKER got {response[0]} frame={response[1].get('frame') if isinstance(response[1], dict) else None} payload={len(response[2])}", file=sys.stderr, flush=True)
+                if response[0] == FAILED:
+                    raise RuntimeError(response[1].get("message", "Bridge failed"))
+                self.responses.put(response)
+                if response[0] in {SESSION_COMPLETE, CANCELLED} and not self._keep_alive:
+                    return
+        except Exception as error:
+            if self._closing.is_set() and isinstance(error, (EOFError, OSError, ValueError)):
+                return   # the stream closed as the session ended
+            self._report_failure(error)
+
+    def _report_failure(self, error):
+        """One CANCELLED or FAILED reply, whichever thread hit the problem first."""
+        if self._failed.is_set():
+            return
+        self._failed.set()
+        message_type = (
+            CANCELLED if self._cancel_requested.is_set() else FAILED
+        )
+        message = "Bake stopped"
+        if message_type == FAILED:
+            message = self._failure_message(error)
+        self.responses.put((
+            message_type,
+            {
+                "message": message,
+                "stderr": self.stderr(),
+            },
+            b"",
+        ))
 
     def _receive(self):
         response = read_message(self._process.stdout)

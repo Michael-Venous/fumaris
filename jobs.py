@@ -34,6 +34,22 @@ from .utils import (
 
 
 class FrameRangeJob:
+    # Frames sent to the bridge and not yet complete. Playing a live preview
+    # sends one frame ahead (_pipeline_depth 2), so the bridge overlaps the
+    # next frame's CPU work with the frame on the GPU; bakes send one at a time.
+    _in_flight = 0
+
+    @property
+    def _submitted(self):
+        return self._in_flight > 0
+
+    @_submitted.setter
+    def _submitted(self, value):
+        self._in_flight = max(1, self._in_flight) if value else 0
+
+    def _pipeline_depth(self, _context):
+        return 1
+
     def _configure_job(
         self,
         context,
@@ -219,7 +235,7 @@ class FrameRangeJob:
                         self._ending_session = True
                         self._worker.end_session()
                     continue
-                if not self._submitted and self._ready_to_submit(context):
+                if self._in_flight < self._pipeline_depth(context) and self._ready_to_submit(context):
                     try:
                         self._submit_frame(context)
                     except Exception as error:
@@ -255,7 +271,7 @@ class FrameRangeJob:
 
         if (
             self._accepted
-            and not self._submitted
+            and self._in_flight < self._pipeline_depth(context)
             and not self._stop_requested
             and not self._ending_session
             and self._ready_to_submit(context)
@@ -337,7 +353,13 @@ class FrameRangeJob:
             "blender_send_ms": self._last_submit_timing["send_ms"],
             "payload_bytes": len(packet.payload),
         })
-        self._submitted = True
+        self._in_flight += 1
+        if self._pipeline_depth(context) > 1:
+            # The next frame may go out before this one completes.
+            self._frame = self._next_frame_after_submit(context, self._frame)
+
+    def _next_frame_after_submit(self, _context, submitted):
+        return submitted + 1
 
     def _after_frame_packet(self, _packet):
         pass
@@ -351,6 +373,8 @@ class FrameRangeJob:
     def _frame_complete(self, context, data, payload):
         domain = bpy.data.objects.get(self._domain_name)
         completed = int(data.get("frame", self._frame))
+        self._in_flight = max(0, self._in_flight - 1)
+        ahead = self._frame   # frames already sent ahead are not sent again
         self._completed_frames.append(completed)
         self._peak_vram_bytes = max(
             self._peak_vram_bytes,
@@ -453,10 +477,8 @@ class FrameRangeJob:
 
         next_frame = self._next_frame_after_complete(context, completed)
         if next_frame is None:
-            self._submitted = False
             return None
-        self._frame = next_frame
-        self._submitted = False
+        self._frame = max(next_frame, ahead) if self._in_flight > 0 else next_frame
         if not self._ready_to_submit(context):
             return None
         try:

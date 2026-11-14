@@ -95,7 +95,6 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     _participants = ()
     _prefix = "fumaris_"
     _started_at = 0.0
-    _submitted = False
     _completed_frames = ()
     _timer_interval = 0.001
 
@@ -417,7 +416,6 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     _participants = ()
     _prefix = "fumaris_"
     _started_at = 0.0
-    _submitted = False
     _completed_frames = ()
     _session_signature = None
     _timer_interval = 0.001
@@ -731,9 +729,32 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             # started: timer latency would add up into skipped frames.
             self._next_submit_at = clock[0] + (self._frame - clock[1]) * duration
 
+    def _pipeline_depth(self, context):
+        """Two frames in flight while playing every frame as fast as the GPU
+        goes (Frame Rate Uncapped, no frame dropping): the bridge then runs
+        the next frame's CPU work during this frame's render. Replays,
+        rerenders, pauses, loop resets and the last frame keep to one."""
+        domain = bpy.data.objects.get(self._domain_name)
+        if (
+            domain is None
+            or not getattr(self, "_preview_enabled", True)
+            or getattr(self, "_replaying", False)
+            or getattr(self, "_pause_requested", False)
+            or getattr(self, "_loop_reset_pending", False)
+            or getattr(self, "_export_pending", None)
+            or self._stop_requested
+            or self._frame > self._end_frame
+            or context.scene.sync_mode != "NONE"
+            or _preview_frame_duration(context.scene, domain.fumaris) > 0.0
+        ):
+            return 1
+        return 2
+
     def _ready_to_submit(self, context):
         if getattr(self, "_preview_render_submitted", False):
             return False
+        if self._in_flight > 0 and self._frame > self._end_frame:
+            return False   # the last frame is in flight; nothing to send ahead
         # Do not block the main thread preparing the next frame before Blender
         # has had an opportunity to upload and draw the image just received.
         # A hidden/closed viewport must never stall the simulation indefinitely.

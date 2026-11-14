@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **The live preview plays faster**: while it plays every frame as fast as
+  the GPU goes (Frame Rate Uncapped), the next frame is sent before the
+  current one is shown, so the solver's CPU work and the image hand-off no
+  longer wait between GPU frames (Explosion 1024 on an RTX 4060 Ti: 18 to 22
+  frames a second). The frames and images are the same.
 - **Colour Mixing** (Advanced): each emitter's smoke carries its own Smoke
   Colour (the swatch beside Smoke); where plumes meet, the colours mix by
   amount, and smoke from combustion takes the colour around it. The preview

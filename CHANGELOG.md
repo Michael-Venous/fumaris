@@ -4,6 +4,14 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Air costs less**: blocks that hold only air around the smoke keep the
+  velocity field and no longer the smoke fields (density, temperature, fuel,
+  burn), which are about four fifths of a block's memory. The same VRAM holds
+  7 to 9% more blocks (10 GB: 86,286 instead of 79,507 at 4 channels), and an
+  Explosion at Resolution 1024 simulates 6% faster. A block gets its smoke
+  storage back before anything can reach it; the baked files of the test
+  scenes are identical with and without. Diagnostics shows the second pool
+  ("With smoke storage"), and Voxels now counts the stored ones.
 - **Tighter simulation space**: Air Margin is measured from the smoke itself
   instead of from the edge of the 16-cell block that holds it, so no whole
   block of empty air is kept where the smoke is far from a block's face.

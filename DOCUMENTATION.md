@@ -419,6 +419,13 @@ watch the capacity readout; when capacity runs out, smoke and emitters keep
 their blocks and the margin shrinks. The pressure solve always reaches across
 the whole plume, so no separate setting is needed for large shapes.
 
+A block of air costs about a fifth of a block of smoke: it stores the
+velocity field only, and gets its smoke fields (density, temperature, fuel,
+burn) just before anything can move into it. Diagnostics therefore shows two
+counts when Air Margin is above 0, `Sparse blocks` (all of them) and `With
+smoke storage`, each against its own capacity; the capacity warning follows
+whichever is fuller. `Voxels` counts the stored ones.
+
 A domain saved by an earlier version uses 0.5 m unless its Air Margin was set
 by hand, and so simulates differently from 1.2.1. `Adaptive Boundary Padding`,
 the earlier answer to the same stepping, has been removed.

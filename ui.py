@@ -565,6 +565,10 @@ def _draw_diagnostics(layout, props):
         capacity = number("flow_active_block_capacity")
         if capacity:
             box.label(text=f"Sparse blocks: {int(number('flow_active_blocks')):,} / {int(capacity):,}")
+        fine_capacity = number("flow_fine_block_capacity")
+        if fine_capacity and fine_capacity < capacity:
+            # air blocks keep only velocity; the rest have smoke storage, a pool of its own
+            box.label(text=f"With smoke storage: {int(number('flow_fine_blocks')):,} / {int(fine_capacity):,}")
         cells = number("flow_active_cells")
         if cells:
             box.label(text=f"Voxels: {_compact_count(cells)}")

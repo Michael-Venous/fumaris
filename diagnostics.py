@@ -81,22 +81,33 @@ def record(domain, data):
             state["metrics"][name] = entry[:512]
         elif isinstance(entry, (int, float)) and math.isfinite(entry):
             state["metrics"][name] = entry
-    capacity = value(state, "flow_active_block_capacity")
-    active = value(state, "flow_active_blocks")
-    if capacity > 0 and active >= capacity:
+    if pool_use(state) >= 1.0:
         # Keep evidence of lost allocation visible if blocks are later freed.
         state["capacity_reached"] = True
+
+
+def pool_use(state):
+    """Return how full the fullest block pool is, 0 to 1.
+
+    Every block has velocity storage; the blocks that hold smoke (not the air
+    reserved around it) also have density storage, in a pool of their own.
+    """
+    capacity = value(state, "flow_active_block_capacity")
+    use = value(state, "flow_active_blocks") / capacity if capacity > 0 else 0.0
+    fine_capacity = value(state, "flow_fine_block_capacity")
+    if fine_capacity > 0:
+        use = max(use, value(state, "flow_fine_blocks") / fine_capacity)
+    return use
 
 
 def capacity_status(state):
     """Return a per-run capacity notice, including an exhausted run's history."""
     if not state:
         return None
-    capacity = value(state, "flow_active_block_capacity")
-    active = value(state, "flow_active_blocks")
-    if state.get("capacity_reached") or (capacity > 0 and active >= capacity):
+    use = pool_use(state)
+    if state.get("capacity_reached") or use >= 1.0:
         return "full"
-    if capacity > 0 and active / capacity >= 0.95:
+    if use >= 0.95:
         return "near"
     return None
 
@@ -143,11 +154,9 @@ def error_summary(state):
 
 def warnings(state):
     result = []
-    capacity = value(state, "flow_active_block_capacity")
-    active = value(state, "flow_active_blocks")
     if capacity_status(state) == "full":
         result.append("Simulation capacity reached: smoke may be cut off. Increase VRAM or lower Resolution, then restart.")
-    elif capacity and active / capacity >= 0.85:
+    elif pool_use(state) >= 0.85:
         result.append("Sparse blocks nearly full: increase VRAM or lower Resolution.")
     requested = value(state, "flow_requested_resolution")
     actual = value(state, "flow_effective_resolution")
@@ -171,7 +180,8 @@ def memory_usage(state):
     """Return (used_bytes, allocated_bytes) for the simulation, or None.
 
     The pool is allocated in full when the simulation starts, so "used" is the
-    share of that allocation holding active smoke blocks.
+    share of that allocation holding active blocks. Density storage (about four
+    fifths of the memory) is counted by the blocks that have it.
     """
     if not state:
         return None
@@ -180,7 +190,11 @@ def memory_usage(state):
     active = value(state, "flow_active_blocks")
     if allocated <= 0 or capacity <= 0:
         return None
-    return allocated * min(1.0, active / capacity), allocated
+    use = active / capacity
+    fine_capacity = value(state, "flow_fine_block_capacity")
+    if fine_capacity > 0:
+        use = 0.8 * value(state, "flow_fine_blocks") / fine_capacity + 0.2 * use
+    return allocated * min(1.0, use), allocated
 
 
 def memory_spill_warning(state):

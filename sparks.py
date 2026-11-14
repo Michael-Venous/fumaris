@@ -22,10 +22,14 @@ GROUP_NAME = "Fumaris Sparks"
 MATERIAL_NAME = "Fumaris Spark"
 # Bump when the node group or the material changes: sparks already in a file
 # keep the group they were made with, new ones get the new group.
-VERSION = 2
+VERSION = 3
 VERSION_KEY = "fumaris_sparks_version"
 DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
 GLOW_LIMIT = 700.0   # Kelvin: a cooler spark no longer glows and is removed
+# Emission strength is temperature x 0.01 x Brightness. At 1 (beta 1) every
+# spark rendered pinkish white under AgX; at 0.1 the hottest just stay below
+# white (orange), cool ones are red (notes/experiments/sparks-followups-2026-11-14).
+BRIGHTNESS = 0.1
 
 
 def _link(tree, a, b):
@@ -125,7 +129,8 @@ def build_group():
     _socket(tree, "Spread", "NodeSocketFloat", 0.1, 0.0,
             "Extra random distance of each new spark from the voxel it starts in, in metres")
     _socket(tree, "Radius", "NodeSocketFloat", 0.02, 0.0, "Size of each spark, in metres")
-    _socket(tree, "Brightness", "NodeSocketFloat", 1.0, 0.0, "Strength of the sparks' glow")
+    _socket(tree, "Brightness", "NodeSocketFloat", BRIGHTNESS, 0.0,
+            "Strength of the sparks' glow. Above about 0.3 the hottest sparks render white")
     _socket(tree, "Simulation Speed", "NodeSocketFloat", 1.0, 0.0,
             "How fast time passes for the sparks. Set from the domain's Simulation Speed when added, so slow motion slows them too")
     _socket(tree, "Seed", "NodeSocketInt", 0, None, "Another number gives different random sparks")
@@ -304,10 +309,12 @@ def build_group():
     _link(tree, sim_out.outputs["Geometry"], radius.inputs["Points"])
     _link(tree, group_in.outputs["Radius"], radius.inputs["Radius"])
     material = nodes.new("GeometryNodeSetMaterial")
-    material.location = (1750, 0)
+    material.location = (1850, 0)
     material.inputs["Material"].default_value = build_material()
     # Stored after the simulation, so a new value shows without playing again.
-    _link(tree, _store(tree, radius.outputs["Points"], "spark_brightness", "FLOAT", group_in.outputs["Brightness"], (1700, 150)),
+    bright = _store(tree, radius.outputs["Points"], "spark_brightness", "FLOAT", group_in.outputs["Brightness"], (1700, 150))
+    # Cycles blurs points along an attribute named "velocity" (metres per second).
+    _link(tree, _store(tree, bright, "velocity", "FLOAT_VECTOR", _attribute(tree, "spark_velocity", "FLOAT_VECTOR", (1650, -200)), (1800, 150)),
           material.inputs["Geometry"])
     _link(tree, material.outputs["Geometry"], group_out.inputs["Geometry"])
     tree[VERSION_KEY] = VERSION

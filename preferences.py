@@ -160,7 +160,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
                 row.label(text="unavailable", icon='ERROR')
         ticked = sum(1 for gpu in self.bake_gpus if gpu.use)
         if not self.bake_gpus:
-            box.label(text="Press Refresh (above) to choose GPUs; without a choice, bakes use the Simulation GPU", icon='INFO')
+            box.label(text="Press Refresh above to list the GPUs; with none ticked, bakes use the Simulation GPU", icon='INFO')
         elif not ticked:
             box.label(text="None ticked: background bakes use the Simulation GPU", icon='INFO')
         if self.bake_workers > max(1, ticked):

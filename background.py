@@ -229,7 +229,7 @@ def start(context, domains):
     snapshot of the scene as it is now. Returns (jobs, [(domain name, why not)])."""
     errors = []
     checked = []
-    for domain in domains:
+    for domain in dict.fromkeys(domains):
         try:
             checked.append((domain, *_check(context, domain)))
         except (RuntimeError, OSError) as error:

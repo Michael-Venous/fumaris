@@ -151,10 +151,13 @@ Useful preview controls:
 - `Frame Rate` paces preview playback: `Scene` plays at the scene's frame rate
   (real speed), `Uncapped` as fast as the GPU simulates, `Custom` at your own
   FPS. Bakes are not paced.
-- `Tone Mapping` uses Blender's own colour management: `Scene` follows the
-  scene's view transform, look and display; `AgX`, `Filmic` and `Standard` use
-  those view transforms. The 8-bit preview image is dithered so dark smoke does
-  not band.
+- `View and Look` use Blender's own colour management, like the scene's Color
+  Management panel. View `Scene` follows the scene's view transform, look and
+  display, so the preview matches the render. Any other View (`Standard`,
+  `Khronos PBR Neutral`, `AgX`, `Filmic`, `ACES`) takes the Look beside it, for
+  example `AgX` with `Punchy` for more saturated fire. They change only the
+  preview: set the scene's own View and Look to render the same way. The 8-bit
+  preview image is dithered so dark smoke does not band.
 - `Exposure` follows the scene's exposure; the offset here adds to it (+1 doubles
   the light). It affects only the preview, not baked grids or materials.
 - The domain's `Appearance` group controls smoke density and color plus fire
@@ -1061,10 +1064,10 @@ Expansion 0.2; Rising Smoke and Steady Fire use Normal Velocity 0.25, Explosion
 
 ### Choosing the simulation GPU
 
-Use **GPU** in the domain's **Simulate** controls, or **Simulation GPU** in
-Fumaris preferences. Click the refresh icon to list Vulkan GPUs, then choose a
-card. The choice applies to new Preview and Bake jobs and is shared across
-scenes. Save Blender preferences to keep it after restarting Blender.
+Use **Simulation GPU** in the Fumaris preferences (Edit > Preferences >
+Add-ons > Fumaris). Click the refresh icon to list Vulkan GPUs, then choose a
+card. The choice applies to new Preview and Bake jobs, is shared across scenes
+and is kept with Blender's preferences.
 
 **Automatic** prefers a discrete GPU and preserves launch environment overrides.
 An explicit choice uses the card's UUID, so a driver changing device order does

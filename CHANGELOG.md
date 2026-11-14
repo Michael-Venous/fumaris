@@ -6,6 +6,15 @@ All notable customer-facing changes are recorded here.
 
 - New domains start with the cache directory you last set, in any scene
   (stored in the Fumaris preferences as Default Cache Directory).
+- Preview **View and Look**, side by side like Blender's Color Management:
+  any View other than Scene takes its own Look (for example AgX with Punchy
+  for more saturated fire). Khronos PBR Neutral and ACES views added.
+- The GPU choice is in the Fumaris preferences only (it was also in the
+  Simulate panel). The preferences are grouped: Simulation GPU, Cache, Live
+  Preview Shortcuts, Runtime.
+- A long list of separate mesh or sphere emitters shows a hint: one Collection
+  Mesh or Collection Points emitter simulates several times faster.
+- Trace Steps sits under Simulation Scale in Advanced.
 
 ## 2.0.0 beta 1 — 2026-11-12
 

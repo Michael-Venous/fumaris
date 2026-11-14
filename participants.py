@@ -69,7 +69,8 @@ def participant_overview(domain_props, limit=60, search="", counts=None):
     them (wrong Fumaris type, unsupported source, disabled). At most limit
     rows; the panel draws this, so it never evaluates geometry. search
     (lower case) keeps names containing it; counts, a dict, receives
-    "matching": every match, shown or not.
+    "matching": every match, shown or not, and "mesh" / "sphere": the separate
+    emitters of that shape (whatever the search).
     """
     rows = []
     seen = set()
@@ -83,6 +84,11 @@ def participant_overview(domain_props, limit=60, search="", counts=None):
                 if key in seen or not hasattr(obj, "fumaris"):
                     continue
                 seen.add(key)
+                if counts is not None and role == "emitter" and obj.fumaris.smoke_object_type == "emitter":
+                    # Separate sources of one shape: a Collection source is faster.
+                    shape = obj.fumaris.participant_type
+                    if shape in {"mesh", "sphere"}:
+                        counts[shape] = counts.get(shape, 0) + 1
                 if search and search not in obj.name.lower():
                     continue
                 if counts is not None:

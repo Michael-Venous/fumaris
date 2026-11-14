@@ -122,6 +122,30 @@ _SOURCE_OPERATIONS = (
 )
 
 
+# Looks of Blender's color management, by the number files store. AgX has its
+# own set ("AgX - Punchy"); every other view takes the plain contrast looks.
+_PREVIEW_LOOKS_AGX = (
+    ("none", "None", "No look", 0),
+    ("punchy", "Punchy", "More saturated and contrasty; fire reads warmer", 1),
+    ("greyscale", "Greyscale", "Black and white", 2),
+    ("very_high", "Very High Contrast", "", 3),
+    ("high", "High Contrast", "", 4),
+    ("medium_high", "Medium High Contrast", "", 5),
+    ("base", "Base Contrast", "", 6),
+    ("medium_low", "Medium Low Contrast", "", 7),
+    ("low", "Low Contrast", "", 8),
+    ("very_low", "Very Low Contrast", "", 9),
+)
+_PREVIEW_LOOKS_PLAIN = tuple(
+    (identifier, "Medium Contrast" if identifier == "base" else name, description, number)
+    for identifier, name, description, number in _PREVIEW_LOOKS_AGX
+    if identifier not in {"punchy", "greyscale"})
+
+
+def _preview_look_items(self, _context):
+    return _PREVIEW_LOOKS_AGX if self.preview_tone_mapping == "agx" else _PREVIEW_LOOKS_PLAIN
+
+
 class FumarisSettings(PropertyGroup):
     """Custom PropertyGroup storing all simulation parameters for Fumaris smoke simulation."""
 
@@ -636,17 +660,26 @@ class FumarisSettings(PropertyGroup):
     )
 
     preview_tone_mapping: EnumProperty(
-        name="Tone Mapping",
-        description="How bright smoke and fire fit into the preview image, using Blender's own color management transforms. Preview only",
+        name="View",
+        description="View transform of the preview image, from Blender's own color management. Scene follows the scene's View, Look and Display, so the preview matches the render. Preview only",
         # Fixed numbers: files store the number, and 1.3.1 had filmic, none,
         # agx as 0, 1, 2 (Scene was added first in the list in 2.0).
         items=(
             ("scene", "Scene", "Follow the scene's View Transform, Look and Display, so the preview tone maps like the render", 3),
-            ("filmic", "Filmic", "Blender's Filmic view transform", 0),
             ("none", "Standard", "Blender's Standard view transform: plain sRGB, values above the display range clip to white", 1),
+            ("khronos", "Khronos PBR Neutral", "Blender's Khronos PBR Neutral view transform", 4),
             ("agx", "AgX", "Blender's AgX view transform", 2),
+            ("filmic", "Filmic", "Blender's Filmic view transform", 0),
+            ("aces20", "ACES 2.0", "Blender's ACES 2.0 view transform", 5),
+            ("aces13", "ACES 1.3", "Blender's ACES 1.3 view transform", 6),
         ),
         default="scene",
+    )
+
+    preview_look: EnumProperty(
+        name="Look",
+        description="Look applied with the preview's View, as in Blender's Color Management (for example AgX with Punchy for more saturated fire). Preview only: set the scene's own Look to render with it",
+        items=_preview_look_items,
     )
 
 

@@ -55,16 +55,16 @@ def _build(display, view, look, gamma):
     return np.clip(np.nan_to_num(rgb), 0.0, 1.0).astype(np.float32).ravel()
 
 
-def scene_display_lut(scene, view_override=None):
-    """(key, flat float32 array of SIZE^3 RGB) for the scene's view transform (or
-    view_override, without the scene's look), or (None, None)."""
+def scene_display_lut(scene, view_override=None, look_override=None):
+    """(key, flat float32 array of SIZE^3 RGB) for the scene's view transform and
+    look (or view_override with look_override, None for no look), or (None, None)."""
     view = getattr(scene, "view_settings", None)
     display_settings = getattr(scene, "display_settings", None)
     if view is None or display_settings is None:
         return None, None
     display = display_settings.display_device
     transform = view_override or view.view_transform
-    look = "None" if view_override else getattr(view, "look", "None")
+    look = (look_override or "None") if view_override else getattr(view, "look", "None")
     gamma = float(getattr(view, "gamma", 1.0))
     key = f"{display}|{transform}|{look}|{gamma:.4f}|{SIZE}"
     table = _CACHE.get(key)

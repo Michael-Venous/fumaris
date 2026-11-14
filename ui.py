@@ -7,7 +7,7 @@ from .runtime import active_job, active_mode
 from . import diagnostics
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
-from .utils import FLAME_VALUE_KEYS, flame_value, get_addon_preferences, peek_output_directory_for_object, physical_buoyancy
+from .utils import FLAME_VALUE_KEYS, flame_value, peek_output_directory_for_object, physical_buoyancy
 
 
 def _foldout(layout, props, property_name, label):
@@ -108,6 +108,9 @@ def _highlight_row(layout, operator, name, icon, highlighted, **properties):
 # Long object lists get a search box; Show More pages through them.
 _SEARCH_FROM = 8
 _PAGE = 60
+# Separate emitters of one shape from which the panel suggests a Collection
+# source (100 mesh emitters: 37.8 ms a frame, 4.2 ms as one Collection Mesh).
+_COLLECTION_HINT_FROM = 16
 
 
 class FUMARIS_OT_participant_list_more(bpy.types.Operator):
@@ -171,6 +174,11 @@ def draw_participant_rows(content, props, *, activate=False):
         more = content.row(align=True)
         more.label(text=f"Showing {len(rows)} of {matching}")
         more.operator("fumaris.participant_list_more", text="Show More", icon="TRIA_DOWN")
+    for shape, kind, source in (("mesh", "mesh", "Collection Mesh"), ("sphere", "sphere", "Collection Points")):
+        if counts.get(shape, 0) >= _COLLECTION_HINT_FROM:
+            hint = content.column(align=True)
+            _wrapped(hint, f"{counts[shape]} separate {kind} emitters. If they can share settings, one "
+                           f"{source} emitter for their collection simulates several times faster", "INFO")
 
 
 def _is_particle_point_cloud(props):
@@ -724,12 +732,6 @@ def _draw_domain(layout, scene, props):
     simulate_box = layout.box()
     if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
         controls = simulate_box.column(align=True)
-        prefs = get_addon_preferences()
-        if prefs:
-            gpu = controls.row(align=True)
-            gpu.enabled = mode is None
-            gpu.prop(prefs, "simulation_gpu", text="GPU")
-            gpu.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
         slot_directory = peek_output_directory_for_object(props.id_data)
         slot_protected = is_protected(slot_directory)
         row = controls.row(align=True)
@@ -1008,9 +1010,18 @@ def _draw_domain(layout, scene, props):
                     fire.enabled = props.shader_flame_enabled
                     fire.prop(props, "preview_fire_lighting", slider=True)
 
-                preview.label(text="Color")
-                color = preview.row(align=True)
-                color.prop(props, "preview_tone_mapping", text="")
+                # View and Look side by side, as in Blender's Color Management.
+                preview.label(text="View and Look")
+                color = preview.column(align=True)
+                view = color.row(align=True)
+                view.prop(props, "preview_tone_mapping", text="")
+                look = view.row(align=True)
+                if props.preview_tone_mapping == "scene":
+                    # Scene follows the scene's own look: shown, changed in Color Management.
+                    look.enabled = False
+                    look.prop(scene.view_settings, "look", text="")
+                else:
+                    look.prop(props, "preview_look", text="")
                 color.prop(props, "preview_exposure_offset", slider=True)
             preview.label(text="The preview keeps its VRAM until Stop", icon="INFO")
 
@@ -1114,8 +1125,8 @@ def _draw_domain(layout, scene, props):
         # Rarely touched. What a shot is tuned with lives with Resolution above.
         advanced = advanced_box.column(align=True)
         advanced.prop(props, "simulation_speed")
-        advanced.prop(props, "trace_steps")
         advanced.prop(props, "simulation_scale")
+        advanced.prop(props, "trace_steps")
         advanced.separator()
         detail = _pair(advanced)
         if _NARROW:

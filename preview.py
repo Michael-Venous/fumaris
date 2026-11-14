@@ -118,14 +118,32 @@ def capture_volume_preview(context, domain, target=None):
     }
 
 
-_TONE_MAPPING_VIEWS = {"agx": "AgX", "filmic": "Filmic", "none": "Standard"}
+_TONE_MAPPING_VIEWS = {"agx": "AgX", "filmic": "Filmic", "none": "Standard",
+                       "khronos": "Khronos PBR Neutral", "aces20": "ACES 2.0", "aces13": "ACES 1.3"}
+_LOOK_NAMES = {"punchy": "Punchy", "greyscale": "Greyscale", "very_high": "Very High Contrast",
+               "high": "High Contrast", "medium_high": "Medium High Contrast", "base": "Base Contrast",
+               "medium_low": "Medium Low Contrast", "low": "Low Contrast", "very_low": "Very Low Contrast"}
+
+
+def preview_look_name(props):
+    """The chosen Look's name in Blender's OCIO config, or None (also for Scene,
+    which takes the scene's own look, and a look the view does not have)."""
+    view = props.preview_tone_mapping
+    name = _LOOK_NAMES.get(getattr(props, "preview_look", "none"))
+    if view == "scene" or name is None:
+        return None
+    if view == "agx":
+        return "AgX - " + name
+    if name in {"Punchy", "Greyscale"}:
+        return None
+    return "Medium Contrast" if name == "Base Contrast" else name
 
 
 def _display_lut_request(context, props):
     """Blender's own view transform as a table (display_lut.py): the scene's for
-    Scene, else the chosen view, so every mode matches Blender exactly."""
+    Scene, else the chosen view and look, so every mode matches Blender exactly."""
     override = _TONE_MAPPING_VIEWS.get(props.preview_tone_mapping)
-    key, table = display_lut.scene_display_lut(context.scene, override)
+    key, table = display_lut.scene_display_lut(context.scene, override, preview_look_name(props))
     if key is None:
         return {}
     return {"display_lut_key": key, "display_lut_size": display_lut.SIZE, DISPLAY_LUT_KEY: table}
@@ -137,9 +155,12 @@ def _scene_exposure(context):
 
 
 def _preview_tone_mapping(context, props):
+    # The built-in curve used only when the view's table cannot be built.
     mode = props.preview_tone_mapping
-    if mode == "none":
+    if mode in {"none", "khronos"}:
         return "standard"
+    if mode in {"aces20", "aces13"}:
+        return "agx"
     if mode != "scene":
         return mode
     transform = getattr(getattr(context.scene, "view_settings", None), "view_transform", "AgX")

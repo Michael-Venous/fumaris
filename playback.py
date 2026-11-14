@@ -280,7 +280,6 @@ def draw_keymaps(layout, context):
         return
     keymap = config.keymaps.get('Window')
     if keymap:
-        layout.label(text='Live preview shortcuts (independent of selection)')
         for item in keymap.keymap_items:
             if item.idname in {'fumaris.preview_toggle', 'fumaris.preview_stop', 'fumaris.preview_restart'}:
                 rna_keymap_ui.draw_kmi([], config, keymap, item, layout, 0)

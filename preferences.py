@@ -36,6 +36,8 @@ def set_gpu(self, value):
     item = next(item for item in gpu_items(self, None) if item[3] == value)
     self.gpu_device_uuid = "" if item[0] == "AUTO" else item[0]
     self.gpu_device_name = "" if item[0] == "AUTO" else item[1]
+    # Saved with the preferences when Blender exits (Auto-Save Preferences).
+    bpy.context.preferences.is_dirty = True
 
 
 class FUMARIS_OT_refresh_gpus(bpy.types.Operator):
@@ -66,7 +68,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     executable_path: StringProperty(
         name="Bridge Executable",
-        description="Optional path to a custom Fumaris bridge executable",
+        description="Path to a custom Fumaris bridge executable. Leave empty to use the bundled one",
         subtype="FILE_PATH",
     )
 
@@ -74,7 +76,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
     gpu_device_name: StringProperty(name="Simulation GPU name", default="", options={'HIDDEN'})
     simulation_gpu: EnumProperty(
         name="Simulation GPU", items=gpu_items, get=get_gpu, set=set_gpu,
-        description="GPU for new Preview and Bake jobs; saved in Blender preferences",
+        description="GPU the next Preview or Bake runs on; kept in Blender's preferences",
     )
 
     default_output_dir: StringProperty(
@@ -91,25 +93,35 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "executable_path")
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
         box = layout.box()
+        box.label(text="Simulation GPU", icon='MEMORY')
         row = box.row(align=True)
-        row.prop(self, "simulation_gpu")
+        row.prop(self, "simulation_gpu", text="GPU")
         row.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
-        box.label(text="Applies to the next Preview or Bake. Save Preferences to keep this choice.")
-        cache = layout.row(align=True)
-        cache.prop(self, "preview_cache_memory_gb", text="Preview Cache RAM (GB, 0 = Auto)")
-        layout.prop(self, "default_output_dir")
-        if not _devices:
-            box.label(text="Refresh GPUs to list available devices", icon='INFO')
-        if self.gpu_device_uuid and _devices and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):
-            box.label(text="Saved GPU unavailable; choose another GPU or Automatic", icon='ERROR')
         if _discovery_error:
             box.label(text=_discovery_error, icon='ERROR')
+        elif self.gpu_device_uuid and _devices and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):
+            box.label(text="Saved GPU unavailable; choose another GPU or Automatic", icon='ERROR')
+        elif not _devices:
+            box.label(text="Press Refresh to list the GPUs", icon='INFO')
+
+        box = layout.box()
+        box.label(text="Cache", icon='FILE_FOLDER')
+        box.prop(self, "default_output_dir")
+        box.prop(self, "preview_cache_memory_gb", text="Preview Cache RAM (0 = Auto)")
+
         from .playback import draw_keymaps
-        draw_keymaps(layout.box(), context)
+        box = layout.box()
+        box.label(text="Live Preview Shortcuts", icon='KEYINGSET')
+        draw_keymaps(box, context)
+
+        box = layout.box()
+        box.label(text="Runtime", icon='SETTINGS')
         error = runtime_validation_error()
-        status = layout.row()
+        status = box.row()
         status.alert = bool(error)
         status.label(
             text=error or "Bundled bridge and Flow runtime found",
@@ -122,10 +134,11 @@ class FumarisPreferences(bpy.types.AddonPreferences):
             executable = executable_path()
             linux = runtime_diagnostics(executable, process_environment(executable))
             if linux is not None:
-                row = layout.row()
+                row = box.row()
                 row.alert = not linux["ok"]
                 row.label(text=f"Linux runtime: {linux['summary']}",
                           icon="CHECKMARK" if linux["ok"] and not linux["warnings"] else "ERROR" if not linux["ok"] else "INFO")
+        box.prop(self, "executable_path", text="Custom Bridge")
 
 
 def register():

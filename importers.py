@@ -886,6 +886,7 @@ def import_sequence(
         import_files[0],
         sequence_end - sequence_start + 1,
         sequence_start,
+        last_filepath=import_files[-1],
     )
     volume_object.select_set(False)
     volume_object.hide_select = not bool(selectable)
@@ -1070,7 +1071,7 @@ def _restore_selection(selected, active):
         bpy.context.view_layer.objects.active = active
 
 
-def _configure_volume(volume_object, filepath, frame_count, frame_start):
+def _configure_volume(volume_object, filepath, frame_count, frame_start, last_filepath=None):
     volume = volume_object.data
     volume.filepath = filepath
     if bpy.data.filepath:
@@ -1089,26 +1090,13 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start):
     volume.display.interpolation_method = "LINEAR"
     volume.render.space = "OBJECT"
     volume.render.step_size = 0.0
-    scene = bpy.context.scene
-    current_frame = scene.frame_current
-    load_frame = frame_start + max(0, frame_count - 1)
-    grid_names = ()
-    try:
-        if current_frame != load_frame:
-            scene.frame_set(load_frame)
-        # Sequence frame selection lives on evaluated Volume data. Loading
-        # the original datablock can try frame 0 (a nonexistent import file),
-        # especially when the scene already sits at this take's last frame.
-        volume.update_tag()
-        volume_object.update_tag()
-        bpy.context.view_layer.update()
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        evaluated_volume = volume_object.evaluated_get(depsgraph).data
-        evaluated_volume.grids.load()
-        grid_names = tuple(grid.name for grid in evaluated_volume.grids)
-    finally:
-        if scene.frame_current != current_frame:
-            scene.frame_set(current_frame)
+    # The last frame's grids (early frames can lack some), read from its file's
+    # metadata: evaluating the volume there loaded that frame's voxels, which
+    # Blender then keeps in its memory cache (about one frame of RAM for every
+    # import, until the Memory Cache Limit), and moved the scene frame twice.
+    grid_names = _file_grid_names(last_filepath)
+    if grid_names is None:
+        grid_names = _evaluated_grid_names(volume_object, frame_start + max(0, frame_count - 1))
     # OpenVDB's read order can be alphabetical even when density is written
     # first. Select the smoke field for newly imported volumes; otherwise burn
     # may be selected and make a successful bake look empty in Solid shading.
@@ -1121,6 +1109,40 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start):
         volume.velocity_unit = "SECOND"
     volume.update_tag()
     volume_object.update_tag()
+
+
+def _file_grid_names(path):
+    """Grid names in the file's order (as Blender lists them), from its
+    metadata alone; None without the openvdb module or an unreadable file."""
+    if openvdb is None or not path:
+        return None
+    try:
+        return tuple(grid.name for grid in openvdb.readAllGridMetadata(path))
+    except Exception:
+        return None
+
+
+def _evaluated_grid_names(volume_object, load_frame):
+    """Grid names at load_frame as Blender loads them (without the openvdb module)."""
+    volume = volume_object.data
+    scene = bpy.context.scene
+    current_frame = scene.frame_current
+    try:
+        if current_frame != load_frame:
+            scene.frame_set(load_frame)
+        # Sequence frame selection lives on evaluated Volume data. Loading
+        # the original datablock can try frame 0 (a nonexistent import file),
+        # especially when the scene already sits at this take's last frame.
+        volume.update_tag()
+        volume_object.update_tag()
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        evaluated_volume = volume_object.evaluated_get(depsgraph).data
+        evaluated_volume.grids.load()
+        return tuple(grid.name for grid in evaluated_volume.grids)
+    finally:
+        if scene.frame_current != current_frame:
+            scene.frame_set(current_frame)
 
 
 def _remove_volume_for_directory(directory, prefix=PREFIX):

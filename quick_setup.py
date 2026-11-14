@@ -438,7 +438,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         domain.select_set(True)
         context.view_layer.objects.active = domain
         if hasattr(context.scene, "fumaris_preview_domain"):
-            context.scene.fumaris_preview_domain = domain
+            from .playback import choose_domain
+            choose_domain(context.scene, domain)
         context.view_layer.update()
         self.report({"INFO"}, f"{name} ready: press Play")
         return {"FINISHED"}
@@ -487,7 +488,8 @@ class FUMARIS_OT_domain_create(bpy.types.Operator):
             obj.select_set(False)
         domain.select_set(True)
         context.view_layer.objects.active = domain
-        context.scene.fumaris_preview_domain = domain
+        from .playback import choose_domain
+        choose_domain(context.scene, domain)
         self.report({"INFO"}, f"{domain.name} ready: add emitters from the Fumaris tab")
         return {"FINISHED"}
 
@@ -621,7 +623,8 @@ class FUMARIS_OT_domain_choose(bpy.types.Operator):
         if domain is None or domain.name not in context.view_layer.objects:
             self.report({"WARNING"}, f"{self.name} is not in this view layer")
             return {"CANCELLED"}
-        context.scene.fumaris_preview_domain = domain
+        from .playback import choose_domain
+        choose_domain(context.scene, domain)
         return bpy.ops.fumaris.participant_select("INVOKE_DEFAULT", name=domain.name, activate=True)
 
 

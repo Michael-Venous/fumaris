@@ -85,6 +85,29 @@ def resolve_domain(context):
     return domains[0] if len(domains) == 1 else None
 
 
+def choose_domain(scene, domain):
+    """Make domain the scene's chosen domain. Blender keeps a deleted object in
+    the file while a property points at it, so a chosen domain deleted with
+    Blender's own Delete stayed (with the material made for its bakes) until
+    now: once nothing uses it any more, free both."""
+    previous = getattr(scene, 'fumaris_preview_domain', None)
+    scene.fumaris_preview_domain = domain
+    if (not isinstance(previous, bpy.types.Object) or previous == domain or previous.users
+            or previous.use_fake_user or previous.library):
+        return
+    # A scene's tool settings can still name the object it last worked on
+    # (Blender clears that itself on removal); a child, constraint or
+    # modifier that still uses it keeps it.
+    if any(not isinstance(user, bpy.types.Scene) for user in bpy.data.user_map(subset=[previous])[previous]):
+        return
+    from .importers import GENERATED_MATERIAL_MARKER
+    material = previous.fumaris.managed_material if is_domain(previous) else None
+    bpy.data.objects.remove(previous)
+    if (material is not None and material.get(GENERATED_MATERIAL_MARKER)
+            and material.users == 0 and not material.use_fake_user):
+        bpy.data.materials.remove(material)
+
+
 def _domain_poll(scene, obj):
     return is_domain(obj) and obj.name in scene.objects
 

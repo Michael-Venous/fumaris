@@ -209,6 +209,9 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 mark_bake_complete(domain)
             self._store_bake_stats(domain)
             _activate(context, domain)
+            from .sparks import problems
+            for message in problems(domain):
+                self.report({"ERROR"}, message)
         self.report({"INFO"}, "Fumaris bake stopped" if self._stop_requested else "Fumaris bake complete")
         return {"FINISHED"}
 
@@ -1576,7 +1579,14 @@ class FUMARIS_OT_cache_make_lighter(Operator):
             return {"CANCELLED"}
         finally:
             wm.progress_end()
+        # The domain shows the copy, imported like a finished bake.
         props.cache_slot = slot
+        try:
+            _import_cache(context, domain, target, prefix)
+        except Exception as error:
+            self.report({"ERROR"}, f"Version '{slot}' was written but not imported: {error}")
+            return {"CANCELLED"}
+        mark_bake_complete(domain)
         self.report({"INFO"}, f"Version '{slot}': {len(files)} frames, {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB")
         return {"FINISHED"}
 
@@ -1612,7 +1622,7 @@ class FUMARIS_OT_add_sparks(Operator):
             self.report({"ERROR"}, f"Version '{props.cache_slot}' is not in the scene: import it in Versions, then add sparks")
             return {"CANCELLED"}
         sparks = add_sparks(context, domain, volume, name=f"{domain.name} Sparks")
-        self.report({"INFO"}, f"Added '{sparks.name}': play the timeline from the start to simulate")
+        self.report({"INFO"}, f"Added '{sparks.name}': its settings are on its Geometry Nodes modifier")
         return {"FINISHED"}
 
 

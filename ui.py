@@ -7,6 +7,7 @@ from .runtime import active_job, active_mode, background_job
 from . import diagnostics
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
+from .sparks import MISSING_MARKER as SPARKS_MISSING_MARKER
 from .utils import FLAME_VALUE_KEYS, flame_value, peek_output_directory_for_object, physical_buoyancy
 
 
@@ -954,6 +955,11 @@ def _draw_domain(layout, scene, props):
                 text="",
                 depress=slot_protected,
             )
+            missing_for_sparks = domain.get(SPARKS_MISSING_MARKER)
+            if missing_for_sparks:
+                # This bake lacks a grid the domain's sparks need (sparks.follow_bakes).
+                labels.label(text="Sparks")
+                fields.label(text=f"No {missing_for_sparks}: bake again", icon="ERROR")
             labels.label(text="Directory")
             fields.prop(props, "output_dir", text="")
             labels.label(text="Prefix")

@@ -39,6 +39,23 @@ All notable customer-facing changes are recorded here.
   with the gas at any Simulation Speed and Scale and under a moved volume,
   and have a Brightness setting and tooltips. Add Sparks on a bake without
   velocity or temperature says so instead of adding sparks that cannot work.
+- Sparks show up without playing from the first frame: Add Sparks, another
+  bake and a version switch simulate them again up to the frame on screen
+  (they stayed stale until the timeline was played from the start). The new
+  object goes into the baked volume's collection, selected and active (it
+  landed in the scene's root collection, unselected).
+- A later bake without the velocity or temperature grid no longer leaves the
+  sparks only falling, silently: Bake reports it, the panel shows a warning
+  beside the Bake row and the grid is turned on again in Output.
+- Sparks blur with Cycles' motion blur (they carry a `velocity` attribute).
+  Brightness starts at 0.1: hot sparks orange, cool ones red; at the old 1 all
+  of them rendered pinkish white under AgX. Sparks already in a file keep
+  their value.
+- Make Lighter Copy imports and shows the lighter version (the domain switched
+  to it without importing it, so the fire left the viewport until Import).
+- Importing a bake with velocity no longer logs "Could not find grid with name
+  velocity"; the volume's Velocity Grid is set, so Cycles' motion blur follows
+  the baked velocity.
 
 ## 2.0.0 beta 1 — 2026-11-12
 

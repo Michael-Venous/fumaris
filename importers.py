@@ -1080,6 +1080,15 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start, last_fi
         except ValueError:
             # Windows cannot express a path on another drive relative to the file.
             pass
+    # The velocity grid (Cycles' motion blur) has to be set while the
+    # datablock holds grids, and the original holds none once it is a
+    # sequence (its frames live on the evaluated copy): load the first frame
+    # as a single file first. The name stays set; the sequence unloads it.
+    volume.is_sequence = False
+    volume.grids.load()
+    if any(grid.name == "velocity" for grid in volume.grids):
+        volume.velocity_grid = "velocity"
+        volume.velocity_unit = "SECOND"
     volume.is_sequence = True
     volume.frame_offset = 0
     volume.frame_start = frame_start
@@ -1104,9 +1113,6 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start, last_fi
         if name == "density":
             volume.grids.active_index = index
             break
-    if "velocity" in grid_names:
-        volume.velocity_grid = "velocity"
-        volume.velocity_unit = "SECOND"
     volume.update_tag()
     volume_object.update_tag()
 

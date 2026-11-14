@@ -9,8 +9,11 @@ Needs a bake with the velocity and temperature grids (Output > Velocity).
 
 One node group and one material serve every sparks object; each object keeps
 its own values on its modifier. Its Volume input follows the bake its domain
-shows (follow_bakes), through re-bakes and version switches.
+shows (follow_bakes), through re-bakes and version switches; each time the
+volume changes the sparks are simulated again up to the current frame, so the
+frame on screen shows the new bake's sparks without playing from the start.
 """
+import math
 import os
 
 import bpy
@@ -22,10 +25,18 @@ GROUP_NAME = "Fumaris Sparks"
 MATERIAL_NAME = "Fumaris Spark"
 # Bump when the node group or the material changes: sparks already in a file
 # keep the group they were made with, new ones get the new group.
-VERSION = 2
+VERSION = 3
 VERSION_KEY = "fumaris_sparks_version"
 DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
+MISSING_MARKER = "fumaris_sparks_missing"   # on a domain: grids its sparks lack in the bake it shows
 GLOW_LIMIT = 700.0   # Kelvin: a cooler spark no longer glows and is removed
+# A spark lives at most 1.4 Lifetime (build_group): the frames before that
+# cannot change the current one, so simulate() starts there.
+LIFETIME_SPREAD = 1.4
+# Emission strength is temperature x 0.01 x Brightness. At 1 (beta 1) every
+# spark rendered pinkish white under AgX; at 0.1 the hottest just stay below
+# white (orange), cool ones are red (notes/experiments/sparks-followups-2026-11-14).
+BRIGHTNESS = 0.1
 
 
 def _link(tree, a, b):
@@ -115,7 +126,7 @@ def build_group():
     _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0,
             "New sparks each frame, spread over the hot gas. At most one per hot voxel")
     _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0,
-            "Seconds a spark lives. Each spark gets between 0.6 and 1.4 times this")
+            f"Seconds a spark lives. Each spark gets between 0.6 and {LIFETIME_SPREAD} times this")
     _socket(tree, "Drag", "NodeSocketFloat", 3.0, 0.0,
             "How strongly the gas carries a spark: 0 flies free, higher values follow the gas closely")
     _socket(tree, "Gravity", "NodeSocketFloat", 9.81, None,
@@ -125,7 +136,8 @@ def build_group():
     _socket(tree, "Spread", "NodeSocketFloat", 0.1, 0.0,
             "Extra random distance of each new spark from the voxel it starts in, in metres")
     _socket(tree, "Radius", "NodeSocketFloat", 0.02, 0.0, "Size of each spark, in metres")
-    _socket(tree, "Brightness", "NodeSocketFloat", 1.0, 0.0, "Strength of the sparks' glow")
+    _socket(tree, "Brightness", "NodeSocketFloat", BRIGHTNESS, 0.0,
+            "Strength of the sparks' glow. Above about 0.3 the hottest sparks render white")
     _socket(tree, "Simulation Speed", "NodeSocketFloat", 1.0, 0.0,
             "How fast time passes for the sparks. Set from the domain's Simulation Speed when added, so slow motion slows them too")
     _socket(tree, "Seed", "NodeSocketInt", 0, None, "Another number gives different random sparks")
@@ -282,7 +294,7 @@ def build_group():
     life_random.data_type = "FLOAT"
     life_random.location = (650, -50)
     life_random.inputs["Min"].default_value = 0.6
-    life_random.inputs["Max"].default_value = 1.4
+    life_random.inputs["Max"].default_value = LIFETIME_SPREAD
     _link(tree, seed, life_random.inputs["Seed"])
     life = _math(tree, "MULTIPLY", life_random.outputs[0], group_in.outputs["Lifetime"], (850, -50))
     geometry = spawn_pos.outputs["Geometry"]
@@ -304,10 +316,12 @@ def build_group():
     _link(tree, sim_out.outputs["Geometry"], radius.inputs["Points"])
     _link(tree, group_in.outputs["Radius"], radius.inputs["Radius"])
     material = nodes.new("GeometryNodeSetMaterial")
-    material.location = (1750, 0)
+    material.location = (1850, 0)
     material.inputs["Material"].default_value = build_material()
     # Stored after the simulation, so a new value shows without playing again.
-    _link(tree, _store(tree, radius.outputs["Points"], "spark_brightness", "FLOAT", group_in.outputs["Brightness"], (1700, 150)),
+    bright = _store(tree, radius.outputs["Points"], "spark_brightness", "FLOAT", group_in.outputs["Brightness"], (1700, 150))
+    # Cycles blurs points along an attribute named "velocity" (metres per second).
+    _link(tree, _store(tree, bright, "velocity", "FLOAT_VECTOR", _attribute(tree, "spark_velocity", "FLOAT_VECTOR", (1650, -200)), (1800, 150)),
           material.inputs["Geometry"])
     _link(tree, material.outputs["Geometry"], group_out.inputs["Geometry"])
     tree[VERSION_KEY] = VERSION
@@ -373,33 +387,119 @@ def missing_grids(path):
     return [name for name in ("velocity", "temperature") if name not in names]
 
 
+def problems(domain):
+    """What an operator should report about the domain's sparks (see follow_bakes)."""
+    missing = domain.get(MISSING_MARKER)
+    return [f"Sparks: this bake has no {missing}, now turned on in Output. Bake again"] if missing else []
+
+
+def _sparks_modifiers(obj):
+    return [modifier for modifier in obj.modifiers
+            if modifier.type == "NODES" and modifier.node_group is not None and modifier.node_group.get(VERSION_KEY)]
+
+
+def reset(obj):
+    """Drop the sparks' Simulation Zone cache: the next frame evaluated starts
+    the simulation afresh. (Only Blender's operator can; it works on any object
+    given as the active one.)"""
+    try:
+        with bpy.context.temp_override(active_object=obj, selected_objects=[obj], object=obj):
+            bpy.ops.object.simulation_nodes_cache_delete("EXEC_DEFAULT", False, selected=True)   # no undo step of its own
+    except RuntimeError:
+        pass
+
+
+def simulate(obj, scene=None):
+    """Simulate the sparks again up to the current frame, as playing from the
+    first frame would: drop the cache and step the frames a living spark can
+    have started in (at most 1.4 Lifetime seconds, in the sparks' time).
+    The current frame is kept.
+    """
+    scene = scene or bpy.context.scene
+    reset(obj)
+    current = scene.frame_current
+    frames = 0
+    for modifier in _sparks_modifiers(obj):
+        lifetime = _input(modifier, "Lifetime")
+        speed = _input(modifier, "Simulation Speed")
+        fps = scene.render.fps / scene.render.fps_base
+        seconds = LIFETIME_SPREAD * (lifetime.value if lifetime else 1.5)
+        frames = max(frames, int(math.ceil(seconds * fps / max(speed.value if speed else 1.0, 1e-3))) + 2)
+    first = max(scene.frame_start, current - frames)
+    for frame in range(min(first, current), current + 1):
+        scene.frame_set(frame)
+    obj.update_tag()
+
+
 def follow_bakes():
     """Point every sparks object at the bake its domain shows now.
 
     A bake or an import replaces the volume object, and a version switch
-    shows another one; the sparks go with the domain. A bake that is not in
-    the scene leaves them empty until it is.
+    shows another one; the sparks go with the domain and are simulated again
+    up to the current frame. A bake that is not in the scene leaves them
+    empty until it is. A bake without the velocity or temperature grid is
+    noted on the domain (problems, the panel) and the grid turned on in
+    Output, as Add Sparks does.
     """
+    domains = set()
     for obj in bpy.data.objects:
         domain = obj.get(DOMAIN_MARKER)
         if domain is None or not hasattr(domain, "fumaris"):
             continue
+        domains.add(domain)
         volume = shown_volume(domain)
-        for modifier in obj.modifiers:
-            if modifier.type != "NODES" or modifier.node_group is None or not modifier.node_group.get(VERSION_KEY):
-                continue
+        changed = False
+        for modifier in _sparks_modifiers(obj):
             target = _input(modifier, "Volume")
             if target is not None and target.value != volume:
                 target.value = volume
-                obj.update_tag()
+                changed = True
+        if changed:
+            if volume is None:
+                reset(obj)
+            else:
+                simulate(obj)
+    for domain in domains:
+        _note_missing_grids(domain)
+    for obj in bpy.data.objects:
+        if obj.get(MISSING_MARKER) is not None and obj not in domains:
+            del obj[MISSING_MARKER]   # its sparks are gone
+
+
+def _note_missing_grids(domain):
+    """Grids the sparks need that the domain's shown bake lacks: noted on the
+    domain for the panel and an operator's report, turned on for the next bake."""
+    from .importers import _frame_files
+    props = domain.fumaris
+    directory = peek_output_directory_for_object(domain)
+    files = _frame_files(directory, props.output_prefix or "fumaris_") if directory else []
+    missing = missing_grids(files[-1]) if files else []
+    if missing:
+        for name in missing:
+            setattr(props, f"export_{name}_vdb", True)
+        domain[MISSING_MARKER] = " and ".join(missing)
+    elif domain.get(MISSING_MARKER) is not None:
+        del domain[MISSING_MARKER]
+
+
+def _collection_for(context, domain, volume):
+    """Where a new sparks object goes: beside the baked volume, else beside the domain."""
+    in_scene = [context.scene.collection, *context.scene.collection.children_recursive]
+    for obj in (volume, domain):
+        for collection in obj.users_collection:
+            if collection in in_scene:
+                return collection
+    return context.scene.collection
 
 
 def add_sparks(context, domain, volume, name="Fumaris Sparks"):
-    """Point-cloud object running the Sparks group on the bake `domain` shows."""
+    """Point-cloud object running the Sparks group on the bake `domain` shows,
+    in the volume's collection, selected and active, simulated up to the
+    current frame."""
     tree = build_group()
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
-    context.scene.collection.objects.link(obj)
+    _collection_for(context, domain, volume).objects.link(obj)
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree
     obj[DOMAIN_MARKER] = domain
@@ -410,4 +510,12 @@ def add_sparks(context, domain, volume, name="Fumaris Sparks"):
     _input(modifier, "Spawn Temperature").value = 0.75 * props.flame_temperature
     _input(modifier, "Gravity").value = -props.gravity[2] / props.simulation_scale
     _input(modifier, "Simulation Speed").value = props.simulation_speed
+    try:
+        for other in context.selected_objects:
+            other.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+    except RuntimeError:
+        pass   # its collection is excluded from the view layer
+    simulate(obj, context.scene)
     return obj

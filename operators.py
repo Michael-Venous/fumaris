@@ -455,7 +455,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self.report({"WARNING"}, "Open a 3D Viewport before starting Fumaris preview")
             return {"CANCELLED"}
 
-        context.scene.fumaris_preview_domain = domain
+        from .playback import choose_domain
+        choose_domain(context.scene, domain)
         self._domain_name = domain.name
         self._pause_requested = False
         self._loop_reset_pending = False

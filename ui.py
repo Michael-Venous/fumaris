@@ -742,6 +742,8 @@ def _draw_domain(layout, scene, props):
         background = background_job(props.id_data)
         if background is not None:
             from .background import stop_label
+            # (Ended and waiting to be imported: nothing left to stop.)
+            sub.enabled = background.state != "ended"
             sub.operator("fumaris.bake_background_stop", icon="NONE" if _TIGHT else "CANCEL",
                          text=stop_label(background))
         elif is_baking:
@@ -774,7 +776,7 @@ def _draw_domain(layout, scene, props):
                 text="Resume" if is_preview_paused else "Pause",
             )
         else:
-            play.enabled = mode is None
+            play.enabled = mode is None and background is None
             play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
         preview_stop = preview.row(align=True)
         # A preview that is still starting (or paused) can always be stopped.
@@ -1311,12 +1313,13 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
                 # Its background bake: Stop on its row, progress under it.
                 job = background_job(obj)
                 if job is not None:
-                    row.operator("fumaris.bake_background_stop", text="", icon="CANCEL").domain = obj.name
+                    if job.state != "ended":
+                        row.operator("fumaris.bake_background_stop", text="", icon="CANCEL").domain = obj.name
                     background.draw_status(listing, job)
             if domains:
                 # Every domain, or the selected ones, baked in the background.
                 selected = sum(1 for obj in domains if obj.select_get())
-                bake = body.row(align=True)
+                bake = body.column(align=True)
                 bake.operator("fumaris.bake_all", icon="RENDERLAYERS",
                               text=f"Bake Selected ({selected})" if selected else "Bake All")
                 if background.jobs():

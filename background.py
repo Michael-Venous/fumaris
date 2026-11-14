@@ -672,29 +672,28 @@ def report(level, text):
 
 
 def _tag_redraw():
-    manager = getattr(bpy.context, "window_manager", None)
-    for window in getattr(manager, "windows", ()):
-        for area in window.screen.areas if window.screen else ():
-            if area.type in {"PROPERTIES", "VIEW_3D"}:
-                area.tag_redraw()
+    try:
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas if window.screen else ():
+                if area.type in {"PROPERTIES", "VIEW_3D"}:
+                    area.tag_redraw()
+    except (AttributeError, ReferenceError):
+        # No window manager (Blender is closing).
+        pass
 
 
 # --- Closing -------------------------------------------------------------------
 
-def _stop_all(*, detach):
-    """Every queued job dropped and every bake told to stop. detach: their
-    scene is going away, so nothing is finished in it."""
+def _detach_all():
+    """Their scene is going away: every queued job is dropped and every bake
+    told to stop, with nothing to finish in the scene."""
     for job in list(_jobs):
         if job.state == "queued":
-            if detach:
-                _forget(job)
-            else:
-                stop(job)
+            _forget(job)
             continue
-        if detach:
-            job.detached = True
-            if runtime._BACKGROUND_JOBS.get(job.uid) is job:
-                del runtime._BACKGROUND_JOBS[job.uid]
+        job.detached = True
+        if runtime._BACKGROUND_JOBS.get(job.uid) is job:
+            del runtime._BACKGROUND_JOBS[job.uid]
         if job.state in {"starting", "running"}:
             stop(job)
 
@@ -705,7 +704,7 @@ def _stop_before_load(_dummy=None):
     # in. They stop after their frame; the timer removes their files.
     if _jobs:
         console_log(f"Fumaris stopped {len(_jobs)} background bake(s): another file was opened")
-    _stop_all(detach=True)
+    _detach_all()
 
 
 def shutdown():
@@ -713,7 +712,7 @@ def shutdown():
     they are on (a bake also stops when its Blender is gone)."""
     if not _jobs:
         return
-    _stop_all(detach=True)
+    _detach_all()
     deadline = time.monotonic() + QUIT_SECONDS
     while time.monotonic() < deadline and any(job.active and job.process.poll() is None for job in _jobs):
         time.sleep(0.05)
@@ -792,7 +791,7 @@ def progress(job):
         return None, "Queued: starts next" if not ahead else f"Queued: {ahead} ahead", ""
     if job.state == "ended":
         # (The frames the bake reported: draw code reads no disk.)
-        return None, f"Baked {int(job.status.get('frames', 0))} frames: shown {job.waiting or 'in a moment'}", ""
+        return None, f"Baked {int(job.status.get('frames', 0))} frames", f"Its volume appears {job.waiting or 'in a moment'}"
     status = job.status
     total = max(1, int(status.get("end", 0)) - int(status.get("start", 0)) + 1)
     frames = int(status.get("frames", 0))

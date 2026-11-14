@@ -158,6 +158,9 @@ def density_channels(domain_props, participants):
     # storage would also narrow velocity (the bridge keeps four channels).
     if getattr(domain_props, "full_resolution_velocity", False):
         return 4
+    # Colour Mixing's attribute field shares the density level's layout.
+    if getattr(domain_props, "color_mixing", False):
+        return 4
     heat = False
     for participant in participants:
         if participant.get("role") != "emitter":
@@ -396,6 +399,7 @@ def _domain_state(props, resolution_scale=1.0):
         "adaptive_sub_steps": props.adaptive_cfl > 0.0,
         "adaptive_cfl": props.adaptive_cfl,
         "full_resolution_velocity": props.full_resolution_velocity,
+        "color_mixing": bool(getattr(props, "color_mixing", False)),
         "simulation_memory_mb": simulation_memory_mb(props),
         "simulation_memory_auto": bool(getattr(props, "simulation_memory_auto", False)),
         "simulation_memory_auto_fraction": AUTO_FRACTION,
@@ -1347,6 +1351,7 @@ def _channel_values(props, **overrides):
         "fuel": props.emitter_fuel if props is not None else 0.0,
         "burn": props.emitter_burn if props is not None else 0.0,
         "smoke": props.emitter_smoke if props is not None else 0.0,
+        "color": [float(v) for v in props.emitter_color] if props is not None else [1.0, 1.0, 1.0],
         "couple_rate_velocity": props.couple_rate_velocity if props is not None else 0.0,
         "couple_rate_divergence": divergence_coupling,
         "couple_rate_temperature": props.couple_rate_temperature if props is not None else 0.0,

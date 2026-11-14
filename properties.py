@@ -291,6 +291,12 @@ class FumarisSettings(PropertyGroup):
         soft_max=5.0,
     )
 
+    emitter_color: FloatVectorProperty(
+        name="Smoke Colour",
+        description="Colour of this emitter's smoke, times the domain's smoke Colour. Used when the domain's Colour Mixing is on",
+        default=(1.0, 1.0, 1.0), min=0.0, soft_max=1.0, size=3, subtype="COLOR",
+    )
+
     emitter_fuel: FloatProperty(
         name="Fuel",
         description="Combustible fuel emitted into the simulation",
@@ -763,6 +769,12 @@ class FumarisSettings(PropertyGroup):
     auto_cell_size: BoolProperty(
         name="Auto Cell Size",
         description="Automatically reduce simulation detail when smoke runs out of blocks, instead of cutting the smoke off",
+        default=False,
+    )
+
+    color_mixing: BoolProperty(
+        name="Colour Mixing",
+        description="Each emitter's smoke carries its own Smoke Colour; where plumes meet, the colours mix by amount. Bakes gain a color grid and the material and preview use it. Costs one more density-sized field (about a third more simulation memory for fire, more for smoke-only scenes, which then store all four channels)",
         default=False,
     )
 

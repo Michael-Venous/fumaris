@@ -30,6 +30,10 @@ All notable customer-facing changes are recorded here.
   simulates to the same frames whatever memory the simulation is given (as
   long as it fits). Bakes without Preview While Baking get about 4% more
   space from the same memory. Frames differ slightly from beta 1.
+- Importing a bake no longer loads its last frame's grids just to read their
+  names (about 30 MB of Blender memory kept per import). A domain deleted with
+  Blender's X is freed when another domain is chosen, and the preview's
+  view-transform tables are bounded.
 - Sparks follow the domain's bake through another bake and a version switch
   (they went empty), keep their settings when Add Sparks is used again, move
   with the gas at any Simulation Speed and Scale and under a moved volume,

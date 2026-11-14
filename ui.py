@@ -356,9 +356,11 @@ def _draw_emitter(layout, obj, props):
 
     box = layout.box()
     if _section(box, props, "show_panel_emitted_channels", "Emitted Channels", "MOD_FLUID"):
-        smoke_row = box.row()
+        smoke_row = box.row(align=True)
         smoke_row.active = not props.emitter_influence
         smoke_row.prop(props, "emitter_smoke")
+        # With the domain's Colour Mixing: this emitter's smoke colour.
+        smoke_row.prop(props, "emitter_color", text="")
         box.prop(props, "emitter_temperature")
         box.prop(props, "emitter_fuel")
         if _hot_fuel_without_air(obj, props):
@@ -1164,6 +1166,7 @@ def _draw_domain(layout, scene, props):
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
         grid.prop(props, "full_resolution_velocity")
+        grid.prop(props, "color_mixing")
         grid.prop(props, "follow_object")
         grid.prop(props, "physics_convex_collision")
         advanced.separator()

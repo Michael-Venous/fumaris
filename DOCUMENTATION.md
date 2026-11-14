@@ -943,6 +943,10 @@ For a faster or more memory-efficient simulation:
   material. Scene Occlusion uses viewport depth, so transparent objects occlude
   as if solid.
 - Stopped bakes cannot resume solver state.
+- Blender keeps every shown frame of an imported volume in RAM, up to
+  Preferences > System > Memory Cache Limit (4 GB by default), even after the
+  volume is deleted. Lower that limit if RAM is short; it is Blender's cache,
+  not Fumaris's.
 - One live preview or `Bake` runs at a time. `Bake in Background` bakes more
   domains at the same time.
 - Colliders are improved Flow collision emitters, not sealed pressure

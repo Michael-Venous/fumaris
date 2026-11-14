@@ -93,8 +93,12 @@ def choose_domain(scene, domain):
     previous = getattr(scene, 'fumaris_preview_domain', None)
     scene.fumaris_preview_domain = domain
     if (not isinstance(previous, bpy.types.Object) or previous == domain or previous.users
-            or previous.use_fake_user or previous.library
-            or bpy.data.user_map(subset=[previous])[previous]):
+            or previous.use_fake_user or previous.library):
+        return
+    # A scene's tool settings can still name the object it last worked on
+    # (Blender clears that itself on removal); a child, constraint or
+    # modifier that still uses it keeps it.
+    if any(not isinstance(user, bpy.types.Scene) for user in bpy.data.user_map(subset=[previous])[previous]):
         return
     from .importers import GENERATED_MATERIAL_MARKER
     material = previous.fumaris.managed_material if is_domain(previous) else None

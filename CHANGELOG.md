@@ -42,7 +42,7 @@ All notable customer-facing changes are recorded here.
   keeps writing them directly, which is faster there).
 - **Large bakes hold less system memory**: the bridge kept three copies of
   the buffers the GPU's results arrive in where two are in use (5.4 to 3.5 GB
-  on the 200-frame comparison explosion, of about 11 GB in all).
+  on the 200-frame comparison explosion; the bridge's peak 13.7 to 11.7 GB).
 - **Scatter Glow costs half as much to bake**: the glow grids are summed
   from blocks of 4x4x4 voxels instead of voxel by voxel (199 to 89 ms a frame
   on the comparison explosion, which now bakes in 21.4 s). Their lattice

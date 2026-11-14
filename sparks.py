@@ -332,6 +332,16 @@ def shown_volume(domain):
                  if obj.type == "VOLUME" and obj.get(VOLUME_MARKER) == directory), None)
 
 
+def missing_grids(path):
+    """Grids the sparks need that a baked frame lacks."""
+    try:
+        import openvdb
+        names = {grid.name for grid in openvdb.readAllGridMetadata(path)}
+    except Exception:
+        return []
+    return [name for name in ("velocity", "temperature") if name not in names]
+
+
 def follow_bakes():
     """Point every sparks object at the bake its domain shows now.
 

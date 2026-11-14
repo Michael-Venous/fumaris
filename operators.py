@@ -1584,18 +1584,26 @@ class FUMARIS_OT_add_sparks(Operator):
         return bool(domain)
 
     def execute(self, context):
-        from .sparks import add_sparks, shown_volume
+        from .sparks import add_sparks, missing_grids, shown_volume
         domain = _active_domain(context)
-        volume = shown_volume(domain)
-        if volume is None:
+        props = domain.fumaris
+        files = _frame_files(output_directory_for_object(domain), props.output_prefix or "fumaris_")
+        if not files:
             self.report({"ERROR"}, "Bake the simulation first: sparks follow the baked volume")
             return {"CANCELLED"}
+        missing = missing_grids(files[-1])
+        if missing:
+            # Without the gas velocity sparks would only fall; without temperature none start.
+            for name in missing:
+                setattr(props, f"export_{name}_vdb", True)
+            self.report({"ERROR"}, f"This bake has no {' and '.join(missing)}: now turned on in Output. Bake again, then add sparks")
+            return {"CANCELLED"}
+        volume = shown_volume(domain)
+        if volume is None:
+            self.report({"ERROR"}, f"Version '{props.cache_slot}' is not in the scene: import it in Versions, then add sparks")
+            return {"CANCELLED"}
         sparks = add_sparks(context, domain, volume, name=f"{domain.name} Sparks")
-        if not domain.fumaris.export_velocity_vdb:
-            domain.fumaris.export_velocity_vdb = True
-            self.report({"WARNING"}, "Turned on VDB velocity: bake again so the sparks can move")
-        else:
-            self.report({"INFO"}, f"Added '{sparks.name}': play the timeline from the start to simulate")
+        self.report({"INFO"}, f"Added '{sparks.name}': play the timeline from the start to simulate")
         return {"FINISHED"}
 
 

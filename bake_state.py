@@ -31,6 +31,8 @@ def sync_cache_slot(obj):
     props = obj.fumaris
     directory = output_directory_for_object(obj)
     show_only_slot_volumes(os.path.dirname(directory), directory)
+    from .sparks import follow_bakes
+    follow_bakes()
     from .compare import after_slot_change, forget_scan
     after_slot_change(obj)
     forget_scan()

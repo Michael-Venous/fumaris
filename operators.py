@@ -1584,15 +1584,13 @@ class FUMARIS_OT_add_sparks(Operator):
         return bool(domain)
 
     def execute(self, context):
-        from .sparks import add_sparks
+        from .sparks import add_sparks, shown_volume
         domain = _active_domain(context)
-        directory = os.path.normpath(output_directory_for_object(domain))
-        volume = next((obj for obj in bpy.data.objects
-                       if obj.type == "VOLUME" and obj.get(VOLUME_MARKER) == directory), None)
+        volume = shown_volume(domain)
         if volume is None:
             self.report({"ERROR"}, "Bake the simulation first: sparks follow the baked volume")
             return {"CANCELLED"}
-        sparks = add_sparks(context, volume, name=f"{domain.name} Sparks")
+        sparks = add_sparks(context, domain, volume, name=f"{domain.name} Sparks")
         if not domain.fumaris.export_velocity_vdb:
             domain.fumaris.export_velocity_vdb = True
             self.report({"WARNING"}, "Turned on VDB velocity: bake again so the sparks can move")

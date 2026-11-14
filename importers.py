@@ -899,6 +899,9 @@ def import_sequence(
             settings=appearance,
         )
     _restore_selection(previous_selection, previous_active)
+    # Sparks made for the volume this one replaces carry on with it.
+    from .sparks import follow_bakes
+    follow_bakes()
     return volume_object
 
 

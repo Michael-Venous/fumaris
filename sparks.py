@@ -8,9 +8,15 @@ it has cooled. A blackbody emission material colours sparks by temperature.
 Needs a bake with the velocity and temperature grids (Output > Velocity).
 
 One node group and one material serve every sparks object; each object keeps
-its own values on its modifier, the baked volume among them.
+its own values on its modifier. Its Volume input follows the bake its domain
+shows (follow_bakes), through re-bakes and version switches.
 """
+import os
+
 import bpy
+
+from .importers import VOLUME_MARKER
+from .utils import peek_output_directory_for_object
 
 GROUP_NAME = "Fumaris Sparks"
 MATERIAL_NAME = "Fumaris Spark"
@@ -18,6 +24,7 @@ MATERIAL_NAME = "Fumaris Spark"
 # keep the group they were made with, new ones get the new group.
 VERSION = 2
 VERSION_KEY = "fumaris_sparks_version"
+DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
 
 
 def _link(tree, a, b):
@@ -315,13 +322,45 @@ def _input(modifier, name):
     return getattr(modifier.properties.inputs, item.identifier, None) if item else None
 
 
-def add_sparks(context, volume, name="Fumaris Sparks"):
-    """Point-cloud object running the Sparks group on a baked volume object."""
+def shown_volume(domain):
+    """The volume object of the bake the domain shows, if it is in the scene."""
+    directory = peek_output_directory_for_object(domain)
+    if not directory:
+        return None
+    directory = os.path.normpath(directory)
+    return next((obj for obj in bpy.data.objects
+                 if obj.type == "VOLUME" and obj.get(VOLUME_MARKER) == directory), None)
+
+
+def follow_bakes():
+    """Point every sparks object at the bake its domain shows now.
+
+    A bake or an import replaces the volume object, and a version switch
+    shows another one; the sparks go with the domain. A bake that is not in
+    the scene leaves them empty until it is.
+    """
+    for obj in bpy.data.objects:
+        domain = obj.get(DOMAIN_MARKER)
+        if domain is None or not hasattr(domain, "fumaris"):
+            continue
+        volume = shown_volume(domain)
+        for modifier in obj.modifiers:
+            if modifier.type != "NODES" or modifier.node_group is None or not modifier.node_group.get(VERSION_KEY):
+                continue
+            target = _input(modifier, "Volume")
+            if target is not None and target.value != volume:
+                target.value = volume
+                obj.update_tag()
+
+
+def add_sparks(context, domain, volume, name="Fumaris Sparks"):
+    """Point-cloud object running the Sparks group on the bake `domain` shows."""
     tree = build_group()
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
     context.scene.collection.objects.link(obj)
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree
+    obj[DOMAIN_MARKER] = domain
     _input(modifier, "Volume").value = volume
     return obj

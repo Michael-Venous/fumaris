@@ -4,6 +4,13 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Tighter simulation space**: Air Margin is measured from the smoke itself
+  instead of from the edge of the 16-cell block that holds it, so no whole
+  block of empty air is kept where the smoke is far from a block's face.
+  Explosion at Resolution 1024 simulates 21% fewer cells and runs 17% faster
+  on the same frames (8 to 16% fewer blocks at 512); less VRAM in use
+  likewise. Plumes rise 1 to 5% lower by frame 72 for having less air around
+  them; raise Air Margin for more room.
 - **Preview shadows cross clear air**: one plume now shadows another across
   unallocated space (the shadow's far part runs on a dense grid), as in
   Cycles; single plumes render as before, and the shadow passes are a

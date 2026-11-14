@@ -826,7 +826,7 @@ class FumarisSettings(PropertyGroup):
 
     air_margin: FloatProperty(
         name="Air Margin",
-        description="Distance of clear air simulated on every side of the smoke, beyond the nearest blocks, and further along its motion. More room lets large plumes roll into caps; it uses more GPU time and memory",
+        description="Distance of clear air simulated around the smoke, measured from the smoke itself, and further along its motion. More room lets large plumes roll into caps; it uses more GPU time and memory",
         default=0.5,
         min=0.0,
         soft_max=4.0,

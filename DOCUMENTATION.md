@@ -408,10 +408,11 @@ of rolling into a mushroom cap. Both are most visible at high resolution and
 low Sub-Steps, where blocks are small and the smoke crosses several per frame.
 
 `Air Margin` (below Simulation Memory) is the distance of clear air kept
-on every side of the smoke. It also reaches further ahead of moving smoke, by
-how far the smoke will travel before the next allocation. The default of 0.5 m
-suits most plumes; large explosions can use 1 m or more. At 0 the smoke still
-gets one complete layer of blocks around it, the least the solver needs.
+on every side of the smoke, measured from the smoke itself. It also reaches
+further ahead of moving smoke, by how far the smoke will travel before the
+next allocation. The default of 0.5 m suits most plumes; large explosions can
+use 1 m or more. At 0 the smoke still keeps a few cells of air around it, the
+least the solver needs.
 
 Air Margin adds sparse blocks (typically 1.5x to 2.5x over a margin of 0), so
 watch the capacity readout; when capacity runs out, smoke and emitters keep

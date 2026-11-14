@@ -242,6 +242,27 @@ Under `Output`:
 solver state cannot currently be serialized, so a stopped bake cannot resume;
 the next Bake starts from the beginning.
 
+### Sparks
+
+`Add Sparks` (beside `Bake` under `Output`) adds an object that makes sparks
+and embers from the bake the domain shows. They start in gas hotter than
+`Spawn Temperature`, are carried by the baked velocity, fall, cool and
+disappear. Play the timeline from its first frame to simulate them.
+
+- The bake needs the `Velocity` and `Temperature` grids. Without them Add
+  Sparks turns them on and asks you to bake again.
+- The settings are on the sparks object's Geometry Nodes modifier: `Sparks per
+  Frame`, `Lifetime`, `Drag` (how closely sparks follow the gas), `Gravity`,
+  `Cooling Time`, `Radius`, `Brightness` and more, each with a tooltip.
+- `Spawn Temperature`, `Gravity` and `Simulation Speed` are taken from the
+  domain when the sparks are added. Change them on the modifier if you later
+  change the domain's Flame Temperature, Simulation Scale or Simulation Speed.
+- The sparks follow the domain: after another bake, or after choosing another
+  version, play again from the first frame. A version that is not in the scene
+  has no sparks until it is imported (see Versions).
+- Sparks render in Cycles and EEVEE with the `Fumaris Spark` material, coloured
+  by their temperature.
+
 ## Versions
 
 The `Versions` section at the top of the domain panel lists what the domain has

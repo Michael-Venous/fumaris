@@ -25,6 +25,11 @@ All notable customer-facing changes are recorded here.
   simulates to the same frames whatever memory the simulation is given (as
   long as it fits). Bakes without Preview While Baking get about 4% more
   space from the same memory. Frames differ slightly from beta 1.
+- Sparks follow the domain's bake through another bake and a version switch
+  (they went empty), keep their settings when Add Sparks is used again, move
+  with the gas at any Simulation Speed and Scale and under a moved volume,
+  and have a Brightness setting and tooltips. Add Sparks on a bake without
+  velocity or temperature says so instead of adding sparks that cannot work.
 
 ## 2.0.0 beta 1 — 2026-11-12
 

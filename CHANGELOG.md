@@ -4,6 +4,10 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Preview shadows cross clear air**: one plume now shadows another across
+  unallocated space (the shadow's far part runs on a dense grid), as in
+  Cycles; single plumes render as before, and the shadow passes are a
+  little cheaper.
 - **Mesh sources emit their amount whatever the grid**: each cell at a mesh
   source's edge takes the share of the emission band it covers, so the smoke
   a source puts out no longer changes with where its surface falls on the

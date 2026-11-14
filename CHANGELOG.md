@@ -29,6 +29,11 @@ All notable customer-facing changes are recorded here.
   grid (Rising Smoke at Resolution 64 / 128 / 256 emitted 60 / 77 / 71 units;
   now 72 / 71 / 71), and a source thinner than a cell (a 2 cm shell, a thin
   sheet) emits instead of vanishing on coarse grids. Colliders are unchanged.
+- **Large bakes read less back from the GPU**: the GPU now sends the bridge
+  only the voxels that hold something (it sent every 8x8x8 leaf in full,
+  nearly four times what the file needs), and no temperature below the 500 K
+  the file keeps. With the faster file writer below, the 200-frame comparison
+  explosion bakes in 26 s instead of 37; the files are byte-for-byte the same.
 - **VDB files are written 2 to 4 times faster**: the bridge now encodes the
   voxel data of a frame on several threads and converts to half floats eight
   values at a time; OpenVDB still writes the file's structure. The files are

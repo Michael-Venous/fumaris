@@ -1,6 +1,6 @@
 # Fumaris Blender Integration
 
-Current release: **2.0.0 beta 1**.
+Current release: **2.0.0 beta 2**.
 
 Fumaris is an interactive GPU smoke and fire simulator for Blender. Develop
 motion with a live volume preview, then bake OpenVDB sequences for Blender's

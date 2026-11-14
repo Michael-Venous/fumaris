@@ -4,6 +4,36 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+A large update to the 2.0 beta: faster everywhere, more simulation per GB,
+background baking and a reorganised panel. Still a beta: please report scenes
+that look wrong. Frames differ slightly from beta 1 (smoke is now conserved
+as it moves, and the result no longer depends on the VRAM setting).
+
+### Highlights
+
+Measured on an RTX 3090 Ti against beta 1, back to back:
+
+- **Bakes about 2.8 times faster**: 200 frames of the comparison explosion
+  to VDB in 21 s instead of 59 (less read back from the GPU, multithreaded
+  VDB writing, Pyro and Scatter Glow grids built faster).
+- **Faster simulation and preview**: Explosion at Resolution 1024 simulates
+  in 28.7 ms a frame instead of 38.4 (40.6 instead of 56.0 with the live
+  preview); the comparison explosion previews at 15.8 frames a second
+  instead of 11.4. Smoke Detail Sharp costs about 1.7x Standard instead of
+  2.4x.
+- **More simulation per GB**: air around the smoke no longer stores smoke
+  fields and the simulated space hugs the smoke: 9% more blocks in the same
+  VRAM, 42% fewer smoke cells on the same shot.
+- **Bake in Background, Bake All and Bake Selected**: several domains bake at
+  once in their own Blender processes, on one or more GPUs, while you work.
+- **Per-Emitter Color**: emitters with their own smoke color that mixes where
+  plumes meet, with its cost shown before it can be turned on.
+- **A reorganised domain panel** in setup order, a smoother first run and many
+  fixes from a hands-on usability test (renaming a domain no longer stops its
+  bake or preview).
+
+### All changes
+
 - **Air costs less**: blocks that hold only air around the smoke keep the
   velocity field and no longer the smoke fields (density, temperature, fuel,
   burn), which are about four fifths of a block's memory. The same VRAM holds
@@ -93,7 +123,7 @@ All notable customer-facing changes are recorded here.
   foreground (a second Blender loads the scene).
 - New domains start with the cache directory you last set, in any scene
   (stored in the Fumaris preferences as Default Cache Directory).
-- Preview **View and Look**, side by side like Blender's Color Management:
+- Preview **Color Management** (View and Look side by side, like Blender's):
   any View other than Scene takes its own Look (for example AgX with Punchy
   for more saturated fire). Khronos PBR Neutral and ACES views added.
 - The GPU choice is in the Fumaris preferences only (it was also in the

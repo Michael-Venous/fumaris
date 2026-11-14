@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Bake in Background** (beside Bake) and **Bake All** (Fumaris tab of the
+  sidebar): bake several domains at once, each in its own Blender process,
+  while you keep editing or previewing. The Fumaris preferences (Baking) set
+  how many bake at once and on which GPUs: with two GPUs ticked, each runs
+  one bake. Progress and Stop are on the domain's panel and in the sidebar.
 - New domains start with the cache directory you last set, in any scene
   (stored in the Fumaris preferences as Default Cache Directory).
 - Preview **View and Look**, side by side like Blender's Color Management:

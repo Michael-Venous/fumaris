@@ -242,6 +242,47 @@ Under `Output`:
 solver state cannot currently be serialized, so a stopped bake cannot resume;
 the next Bake starts from the beginning.
 
+### Bake in Background
+
+`Bake in Background` (the small button beside Bake) bakes the domain in a
+separate Blender process, so you can keep working: edit the scene, play a live
+preview or bake another domain. `Bake All`, in the Fumaris tab of the 3D
+Viewport's sidebar, does the same for every domain in the scene, or for the
+selected domains when some are selected.
+
+- A background bake uses the scene as it was when you clicked, unsaved changes
+  included. Edits you make afterwards do not reach it.
+- It asks the same question as Bake (Replace or New Bake) and writes the same
+  files to the same place.
+- **Background Bakes** in the Fumaris preferences (Baking) sets how many
+  domains bake at once, from 1 to 8. The others wait their turn.
+- Under **On GPUs**, tick the GPUs they may use (the refresh icon beside
+  Simulation GPU lists them). The bakes take the ticked GPUs in turn: with two
+  bakes and two GPUs ticked, each GPU runs one. With none ticked they use the
+  Simulation GPU.
+- When more bakes run than GPUs are ticked, several share a GPU. Give each
+  domain a fixed `VRAM (GB)` instead of Auto, so they fit together.
+- While a domain bakes, its panel and its row in the sidebar show the frame,
+  the speed and the time left, with a `Stop`. Stop keeps the frames already
+  written, like Stop during a Bake. A second click (`Stop Now`) ends the bake at
+  once and loses the frame it was writing.
+- Bake, Delete and Play are unavailable for that domain until its bake ends.
+  Other domains are not affected.
+- When it ends, the bake is imported and shown like any bake. If you are in
+  Edit Mode (or any mode other than Object Mode) or a render is running, the
+  volume appears when you are back in Object Mode or the render is done.
+- If a background bake fails, Blender reports the error and the domain's status
+  line shows it. The bake's log is kept; the report names the file.
+- Opening another file or quitting Blender stops the background bakes after
+  the frame they are on. The frames written so far are kept.
+
+Each background bake is a second Blender with the scene loaded, so it needs
+its own system memory. Other add-ons are not loaded in it: motion that another
+add-on computes on each frame is missing, so bake such scenes with `Bake`.
+Python drivers run in it only when Auto Run Python Scripts is on in Blender's
+preferences (Save & Load). The copy of the scene it bakes from is kept in
+Blender's Temporary Files folder (Preferences > File Paths) until the bake ends.
+
 ### Sparks
 
 `Add Sparks` (beside `Bake` under `Output`) adds an object that makes sparks
@@ -902,7 +943,8 @@ For a faster or more memory-efficient simulation:
   material. Scene Occlusion uses viewport depth, so transparent objects occlude
   as if solid.
 - Stopped bakes cannot resume solver state.
-- Only one Fumaris preview or bake may run at a time.
+- One live preview or `Bake` runs at a time. `Bake in Background` bakes more
+  domains at the same time.
 - Colliders are improved Flow collision emitters, not sealed pressure
   boundaries.
 - Results do not match Mantaflow parameter-for-parameter.
@@ -1096,6 +1138,10 @@ not redirect the simulation. An unavailable saved GPU stops the job with an
 error; refresh and choose another card or Automatic. Changing the choice does
 not move an already running or paused preview to another GPU; stop it first.
 Diagnostics reports the GPU actually used by the worker.
+
+Background bakes have their own choice: **On GPUs** under Baking in the same
+preferences (see Bake in Background). A ticked GPU that is no longer available
+stops the bakes given to it with the same error.
 
 Discovery lists identifiable Vulkan GPUs, excluding software CPU devices. It
 does not qualify driver compatibility; an unsupported device or driver reports

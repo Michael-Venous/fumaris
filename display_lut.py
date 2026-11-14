@@ -16,6 +16,9 @@ STOPS = 25.0
 
 _CACHE = {}
 _FAILED = set()
+# Tables kept (431 kB each, about 10 ms to build). Gamma is part of the key:
+# without a limit, dragging it left a table for every value until Blender closed.
+CACHE_LIMIT = 16
 
 
 def _config_path():
@@ -84,4 +87,6 @@ def scene_display_lut(scene, view_override=None, look_override=None):
         print(f"Fumaris: preview keeps its built-in tone mapping ({error})")
         return None, None
     _CACHE[key] = table
+    while len(_CACHE) > CACHE_LIMIT:
+        _CACHE.pop(next(iter(_CACHE)))
     return key, table

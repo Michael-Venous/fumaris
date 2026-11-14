@@ -15,6 +15,10 @@ All notable customer-facing changes are recorded here.
 - A long list of separate mesh or sphere emitters shows a hint: one Collection
   Mesh or Collection Points emitter simulates several times faster.
 - Trace Steps sits under Simulation Scale in Advanced.
+- **The result no longer changes with VRAM (GB) or Auto**: the same scene
+  simulates to the same frames whatever memory the simulation is given (as
+  long as it fits). Bakes without Preview While Baking get about 4% more
+  space from the same memory. Frames differ slightly from beta 1.
 
 ## 2.0.0 beta 1 — 2026-11-12
 

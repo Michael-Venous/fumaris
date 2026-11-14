@@ -610,7 +610,7 @@ that expands a lot before burning (a growing fireball) needs more, about
 
 - `Smoke Detail` chooses how smoke and heat are carried between cells:
   Standard (linear) or Sharp (cubic: billows about twice as fine, at about
-  2.4x the simulation time). `Edges` (Edge Sharpness) sets how strongly each
+  1.7x the simulation time). `Edges` (Edge Sharpness) sets how strongly each
   step restores detail lost to interpolation; about 0.5 avoids stair-stepped
   edges in close-ups.
 - `Projection Filter` (1 = Flow's) is how strongly the pressure solve smooths

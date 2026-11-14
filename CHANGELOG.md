@@ -101,6 +101,11 @@ All notable customer-facing changes are recorded here.
   Preview Shortcuts, Runtime.
 - A long list of separate mesh or sphere emitters shows a hint: one Collection
   Mesh or Collection Points emitter simulates several times faster.
+- **Smoke Detail Sharp takes 30% less time**: its cubic smoke transport looked up
+  every one of its 64 cells in the sparse grid; it now finds them through the
+  block, as Standard does (Explosion at Resolution 1024: 52 to 37 ms a frame
+  on an RTX 3090 Ti, about 1.7x Standard instead of 2.4x). The results are
+  the same, byte for byte.
 - **The domain panel is reorganised** in the order a shot is usually set up:
   Simulate, Look (Appearance and the live preview's settings, which were
   folded inside Simulate), Smoke Behavior, Participants, Output, Versions,

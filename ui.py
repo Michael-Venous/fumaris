@@ -1356,7 +1356,7 @@ def _draw_domain(layout, scene, props):
             detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
         if props.smoke_detail == "sharp":
-            _wrapped(advanced, "Sharp: about 2.4x the simulation time", "INFO")
+            _wrapped(advanced, "Sharp: about 1.7x the simulation time", "INFO")
         advanced.prop(props, "projection_filter", slider=True)
         advanced.separator()
         # The on/off switches, two by two.

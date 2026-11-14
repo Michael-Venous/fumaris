@@ -3,7 +3,7 @@ import textwrap
 from bpy.types import Panel
 
 from . import detail_stack
-from .runtime import active_job, active_mode
+from .runtime import active_job, active_mode, background_job
 from . import diagnostics
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
@@ -738,11 +738,22 @@ def _draw_domain(layout, scene, props):
         # One button: Bake, or Stop while baking. Tight: words without icons,
         # so Delete is not cut off.
         sub = row.row(align=True)
-        if is_baking:
+        # This domain's background bake (others, and the preview, stay usable).
+        background = background_job(props.id_data)
+        if background is not None:
+            from .background import stop_label
+            sub.operator("fumaris.bake_background_stop", icon="NONE" if _TIGHT else "CANCEL",
+                         text=stop_label(background))
+        elif is_baking:
             sub.operator("fumaris.stop", icon="NONE" if _TIGHT else "CANCEL", text="Stop")
         else:
             sub.enabled = mode is None and not slot_protected
             sub.operator("fumaris.bake", icon="NONE" if _TIGHT else "RENDER_ANIMATION", text="Bake")
+        if background is None:
+            # A small Bake in Background, right of Bake.
+            in_background = row.row(align=True)
+            in_background.enabled = not slot_protected
+            in_background.operator("fumaris.bake_background", icon="RENDERLAYERS", text="")
         delete = row.row(align=True)
         delete.enabled = mode is None and not slot_protected
         delete.operator("fumaris.delete", icon="NONE" if _TIGHT else "TRASH", text="Delete")
@@ -806,7 +817,10 @@ def _draw_domain(layout, scene, props):
         # Keep transport rows together; all status text lives below their options.
         status = controls.column(align=True)
         failure = diagnostics.error_summary(diagnostics.snapshot(props.id_data))
-        if failure:
+        if background is not None:
+            from .background import draw_status
+            draw_status(status, background)
+        elif failure:
             error_row = status.row(align=True)
             error_row.alert = True
             error_row.label(text=failure, icon="ERROR")
@@ -1286,11 +1300,27 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
             if not domains:
                 body.label(text="No Fumaris domain in this scene", icon="INFO")
+            from . import background
             listing = body.column(align=True)
-            listing.enabled = not active_job()
             for obj in domains:
-                _highlight_row(listing.row(align=True), "fumaris.domain_choose", obj.name,
+                row = listing.row(align=True)
+                choose = row.row(align=True)
+                choose.enabled = not active_job()
+                _highlight_row(choose, "fumaris.domain_choose", obj.name,
                                "RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF", obj == domain)
+                # Its background bake: Stop on its row, progress under it.
+                job = background_job(obj)
+                if job is not None:
+                    row.operator("fumaris.bake_background_stop", text="", icon="CANCEL").domain = obj.name
+                    background.draw_status(listing, job)
+            if domains:
+                # Every domain, or the selected ones, baked in the background.
+                selected = sum(1 for obj in domains if obj.select_get())
+                bake = body.row(align=True)
+                bake.operator("fumaris.bake_all", icon="RENDERLAYERS",
+                              text=f"Bake Selected ({selected})" if selected else "Bake All")
+                if background.jobs():
+                    bake.operator("fumaris.bake_background_stop", text="Stop All", icon="CANCEL").everything = True
         if not domains:
             return
         layout.separator(factor=0.3)

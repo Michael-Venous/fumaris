@@ -3,7 +3,7 @@ import time
 
 import bpy
 from bpy.props import PointerProperty
-from .runtime import active_job, active_mode
+from .runtime import active_job, active_mode, background_job
 
 _KEYMAPS = []
 
@@ -108,6 +108,9 @@ class FUMARIS_OT_preview_toggle(bpy.types.Operator):
         domain = resolve_domain(context)
         if domain is None:
             cls.poll_message_set('Choose a domain in the Fumaris playback menu')
+            return False
+        if background_job(domain):
+            cls.poll_message_set('This domain is baking in the background')
             return False
         if domain.fumaris.simulation_state in {'baking', 'baked'}:
             cls.poll_message_set('Delete the domain bake before starting a live preview')

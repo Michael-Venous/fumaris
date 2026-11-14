@@ -600,6 +600,17 @@ that expands a lot before burning (a growing fireball) needs more, about
   when Collider Margin is thin. `Closed Collider Margin` (0 = the full Collider
   Margin) holds the air still only that many velocity cells out from closed
   colliders, so fire resting on them rises freely.
+- `Colour Mixing`: each emitter's smoke carries its own `Smoke Colour` (the
+  swatch beside Smoke on the emitter, times the material's Colour). Where
+  plumes meet, the colours mix by amount; smoke that combustion forms takes
+  the colour of the emitted smoke around it. The live preview tints the smoke,
+  bakes gain a `color` grid, and the generated material multiplies its Colour
+  by that grid (the Colour Mixing node; a volume without the grid is
+  unchanged). The colour travels in a second density-sized field, so the
+  simulation needs about a third more memory and about 1.4x the time per
+  frame; off by default. Mesh, box, sphere, Collection Points, Collection
+  Mesh, particle and OpenVDB sources all carry a colour (one per emitter, or
+  per particle system).
 
 ## Emitters
 
@@ -864,6 +875,10 @@ Density is the standard smoke grid. Additional outputs are:
   Temperature and Velocity average the gas only. Velocity is simulated at half
   resolution and written at Half by default; Full appears with Full-Resolution
   Velocity. VDB Precision Half (default) stores 16-bit values.
+- `color` (with Colour Mixing): the smoke's colour per voxel, as the emitters'
+  Smoke Colours mixed by amount; white where no emitted smoke is. The
+  generated material multiplies its Colour by it; in your own material, an
+  Attribute node named `color` does the same.
 - `burn`: raw timestep-dependent combustion activity for advanced control.
 - `fuel`: remaining unburned fuel.
 - `velocity`: world-space motion used for volume motion blur and compositing.

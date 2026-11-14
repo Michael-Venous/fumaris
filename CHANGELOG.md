@@ -4,6 +4,13 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Colour Mixing** (Advanced): each emitter's smoke carries its own Smoke
+  Colour (the swatch beside Smoke); where plumes meet, the colours mix by
+  amount, and smoke from combustion takes the colour around it. The preview
+  shows it, bakes gain a `color` grid, and the generated material multiplies
+  its Colour by that grid. Costs a second density-sized field: about a third
+  more simulation memory and about 1.4x the time per frame; off by default.
+  The density itself is unchanged by the option (byte-identical bakes).
 - **Bake in Background** (beside Bake) and **Bake All** (Fumaris tab of the
   sidebar): bake several domains at once, each in its own Blender process,
   while you keep editing or previewing. The Fumaris preferences (Baking) set

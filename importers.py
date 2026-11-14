@@ -46,6 +46,7 @@ NODE_LOOK_MIX = "Fumaris Look"
 # Glow, filtered by the smoke colour.
 NODE_SCATTER_GLOW = "Fumaris Scatter Glow"
 NODE_SMOKE_COLOR = "Fumaris Smoke Colour"
+NODE_COLOR_MIX = "Fumaris Colour Mixing"
 # Blue Core only (built when Blue Core > 0): fuel near ignition turns blue.
 NODE_FRESH_FUEL = "Fumaris Fresh Fuel"
 BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
@@ -53,7 +54,7 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 4: Density Remap. 5-6: Pyro look. 7: Pyro Blue Core. 8: Pyro Colour.
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 10
+GRAPH_VERSION = 11
 SHADER_GROUP_VERSION = 1
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 PHYSICAL_COLOR_SHIFT = 1.3
@@ -192,6 +193,10 @@ def apply_generated_material_settings(material, settings):
     density = max(0.0, float(_appearance_value(settings, "shader_smoke_density", 2.0)))
     shader.inputs["Color"].default_value = smoke_color
     shader.inputs["Density"].default_value = density
+    mixing = nodes.get(NODE_COLOR_MIX)
+    if mixing is not None:
+        mixing.inputs["Factor"].default_value = (
+            1.0 if bool(_appearance_value(settings, "color_mixing", False)) else 0.0)
     nodes[NODE_DENSITY_GAIN].inputs[1].default_value = density
     shader.inputs["Anisotropy"].default_value = max(
         -0.999999, min(0.999999, float(_appearance_value(settings, "shader_anisotropy", 0.3))))
@@ -752,7 +757,14 @@ def _build_generated_material(material, blue_core=False):
     shader.inputs["Temperature Attribute"].default_value = "temperature"
     shader.inputs["Blackbody Intensity"].default_value = 0.0
     shader.inputs["Emission Strength"].default_value = 1.0
-    graph.link(_rgba(colour.outputs)[0], shader.inputs["Color"])
+    # Colour Mixing: the bake's "color" grid (the smoke's colour per voxel, white
+    # where there is no smoke) multiplies the smoke colour. The factor is 0
+    # unless the domain mixes colours, so a volume without the grid is unchanged.
+    color_grid = graph.node("ShaderNodeAttribute", (-1000, -1100), "Smoke colour (baked)", grids, attribute_name="color")
+    mixed = graph.mix("RGBA", (640, 120), "Colour Mixing", smoke, blend="MULTIPLY", factor=0.0, name=NODE_COLOR_MIX)
+    graph.link(_rgba(colour.outputs)[0], _rgba(mixed.inputs)[0])
+    graph.link(color_grid.outputs["Color"], _rgba(mixed.inputs)[1])
+    graph.link(_rgba(mixed.outputs)[0], shader.inputs["Color"])
     graph.link(gain.outputs[0], shader.inputs["Density"])
     graph.link(emission.outputs[0], shader.inputs["Emission Color"])
     output = graph.node("ShaderNodeOutputMaterial", (940, 360), "", smoke)

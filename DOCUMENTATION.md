@@ -246,9 +246,9 @@ the next Bake starts from the beginning.
 
 `Bake in Background` (the small button beside Bake) bakes the domain in a
 separate Blender process, so you can keep working: edit the scene, play a live
-preview or bake another domain. `Bake All`, in the Fumaris tab of the 3D
-Viewport's sidebar, does the same for every domain in the scene, or for the
-selected domains when some are selected.
+preview or bake another domain. `Bake All` and `Bake Selected`, in the Fumaris
+tab of the 3D Viewport's sidebar, do the same for every domain in the scene or
+for the selected domains.
 
 - A background bake uses the scene as it was when you clicked, unsaved changes
   included. Edits you make afterwards do not reach it.

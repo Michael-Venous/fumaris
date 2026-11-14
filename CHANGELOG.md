@@ -80,8 +80,8 @@ All notable customer-facing changes are recorded here.
   its Colour by that grid. Costs a second density-sized field: about a third
   more simulation memory and about 1.4x the time per frame; off by default.
   The density itself is unchanged by the option (byte-identical bakes).
-- **Bake in Background** (beside Bake) and **Bake All** (Fumaris tab of the
-  sidebar): bake several domains at once, each in its own Blender process,
+- **Bake in Background** (beside Bake), **Bake All** and **Bake Selected**
+  (Fumaris tab of the sidebar): bake several domains at once, each in its own Blender process,
   while you keep editing or previewing. The Fumaris preferences (Baking) set
   how many bake at once and on which GPUs: with two GPUs ticked, each runs
   one bake. Progress and Stop are on the domain's panel and in the sidebar.

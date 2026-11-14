@@ -1331,11 +1331,15 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
                         row.operator("fumaris.bake_background_stop", text="", icon="CANCEL").domain = obj.name
                     background.draw_status(listing, job)
             if domains:
-                # Every domain, or the selected ones, baked in the background.
+                # Every domain, or the selected ones, baked in the background:
+                # two buttons, so Bake All is there whatever is selected.
                 selected = sum(1 for obj in domains if obj.select_get())
                 bake = body.column(align=True)
-                bake.operator("fumaris.bake_all", icon="RENDERLAYERS",
-                              text=f"Bake Selected ({selected})" if selected else "Bake All")
+                buttons = bake.row(align=True)
+                buttons.operator("fumaris.bake_all", icon="RENDERLAYERS", text="Bake All").scope = "ALL"
+                chosen = buttons.row(align=True)
+                chosen.enabled = selected > 0
+                chosen.operator("fumaris.bake_all", text=f"Bake Selected ({selected})").scope = "SELECTED"
                 if background.jobs():
                     bake.operator("fumaris.bake_background_stop", text="Stop All", icon="CANCEL").everything = True
         if not domains:

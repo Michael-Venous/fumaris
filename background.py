@@ -930,19 +930,36 @@ class FUMARIS_OT_bake_background(Operator):
         return _report_start(self, started, errors)
 
 
-def bake_all_domains(context):
-    """Bake All's domains: the selected ones, or every domain in the scene."""
+def bake_all_domains(context, scope="AUTO"):
+    """Bake All's domains: every domain in the scene (ALL), the selected ones
+    (SELECTED), or the selected ones if any, else all (AUTO, for scripts)."""
     from .playback import scene_domains
     domains = [obj for obj in scene_domains(context) if _is_domain(obj)]
     selected = [obj for obj in domains if obj.select_get()]
+    if scope == "ALL":
+        return domains
+    if scope == "SELECTED":
+        return selected
     return selected or domains
 
 
 class FUMARIS_OT_bake_all(Operator):
     bl_idname = "fumaris.bake_all"
     bl_label = "Bake All"
-    bl_description = ("Bake every domain in the scene in the background (only the selected domains, when some are "
-                      "selected). Preferences > Baking sets how many bake at once; the others wait their turn")
+    bl_description = ("Bake every domain in the scene in the background. Preferences > Baking sets how many "
+                      "bake at once and on which GPUs; the others wait their turn")
+
+    # The sidebar's two buttons: every domain, or the selected ones. AUTO
+    # (scripts): the selected ones when some are selected, else every domain.
+    scope: EnumProperty(
+        items=[
+            ("AUTO", "Auto", "The selected domains when some are selected, else every domain"),
+            ("ALL", "All", "Every domain in the scene"),
+            ("SELECTED", "Selected", "The selected domains"),
+        ],
+        default="AUTO",
+        options={"HIDDEN", "SKIP_SAVE"},
+    )
 
     # Scripts calling the operator directly bake into the current versions.
     versions: EnumProperty(
@@ -960,9 +977,15 @@ class FUMARIS_OT_bake_all(Operator):
         from .playback import scene_domains
         return bool(scene_domains(context))
 
-    @staticmethod
-    def _waiting(context):
-        return [domain for domain in bake_all_domains(context) if background_job(domain) is None]
+    @classmethod
+    def description(cls, _context, properties):
+        if properties.scope == "SELECTED":
+            return ("Bake the selected domains in the background. Preferences > Baking sets how many bake at once "
+                    "and on which GPUs; the others wait their turn")
+        return cls.bl_description
+
+    def _waiting(self, context):
+        return [domain for domain in bake_all_domains(context, self.scope) if background_job(domain) is None]
 
     def invoke(self, context, _event):
         from .compare import bake_target
@@ -970,9 +993,13 @@ class FUMARIS_OT_bake_all(Operator):
             def draw(menu, _context):
                 layout = menu.layout
                 layout.operator_context = "EXEC_DEFAULT"
-                layout.operator("fumaris.bake_all", text="Replace Pinned Bakes", icon="FILE_REFRESH").versions = "REPLACE"
-                layout.operator("fumaris.bake_all", text="New Bakes", icon="ADD").versions = "NEW"
-            context.window_manager.popup_menu(draw, title="Bake All", icon="RENDER_ANIMATION")
+                for text, icon, versions in (("Replace Pinned Bakes", "FILE_REFRESH", "REPLACE"), ("New Bakes", "ADD", "NEW")):
+                    operator = layout.operator("fumaris.bake_all", text=text, icon=icon)
+                    operator.versions = versions
+                    operator.scope = scope
+            scope = self.scope
+            context.window_manager.popup_menu(draw, title="Bake Selected" if scope == "SELECTED" else "Bake All",
+                                              icon="RENDER_ANIMATION")
             return {"CANCELLED"}
         if self.versions == "CURRENT":
             # No pinned bake anywhere: as Bake, nothing to ask.

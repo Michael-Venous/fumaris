@@ -59,6 +59,8 @@ TICK_SECONDS = 0.001
 # long frame from a bake that hangs.
 HEARTBEAT_SECONDS = 1.0
 PARENT_CHECK_SECONDS = 2.0
+# How often the loop looks for the cancel file.
+CANCEL_CHECK_SECONDS = 0.25
 # With its main Blender gone, a bake that was told to stop but is still
 # inside a frame after this long is ended (nobody is left to end it).
 ORPHAN_SECONDS = 60.0
@@ -302,6 +304,7 @@ def _bake(directory, job, status):
 
     parent = int(job.get("parent_pid", 0))
     next_parent_check = 0.0
+    next_cancel_check = 0.0
     orphaned = None     # when the main process was found gone
     while not bake._finished:
         now = time.monotonic()
@@ -310,9 +313,13 @@ def _bake(directory, job, status):
             if _parent_gone(parent):
                 orphaned = now
         if not bake._stop_requested:
+            cancelled = False
+            if now >= next_cancel_check:
+                next_cancel_check = now + CANCEL_CHECK_SECONDS
+                cancelled = os.path.exists(cancel)
             # Stop in the main process, or the main process is gone (nothing
             # could stop or finish this bake any more).
-            if orphaned is not None or os.path.exists(cancel):
+            if orphaned is not None or cancelled:
                 console_log("Fumaris background bake: "
                             + ("its Blender closed" if orphaned is not None else "Stop requested"))
                 bake.stop(context)

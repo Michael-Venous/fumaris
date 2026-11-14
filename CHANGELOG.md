@@ -9,9 +9,12 @@ All notable customer-facing changes are recorded here.
   burn), which are about four fifths of a block's memory. The same VRAM holds
   7 to 9% more blocks (10 GB: 86,286 instead of 79,507 at 4 channels), and an
   Explosion at Resolution 1024 simulates 6% faster. A block gets its smoke
-  storage back before anything can reach it; the baked files of the test
-  scenes are identical with and without. Diagnostics shows the second pool
-  ("With smoke storage"), and Voxels now counts the stored ones.
+  storage back before anything can reach it: every cell that holds smoke,
+  fuel, flame or air 0.1 K warmer than its surroundings reserves the blocks
+  it could move into by the next frame. Baked files are identical with and
+  without, byte for byte, in the eight scenes compared (60 to 120 frames
+  each, Resolution 256 to 1024). Diagnostics shows the second pool ("With
+  smoke storage"), and Voxels now counts the stored ones.
 - **Tighter simulation space**: Air Margin is measured from the smoke itself
   instead of from the edge of the 16-cell block that holds it, so no whole
   block of empty air is kept where the smoke is far from a block's face.

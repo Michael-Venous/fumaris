@@ -1,5 +1,5 @@
 import bpy
-from bpy.props import EnumProperty, FloatProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 
 from .utils import runtime_validation_error, executable_path, process_environment
 from .devices import discover_devices
@@ -40,6 +40,37 @@ def set_gpu(self, value):
     bpy.context.preferences.is_dirty = True
 
 
+def _preferences_changed(_self, context):
+    # Saved with the preferences when Blender exits (Auto-Save Preferences).
+    context.preferences.is_dirty = True
+
+
+class FumarisBakeGpu(bpy.types.PropertyGroup):
+    """A GPU background bakes may use: saved by UUID, like the Simulation GPU."""
+    uuid: StringProperty()
+    name: StringProperty()
+    use: BoolProperty(
+        name="Use for Background Bakes",
+        description="Background bakes take the ticked GPUs in turn. With none ticked they use the Simulation GPU",
+        default=False, update=_preferences_changed,
+    )
+
+
+def _sync_bake_gpus(prefs):
+    """After Refresh: a row for every GPU found; a GPU that is gone keeps its
+    row only while it is ticked (shown as unavailable)."""
+    found = {device["uuid"]: device["name"] for device in _devices}
+    for index in reversed(range(len(prefs.bake_gpus))):
+        gpu = prefs.bake_gpus[index]
+        if gpu.uuid in found:
+            gpu.name = found.pop(gpu.uuid)
+        elif not gpu.use:
+            prefs.bake_gpus.remove(index)
+    for uuid, name in found.items():
+        gpu = prefs.bake_gpus.add()
+        gpu.uuid, gpu.name = uuid, name
+
+
 class FUMARIS_OT_refresh_gpus(bpy.types.Operator):
     bl_idname = "fumaris.refresh_gpus"
     bl_label = "Refresh GPUs"
@@ -55,6 +86,9 @@ class FUMARIS_OT_refresh_gpus(bpy.types.Operator):
             _devices = discover_devices(executable, process_environment(executable))
             update_memory_readings(_devices)
             _discovery_error = "" if _devices else "No selectable Vulkan GPUs found"
+            addon = context.preferences.addons.get(__package__)
+            if addon is not None:
+                _sync_bake_gpus(addon.preferences)
         except Exception as error:
             _devices = []
             _discovery_error = str(error)
@@ -78,6 +112,13 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         name="Simulation GPU", items=gpu_items, get=get_gpu, set=set_gpu,
         description="GPU the next Preview or Bake runs on; kept in Blender's preferences",
     )
+
+    bake_workers: IntProperty(
+        name="Background Bakes",
+        description="How many domains Bake in Background and Bake All bake at once, each in its own Blender process. More domains wait their turn",
+        default=1, min=1, max=8, update=_preferences_changed,
+    )
+    bake_gpus: CollectionProperty(type=FumarisBakeGpu)
 
     default_output_dir: StringProperty(
         name="Default Cache Directory",
@@ -107,6 +148,25 @@ class FumarisPreferences(bpy.types.AddonPreferences):
             box.label(text="Saved GPU unavailable; choose another GPU or Automatic", icon='ERROR')
         elif not _devices:
             box.label(text="Press Refresh to list the GPUs", icon='INFO')
+
+        box = layout.box()
+        box.label(text="Baking", icon='RENDER_ANIMATION')
+        box.prop(self, "bake_workers")
+        gpus = box.column(heading="On GPUs", align=True)
+        for gpu in self.bake_gpus:
+            row = gpus.row(align=True)
+            row.prop(gpu, "use", text=gpu.name or "Saved GPU")
+            if gpu.use and _devices and not any(d["uuid"] == gpu.uuid for d in _devices):
+                row.label(text="unavailable", icon='ERROR')
+        ticked = sum(1 for gpu in self.bake_gpus if gpu.use)
+        if not self.bake_gpus:
+            box.label(text="Press Refresh (above) to choose GPUs; without a choice, bakes use the Simulation GPU", icon='INFO')
+        elif not ticked:
+            box.label(text="None ticked: background bakes use the Simulation GPU", icon='INFO')
+        if self.bake_workers > max(1, ticked):
+            hint = box.column(align=True)
+            hint.label(text="More bakes than GPUs: several bakes share a GPU.", icon='INFO')
+            hint.label(text="Give each domain a fixed VRAM (GB) instead of Auto.", icon='BLANK1')
 
         box = layout.box()
         box.label(text="Cache", icon='FILE_FOLDER')
@@ -146,6 +206,11 @@ def register():
         bpy.utils.unregister_class(FumarisPreferences)
     except RuntimeError:
         pass
+    try:
+        bpy.utils.unregister_class(FumarisBakeGpu)
+    except RuntimeError:
+        pass
+    bpy.utils.register_class(FumarisBakeGpu)
     bpy.utils.register_class(FumarisPreferences)
     bpy.utils.register_class(FUMARIS_OT_refresh_gpus)
 
@@ -154,5 +219,9 @@ def unregister():
     bpy.utils.unregister_class(FUMARIS_OT_refresh_gpus)
     try:
         bpy.utils.unregister_class(FumarisPreferences)
+    except RuntimeError:
+        pass
+    try:
+        bpy.utils.unregister_class(FumarisBakeGpu)
     except RuntimeError:
         pass

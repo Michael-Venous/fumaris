@@ -62,8 +62,8 @@ def _vmath(tree, operation, a, b=None, location=(0, 0), output=0):
     return node.outputs[output]
 
 
-def _socket(tree, name, kind, default=None, minimum=None):
-    item = tree.interface.new_socket(name, in_out="INPUT", socket_type=kind)
+def _socket(tree, name, kind, default=None, minimum=None, description=""):
+    item = tree.interface.new_socket(name, in_out="INPUT", socket_type=kind, description=description)
     if default is not None:
         item.default_value = default
     if minimum is not None and hasattr(item, "min_value"):
@@ -108,17 +108,27 @@ def build_group():
         return tree
     tree = bpy.data.node_groups.new(GROUP_NAME, "GeometryNodeTree")
     tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    _socket(tree, "Volume", "NodeSocketObject")
-    _socket(tree, "Spawn Temperature", "NodeSocketFloat", 1500.0, 0.0)
-    _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0)
-    _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0)
-    _socket(tree, "Drag", "NodeSocketFloat", 3.0, 0.0)
-    _socket(tree, "Gravity", "NodeSocketFloat", 9.81)
-    _socket(tree, "Cooling Time", "NodeSocketFloat", 0.6, 0.01)
-    _socket(tree, "Spread", "NodeSocketFloat", 0.1, 0.0)
-    _socket(tree, "Radius", "NodeSocketFloat", 0.02, 0.0)
-    _socket(tree, "Simulation Speed", "NodeSocketFloat", 1.0, 0.0)
-    _socket(tree, "Seed", "NodeSocketInt", 0)
+    _socket(tree, "Volume", "NodeSocketObject",
+            description="Baked volume the sparks fly through. Fumaris keeps it on the bake the domain shows")
+    _socket(tree, "Spawn Temperature", "NodeSocketFloat", 1500.0, 0.0,
+            "Sparks start in gas hotter than this, in Kelvin. Set to three quarters of the domain's Flame Temperature when added")
+    _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0,
+            "New sparks each frame, spread over the hot gas. At most one per hot voxel")
+    _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0,
+            "Seconds a spark lives. Each spark gets between 0.6 and 1.4 times this")
+    _socket(tree, "Drag", "NodeSocketFloat", 3.0, 0.0,
+            "How strongly the gas carries a spark: 0 flies free, higher values follow the gas closely")
+    _socket(tree, "Gravity", "NodeSocketFloat", 9.81, None,
+            "Downward pull in m/s². Set from the domain's Gravity and Simulation Scale when added")
+    _socket(tree, "Cooling Time", "NodeSocketFloat", 0.6, 0.01,
+            "Seconds in which a spark outside hot gas loses about two thirds of its temperature. Below 700 K it disappears")
+    _socket(tree, "Spread", "NodeSocketFloat", 0.1, 0.0,
+            "Extra random distance of each new spark from the voxel it starts in, in metres")
+    _socket(tree, "Radius", "NodeSocketFloat", 0.02, 0.0, "Size of each spark, in metres")
+    _socket(tree, "Brightness", "NodeSocketFloat", 1.0, 0.0, "Strength of the sparks' glow")
+    _socket(tree, "Simulation Speed", "NodeSocketFloat", 1.0, 0.0,
+            "How fast time passes for the sparks. Set from the domain's Simulation Speed when added, so slow motion slows them too")
+    _socket(tree, "Seed", "NodeSocketInt", 0, None, "Another number gives different random sparks")
 
     nodes = tree.nodes
     group_in = nodes.new("NodeGroupInput")
@@ -296,7 +306,9 @@ def build_group():
     material = nodes.new("GeometryNodeSetMaterial")
     material.location = (1750, 0)
     material.inputs["Material"].default_value = build_material()
-    _link(tree, radius.outputs["Points"], material.inputs["Geometry"])
+    # Stored after the simulation, so a new value shows without playing again.
+    _link(tree, _store(tree, radius.outputs["Points"], "spark_brightness", "FLOAT", group_in.outputs["Brightness"], (1700, 150)),
+          material.inputs["Geometry"])
     _link(tree, material.outputs["Geometry"], group_out.inputs["Geometry"])
     tree[VERSION_KEY] = VERSION
     return tree
@@ -313,16 +325,22 @@ def build_material():
     tree.nodes.clear()
     attribute = tree.nodes.new("ShaderNodeAttribute")
     attribute.attribute_name = "spark_temperature"
+    brightness = tree.nodes.new("ShaderNodeAttribute")
+    brightness.attribute_name = "spark_brightness"
     blackbody = tree.nodes.new("ShaderNodeBlackbody")
     emission = tree.nodes.new("ShaderNodeEmission")
     strength = tree.nodes.new("ShaderNodeMath")
     strength.operation = "MULTIPLY"
     strength.inputs[1].default_value = 0.01
+    scaled = tree.nodes.new("ShaderNodeMath")
+    scaled.operation = "MULTIPLY"
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(attribute.outputs["Fac"], blackbody.inputs["Temperature"])
     tree.links.new(blackbody.outputs["Color"], emission.inputs["Color"])
     tree.links.new(attribute.outputs["Fac"], strength.inputs[0])
-    tree.links.new(strength.outputs[0], emission.inputs["Strength"])
+    tree.links.new(strength.outputs[0], scaled.inputs[0])
+    tree.links.new(brightness.outputs["Fac"], scaled.inputs[1])
+    tree.links.new(scaled.outputs[0], emission.inputs["Strength"])
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
     material[VERSION_KEY] = VERSION
     return material

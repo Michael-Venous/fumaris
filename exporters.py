@@ -979,6 +979,7 @@ def _sphere_cloud_state(participant, depsgraph, payload, frame):
         "motion_substeps": props.motion_substeps,
         "apply_post_pressure": props.emitter_apply_post_pressure,
         "value_ops": value_ops,
+        "color": [float(v) for v in props.emitter_color],
         **sections,
     }
 

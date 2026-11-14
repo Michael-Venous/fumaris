@@ -55,6 +55,8 @@ from .runtime import (
     GPU_INITIALIZATION_MESSAGE,
     active_job,
     active_mode,
+    background_bake,
+    background_job,
     claim_job,
     clear_geometry_revisions,
     record_geometry_updates,
@@ -117,6 +119,9 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
+        if background_job(domain):
+            cls.poll_message_set("This domain is baking in the background")
+            return False
         return bool(domain and not active_job())
 
     def invoke(self, context, _event):
@@ -439,6 +444,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return {"CANCELLED"}
         if active_job() or domain.fumaris.simulation_state == "baking":
             self.report({"WARNING"}, "Stop the active job before previewing")
+            return {"CANCELLED"}
+        if background_job(domain):
+            self.report({"WARNING"}, f"'{domain.name}' is baking in the background: stop that bake or wait for it")
             return {"CANCELLED"}
         if domain.fumaris.simulation_state == "baked":
             # The bake stays in Versions (its eye shows it again); the preview
@@ -1748,6 +1756,9 @@ class FUMARIS_OT_delete(Operator):
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
+        if background_job(domain):
+            cls.poll_message_set("This domain is baking in the background")
+            return False
         return bool(domain and not active_job())
 
     def invoke(self, context, event):
@@ -2001,7 +2012,10 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_MT_view.append(_draw_view_menu)
-    _recover_orphaned_bakes()
+    # A background bake's own Blender bakes one domain of a snapshot: every
+    # other cache belongs to the main process and its other bakes.
+    if background_bake() is None:
+        _recover_orphaned_bakes()
     _remove_handler_named(bpy.app.handlers.load_post, "_recover_orphaned_bakes_after_load")
     if _recover_orphaned_bakes_after_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_recover_orphaned_bakes_after_load)

@@ -4,11 +4,12 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
-- **Bakes write faster**: the VDB writers no longer hand their memory back
-  to the system after every frame (which made each next frame page it in
-  again), only once the queue is empty. The 200-frame comparison explosion
-  bakes in 52 s instead of 61 on a 24-core machine; the bridge keeps about
-  2 GB more RAM while a large bake runs.
+- **Bakes write faster**: the Pyro look's `heat` and `density_soft` grids
+  are now built on the GPU (the same grids to half-float precision), and the
+  VDB writers no longer hand their memory back to the system after every
+  frame (which made each next frame page it in again). The 200-frame
+  comparison explosion bakes in 43 s instead of 61 on a 24-core machine; the
+  bridge keeps about 2 GB more RAM while a large bake runs.
 - **Conserve Smoke** (Advanced, on): smoke no longer thins out as it moves.
   The solver's transport gained a little smoke where gas expanded and lost some
   where it swirled (the Explosion preset ended with about 10% less than it

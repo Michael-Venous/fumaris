@@ -288,10 +288,15 @@ Blender's Temporary Files folder (Preferences > File Paths) until the bake ends.
 `Add Sparks` (beside `Bake` under `Output`) adds an object that makes sparks
 and embers from the bake the domain shows. They start in gas hotter than
 `Spawn Temperature`, are carried by the baked velocity, fall, cool and
-disappear. Play the timeline from its first frame to simulate them.
+disappear. The object goes into the baked volume's collection, selected, and
+already shows the sparks of the current frame; play the timeline to see them
+move. (A Geometry Nodes simulation: scrubbing backwards past what has been
+played starts it over there, as in Blender.)
 
 - The bake needs the `Velocity` and `Temperature` grids. Without them Add
-  Sparks turns them on and asks you to bake again.
+  Sparks turns them on and asks you to bake again. If a later bake lacks them,
+  the panel says so beside the Bake row (and Bake reports it) and turns them
+  on again for the next bake.
 - The settings are on the sparks object's Geometry Nodes modifier: `Sparks per
   Frame`, `Lifetime`, `Drag` (how closely sparks follow the gas), `Gravity`,
   `Cooling Time`, `Radius`, `Brightness` and more, each with a tooltip.
@@ -299,10 +304,13 @@ disappear. Play the timeline from its first frame to simulate them.
   domain when the sparks are added. Change them on the modifier if you later
   change the domain's Flame Temperature, Simulation Scale or Simulation Speed.
 - The sparks follow the domain: after another bake, or after choosing another
-  version, play again from the first frame. A version that is not in the scene
-  has no sparks until it is imported (see Versions).
+  version, they are simulated again up to the frame on screen (the frames a
+  living spark can have started in; a short pause after the bake). A version
+  that is not in the scene has no sparks until it is imported (see Versions).
 - Sparks render in Cycles and EEVEE with the `Fumaris Spark` material, coloured
-  by their temperature.
+  by their temperature. `Brightness` 0.1 keeps the hottest sparks orange under
+  AgX; above about 0.3 they render white. Cycles' motion blur smears them along
+  their movement (they carry a `velocity` attribute).
 
 ## Versions
 

@@ -34,6 +34,9 @@ All notable customer-facing changes are recorded here.
   nearly four times what the file needs), and no temperature below the 500 K
   the file keeps. With the faster file writer below, the 200-frame comparison
   explosion bakes in 26 s instead of 37; the files are byte-for-byte the same.
+  On a card in a full-speed slot the GPU also gathers those voxels in its own
+  memory and hands them over in one copy (24.5 s; a card on a narrow link
+  keeps writing them directly, which is faster there).
 - **VDB files are written 2 to 4 times faster**: the bridge now encodes the
   voxel data of a frame on several threads and converts to half floats eight
   values at a time; OpenVDB still writes the file's structure. The files are

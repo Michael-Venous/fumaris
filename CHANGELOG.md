@@ -4,6 +4,12 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Mesh sources emit their amount whatever the grid**: each cell at a mesh
+  source's edge takes the share of the emission band it covers, so the smoke
+  a source puts out no longer changes with where its surface falls on the
+  grid (Rising Smoke at Resolution 64 / 128 / 256 emitted 60 / 77 / 71 units;
+  now 72 / 71 / 71), and a source thinner than a cell (a 2 cm shell, a thin
+  sheet) emits instead of vanishing on coarse grids. Colliders are unchanged.
 - **Bakes write faster**: the Pyro look's `heat` and `density_soft` grids
   are now built on the GPU (the same grids to half-float precision), and the
   VDB writers no longer hand their memory back to the system after every

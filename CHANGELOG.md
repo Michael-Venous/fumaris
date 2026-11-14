@@ -40,6 +40,11 @@ All notable customer-facing changes are recorded here.
   On a card in a full-speed slot the GPU also gathers those voxels in its own
   memory and hands them over in one copy (24.5 s; a card on a narrow link
   keeps writing them directly, which is faster there).
+- **Scatter Glow costs half as much to bake**: the glow grids are summed
+  from blocks of 4x4x4 voxels instead of voxel by voxel (199 to 89 ms a frame
+  on the comparison explosion, which now bakes in 21.4 s). Their lattice
+  cells are a whole number of such blocks, so `glow` and `glow_wide` can sit
+  on a slightly different lattice than before (1 to 2% apart, the same total).
 - **VDB files are written 2 to 4 times faster**: the bridge now encodes the
   voxel data of a frame on several threads and converts to half floats eight
   values at a time; OpenVDB still writes the file's structure. The files are

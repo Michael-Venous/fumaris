@@ -29,6 +29,13 @@ All notable customer-facing changes are recorded here.
   grid (Rising Smoke at Resolution 64 / 128 / 256 emitted 60 / 77 / 71 units;
   now 72 / 71 / 71), and a source thinner than a cell (a 2 cm shell, a thin
   sheet) emits instead of vanishing on coarse grids. Colliders are unchanged.
+- **VDB files are written 2 to 4 times faster**: the bridge now encodes the
+  voxel data of a frame on several threads and converts to half floats eight
+  values at a time; OpenVDB still writes the file's structure. The files are
+  byte-for-byte what OpenVDB wrote (checked on whole bakes), so nothing changes
+  for Blender or other programs. The 200-frame comparison explosion bakes in
+  33 s instead of 37 on a 24-core machine, and the gain grows as cores get
+  fewer. Compression set to ZIP, Blosc or None uses OpenVDB's writer as before.
 - **Bakes write faster**: the Pyro look's `heat` and `density_soft` grids
   are now built on the GPU (the same grids to half-float precision), and the
   VDB writers no longer hand their memory back to the system after every

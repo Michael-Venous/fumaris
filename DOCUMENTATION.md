@@ -965,7 +965,11 @@ For a faster or more memory-efficient simulation:
 4. Increase resolution and sparse capacity in measured steps.
 5. Use the lowest Sub-Step count that gives a converged result.
    For stepping at the smoke's edge, raise Air Margin before Sub-Steps.
-6. Keep caches on a fast local drive.
+6. Keep caches on a fast local drive. A large bake writes about 1 GB a
+   second; on a filesystem that compresses what it stores (Btrfs with
+   `compress=`, the default on some Linux distributions) the kernel's
+   compression takes a share of that time for files about a quarter smaller.
+   `chattr +m` on the cache folder turns it off for new files there.
 7. Split point clouds with widely different radii and reduce excessive point
    counts when point emission dominates a frame.
 

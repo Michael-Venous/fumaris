@@ -28,6 +28,7 @@ MATERIAL_NAME = "Fumaris Spark"
 VERSION = 3
 VERSION_KEY = "fumaris_sparks_version"
 DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
+MISSING_MARKER = "fumaris_sparks_missing"   # on a domain: grids its sparks lack in the bake it shows
 GLOW_LIMIT = 700.0   # Kelvin: a cooler spark no longer glows and is removed
 # A spark lives at most 1.4 Lifetime (build_group): the frames before that
 # cannot change the current one, so simulate() starts there.
@@ -386,6 +387,12 @@ def missing_grids(path):
     return [name for name in ("velocity", "temperature") if name not in names]
 
 
+def problems(domain):
+    """What an operator should report about the domain's sparks (see follow_bakes)."""
+    missing = domain.get(MISSING_MARKER)
+    return [f"Sparks: this bake has no {missing}, now turned on in Output. Bake again"] if missing else []
+
+
 def _sparks_modifiers(obj):
     return [modifier for modifier in obj.modifiers
             if modifier.type == "NODES" and modifier.node_group is not None and modifier.node_group.get(VERSION_KEY)]
@@ -430,12 +437,16 @@ def follow_bakes():
     A bake or an import replaces the volume object, and a version switch
     shows another one; the sparks go with the domain and are simulated again
     up to the current frame. A bake that is not in the scene leaves them
-    empty until it is.
+    empty until it is. A bake without the velocity or temperature grid is
+    noted on the domain (problems, the panel) and the grid turned on in
+    Output, as Add Sparks does.
     """
+    domains = set()
     for obj in bpy.data.objects:
         domain = obj.get(DOMAIN_MARKER)
         if domain is None or not hasattr(domain, "fumaris"):
             continue
+        domains.add(domain)
         volume = shown_volume(domain)
         changed = False
         for modifier in _sparks_modifiers(obj):
@@ -448,6 +459,27 @@ def follow_bakes():
                 reset(obj)
             else:
                 simulate(obj)
+    for domain in domains:
+        _note_missing_grids(domain)
+    for obj in bpy.data.objects:
+        if obj.get(MISSING_MARKER) is not None and obj not in domains:
+            del obj[MISSING_MARKER]   # its sparks are gone
+
+
+def _note_missing_grids(domain):
+    """Grids the sparks need that the domain's shown bake lacks: noted on the
+    domain for the panel and an operator's report, turned on for the next bake."""
+    from .importers import _frame_files
+    props = domain.fumaris
+    directory = peek_output_directory_for_object(domain)
+    files = _frame_files(directory, props.output_prefix or "fumaris_") if directory else []
+    missing = missing_grids(files[-1]) if files else []
+    if missing:
+        for name in missing:
+            setattr(props, f"export_{name}_vdb", True)
+        domain[MISSING_MARKER] = " and ".join(missing)
+    elif domain.get(MISSING_MARKER) is not None:
+        del domain[MISSING_MARKER]
 
 
 def _collection_for(context, domain, volume):

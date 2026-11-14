@@ -1129,6 +1129,9 @@ class FUMARIS_OT_entry_import(_DomainOperator, Operator):
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
+        from .sparks import problems
+        for message in problems(domain):
+            self.report({"ERROR"}, message)
         return {"FINISHED"}
 
 

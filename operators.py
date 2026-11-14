@@ -209,6 +209,9 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 mark_bake_complete(domain)
             self._store_bake_stats(domain)
             _activate(context, domain)
+            from .sparks import problems
+            for message in problems(domain):
+                self.report({"ERROR"}, message)
         self.report({"INFO"}, "Fumaris bake stopped" if self._stop_requested else "Fumaris bake complete")
         return {"FINISHED"}
 

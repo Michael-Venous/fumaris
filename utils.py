@@ -8,6 +8,8 @@ import struct
 
 import bpy
 
+from .runtime import background_bake
+
 
 # Wien's law at 550 nm (c2 / 550 nm): visible radiance ~ exp(-WIEN_KELVIN / T).
 WIEN_KELVIN = 26160.0
@@ -184,6 +186,16 @@ def _absolute_cache_directory(configured, fallback_name, *, create=True):
     return os.path.normpath(os.path.abspath(resolved))
 
 
+def scene_file_path(path):
+    """Absolute path of a "//" path stored in a Fumaris setting. A background
+    bake reads a snapshot in another folder: there the path is still relative
+    to the scene's own .blend file."""
+    background = background_bake()
+    if background is not None:
+        return bpy.path.abspath(path, start=background["blend_directory"])
+    return bpy.path.abspath(path)
+
+
 def cache_identity_for_object(obj):
     props = obj.fumaris
     identity = props.cache_id.strip()
@@ -260,6 +272,11 @@ def simulation_frame_range(domain):
 
 
 def get_addon_preferences():
+    background = background_bake()
+    if background is not None:
+        # A background bake's Blender runs with factory settings: the main
+        # process passed the preferences a bake reads.
+        return background["preferences"]
     addon_name = __package__
     addon = bpy.context.preferences.addons.get(addon_name)
     return addon.preferences if addon else None

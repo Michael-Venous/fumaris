@@ -42,6 +42,7 @@ from .utils import (
     flame_value,
     output_directory_for_object,
     physical_buoyancy,
+    scene_file_path,
     simulation_frame_range,
 )
 
@@ -738,7 +739,7 @@ def _volume_state(context, participant, depsgraph, frame, volume_stage_dir):
     if _is_geometry_nodes(props, "volume"):
         filepath = _stage_gn_volume(obj, depsgraph, frame, volume_stage_dir)
     else:
-        filepath = bpy.path.abspath(props.volume_filepath)
+        filepath = scene_file_path(props.volume_filepath)
         if props.volume_use_sequence:
             filepath = _sequence_frame_path(filepath, frame + props.volume_frame_offset)
             if not os.path.isfile(filepath):

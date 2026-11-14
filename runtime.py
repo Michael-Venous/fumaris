@@ -1,5 +1,12 @@
 _ACTIVE_JOB = None
 _GEOMETRY_REVISIONS = {}
+# Bake in Background (background.py): each domain's queued or running bake,
+# by the domain's session_uid. They run beside the one job above.
+_BACKGROUND_JOBS = {}
+# Set in a background bake's own Blender (background_runner.py): what its
+# main process passed on, which a factory-settings Blender and a snapshot
+# file do not have.
+_BACKGROUND_BAKE = None
 
 GPU_INITIALIZATION_MESSAGE = (
     "Initializing Flow GPU; first-run shader compilation may take several minutes"
@@ -39,6 +46,25 @@ def release_job(job):
     global _ACTIVE_JOB
     if _ACTIVE_JOB is job:
         _ACTIVE_JOB = None
+
+
+def background_job(domain):
+    """The domain's queued or running background bake, or None. Polls and
+    draw code call this: it reads memory only."""
+    if domain is None or not _BACKGROUND_JOBS:
+        return None
+    return _BACKGROUND_JOBS.get(int(domain.session_uid))
+
+
+def background_bake():
+    """In a background bake's Blender: its preferences and the folder of the
+    scene's own .blend file. None in the main process."""
+    return _BACKGROUND_BAKE
+
+
+def set_background_bake(preferences, blend_directory):
+    global _BACKGROUND_BAKE
+    _BACKGROUND_BAKE = {"preferences": preferences, "blend_directory": blend_directory}
 
 
 def geometry_revision(mesh):

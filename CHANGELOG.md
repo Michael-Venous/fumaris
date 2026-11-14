@@ -4,6 +4,13 @@ All notable customer-facing changes are recorded here.
 
 ## 2.0.0 beta 2 — Unreleased
 
+- **Conserve Smoke** (Advanced, on): smoke no longer thins out as it moves.
+  The solver's transport gained a little smoke where gas expanded and lost some
+  where it swirled (the Explosion preset ended with about 10% less than it
+  made); each step now scales the moved smoke back to the amount it started
+  with. Dissipation, Decay and combustion still apply as set. Bakes from beta
+  1 keep slightly more smoke late in a shot; turn it off to reproduce them.
+  About half a percent of the frame time.
 - **The live preview plays faster**: while it plays every frame as fast as
   the GPU goes (Frame Rate Uncapped), the next frame is sent before the
   current one is shown, so the solver's CPU work and the image hand-off no

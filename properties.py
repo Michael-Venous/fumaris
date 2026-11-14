@@ -778,6 +778,15 @@ class FumarisSettings(PropertyGroup):
         default=False,
     )
 
+    # Smoke mass correction (2026-11-14): the semi-Lagrangian scheme gains smoke
+    # where gas expands and loses it where it swirls; a per-step global scale
+    # (within 5%) keeps the transported total. Dissipation and Decay still apply.
+    conserve_smoke: BoolProperty(
+        name="Conserve Smoke",
+        description="Keep the smoke's total through transport: the solver's advection gains a little smoke where gas expands and loses some where it swirls (up to 10% by the end of an explosion); each step scales the moved smoke back to the amount it started with, within 5%. Dissipation, Decay and combustion still add and remove smoke as set. No visible cost",
+        default=True,
+    )
+
     full_resolution_velocity: BoolProperty(
         name="Full-Resolution Velocity",
         description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in VRAM) and more time per step. Smoke also moves somewhat faster: Vorticity then makes smaller swirls that slow the plume less",

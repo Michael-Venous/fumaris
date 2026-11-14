@@ -423,6 +423,7 @@ def _domain_state(props, resolution_scale=1.0):
         "gas_expansion": props.gas_expansion,
         "soot_radiation": props.soot_radiation,
         "temperature_diffusion": props.temperature_diffusion,
+        "conserve_smoke": bool(getattr(props, "conserve_smoke", True)),
         "trace_steps": int(getattr(props, "trace_steps", 0)),
         "collider_face_flux": bool(getattr(props, "collider_face_flux", False)),
         "oxygen_limit": props.oxygen_limit,

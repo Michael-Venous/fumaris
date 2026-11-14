@@ -1172,6 +1172,7 @@ def _draw_domain(layout, scene, props):
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
         grid.prop(props, "full_resolution_velocity")
+        grid.prop(props, "conserve_smoke")
         grid.prop(props, "color_mixing")
         grid.prop(props, "follow_object")
         grid.prop(props, "physics_convex_collision")

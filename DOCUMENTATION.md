@@ -593,8 +593,14 @@ that expands a lot before burning (a growing fireball) needs more, about
   the risk of grid-scale noise.
 - `Preserve Turbulence` (see Smoke Behavior), `Full-Resolution Velocity`
   (motion at the full Resolution: rounder, finer billows at about twice the
-  memory per block; changing it restarts the simulation), `Move With Object`
-  and `Convex Collision`.
+  memory per block; changing it restarts the simulation), `Conserve Smoke`,
+  `Move With Object` and `Convex Collision`.
+- `Conserve Smoke` (on by default) keeps the smoke's total through transport:
+  the solver's advection gains a little smoke where gas expands and loses some
+  where it swirls (the Explosion preset ends with about 10% less); each step
+  scales the moved smoke back to the amount it started with, within 5%.
+  Dissipation, Decay and combustion still add and remove smoke as set. It
+  costs about half a percent of the frame time. Off reproduces earlier bakes.
 - `Open Collider Wall` is the minimum thickness, in velocity cells, of the
   wall behind open collider meshes such as planes, so smoke cannot leak through
   when Collider Margin is thin. `Closed Collider Margin` (0 = the full Collider

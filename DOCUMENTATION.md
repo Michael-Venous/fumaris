@@ -390,9 +390,11 @@ lower Simulation Memory and restart.
 simulation starts (at least 0.5 GB), read from the driver; the GB value then
 only applies if no reading is available. Close other GPU work before starting
 for the most space. Drivers without a free-memory reading (some macOS
-versions) use half the GPU memory. Auto is off for new domains: Quick Setup
-domains start with 2 GB, which holds every preset with room to spare, and a
-new domain made by hand with 1 GB. A set amount larger than the GPU's memory
+versions) use half the GPU memory. Auto is on for new domains (Quick Setup,
+New Domain, or Role set to Domain); the result does not depend on the amount,
+only how much room the smoke has. Turn it off to reserve a set amount, for
+example to leave memory to other programs (Quick Setup's domains then use
+2 GB, which holds every preset with room to spare). A set amount larger than the GPU's memory
 is flagged under the field: it would spill into system memory and run slowly. The panel shows the amount Auto resolved to at the last
 start; Diagnostics shows the voxel size (32 scene units divided by Resolution),
 the voxel count and about how much space the budget lets smoke fill. The live

@@ -23,6 +23,15 @@ _DOMAIN_DEFAULTS = {
     "simulation_memory": 2.0,
 }
 
+
+def _domain_defaults():
+    # New domains reserve 80% of the free GPU memory (user, 2026-11-14): the
+    # result no longer depends on the amount, so more only means more room;
+    # 2 GB stays the amount when Auto is turned off. Not in background
+    # Blender: scripts and tests expect the fixed amount (80% of a GPU each
+    # would not fit several at once).
+    return {**_DOMAIN_DEFAULTS, "simulation_memory_auto": not bpy.app.background}
+
 # Emitters are physical since 2.0: Expansion in 1/s, and Normal Velocity on a
 # closed source is a volume source (v x area), so presets use smaller values
 # than the old, mostly cancelled per-cell push (output/expansion, 2026-11-04).
@@ -417,7 +426,7 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         props.sim_end_frame = props.sim_start_frame + preset["duration"] - 1 if "duration" in preset else context.scene.frame_end
         # Short effects keep their own length; the rest follow the timeline.
         props.use_scene_frame_range = "duration" not in preset
-        _apply_settings(props, _DOMAIN_DEFAULTS)
+        _apply_settings(props, _domain_defaults())
         _apply_settings(props, preset["domain"])
         disturb = preset.get("disturb")
         if disturb:
@@ -481,7 +490,7 @@ class FUMARIS_OT_domain_create(bpy.types.Operator):
         props.smoke_object_type = "domain"
         props.sim_start_frame = context.scene.frame_start
         props.sim_end_frame = context.scene.frame_end
-        _apply_settings(props, _DOMAIN_DEFAULTS)
+        _apply_settings(props, _domain_defaults())
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for obj in context.selected_objects:

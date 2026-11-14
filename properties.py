@@ -35,6 +35,11 @@ def _object_type_updated(self, _context):
     obj = self.id_data
     if self.smoke_object_type == "domain" and getattr(obj, "type", "") != "EMPTY":
         obj.display_type = "WIRE"
+    # Made a domain in the panel: Auto VRAM on, as Quick Setup and New Domain
+    # do. Not in background Blender: scripts and tests expect the fixed amount
+    # (80% of a GPU each would not fit several at once).
+    if self.smoke_object_type == "domain" and not bpy.app.background:
+        self.simulation_memory_auto = True
     # A new domain starts with the last cache directory chosen, in any scene.
     if self.smoke_object_type == "domain" and not self.output_dir.strip():
         from .utils import get_addon_preferences
@@ -1481,6 +1486,8 @@ class FumarisSettings(PropertyGroup):
 
     flame_temperature: FloatProperty(
         name="Flame Temperature",
+        # Shown as "2000 K" (Celsius in a scene set to it; stored in Kelvin).
+        unit="TEMPERATURE",
         description="Hottest temperature gas reaches, in Kelvin. Sets the flame colour: about 1500 K deep orange, 2000 K yellow-orange (most fuel fires), 3000 K and above pale yellow-white. Emitter Temperature 1 means this temperature",
         default=2000.0,
         min=1.0,
@@ -1604,6 +1611,7 @@ class FumarisSettings(PropertyGroup):
 
     ignition_temperature_k: FloatProperty(
         name="Ignition Temperature",
+        unit="TEMPERATURE",
         description="Fuel burns only in gas at least this hot, in Kelvin; fuel carried into cooler air stops burning",
         default=500.0,
         min=0.0,
@@ -1833,6 +1841,7 @@ class FumarisSettings(PropertyGroup):
 
     flame_temperature_min: FloatProperty(
         name="Start Temperature",
+        unit="TEMPERATURE",
         description="Temperature (K) where generated fire emission begins",
         default=800.0,
         min=0.0,
@@ -1842,6 +1851,7 @@ class FumarisSettings(PropertyGroup):
 
     flame_temperature_max: FloatProperty(
         name="Full Temperature",
+        unit="TEMPERATURE",
         description="Temperature (K) where generated fire emission reaches full strength",
         default=3000.0,
         min=1.0,
@@ -1898,6 +1908,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_glow_temperature: FloatProperty(
         name="Full Glow",
+        unit="TEMPERATURE",
         description="Temperature (K) at which fire glows at full Brightness; hotter gas is brighter, cooler gas falls off by Contrast",
         default=2000.0,
         min=300.0,
@@ -2008,6 +2019,7 @@ class FumarisSettings(PropertyGroup):
     )
     pyro_glow_temperature: FloatProperty(
         name="Full Glow",
+        unit="TEMPERATURE",
         description="Pyro look: temperature (K) at which fire glows at full Brightness and takes the ramp's palest gold; cooler gas falls off by Contrast toward deep red",
         default=2000.0,
         min=300.0,

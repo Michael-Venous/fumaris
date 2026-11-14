@@ -199,6 +199,14 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   without an emitter collection, Play on a domain waiting for a background
   bake. Protect refuses an empty version, and Delete on one says there is
   nothing to delete.
+- **New domains start on Auto VRAM** (Quick Setup, New Domain, or Role set
+  to Domain): they reserve 80% of the GPU memory free at the start. Since the
+  result no longer depends on the amount, this only gives the smoke more
+  room; turn Auto off to leave memory to other programs. Domains in existing
+  files keep their setting.
+- Temperatures show their unit: Flame Temperature, Ignition Temperature and
+  the Look's Full Glow, Start and Full Temperature read "2000 K" (in Celsius
+  if the scene's units are set to it).
 - Warnings for an End frame before Start and for VRAM (GB) set above the
   GPU's memory (it ran, slowly, in system memory).
 - Make Lighter Copy also halves the Pyro look's `heat` and `density_soft`

@@ -59,6 +59,9 @@ TICK_SECONDS = 0.001
 # long frame from a bake that hangs.
 HEARTBEAT_SECONDS = 1.0
 PARENT_CHECK_SECONDS = 2.0
+# With its main Blender gone, a bake that was told to stop but is still
+# inside a frame after this long is ended (nobody is left to end it).
+ORPHAN_SECONDS = 60.0
 # Status updates the frames-per-second figure is measured over.
 RATE_FRAMES = 8
 
@@ -244,6 +247,13 @@ class _Status:
         )
 
 
+def _parent_gone(parent):
+    if os.name != "nt":
+        # A dead parent hands its children on, also before it is reaped.
+        return os.getppid() != parent
+    return not _pid_is_alive(parent)
+
+
 def _show_scene(job):
     """The scene and view layer the bake was started from."""
     window = bpy.context.window
@@ -292,20 +302,30 @@ def _bake(directory, job, status):
 
     parent = int(job.get("parent_pid", 0))
     next_parent_check = 0.0
+    orphaned = None     # when the main process was found gone
     while not bake._finished:
+        now = time.monotonic()
+        if parent and orphaned is None and now >= next_parent_check:
+            next_parent_check = now + PARENT_CHECK_SECONDS
+            if _parent_gone(parent):
+                orphaned = now
         if not bake._stop_requested:
-            now = time.monotonic()
-            orphaned = False
-            if parent and now >= next_parent_check:
-                next_parent_check = now + PARENT_CHECK_SECONDS
-                orphaned = not _pid_is_alive(parent)
             # Stop in the main process, or the main process is gone (nothing
             # could stop or finish this bake any more).
-            if orphaned or os.path.exists(cancel):
-                console_log("Fumaris background bake: " + ("its Blender closed" if orphaned else "Stop requested"))
+            if orphaned is not None or os.path.exists(cancel):
+                console_log("Fumaris background bake: "
+                            + ("its Blender closed" if orphaned is not None else "Stop requested"))
                 bake.stop(context)
                 status.write(state="stopping")
                 continue
+        elif orphaned is not None and now - orphaned > ORPHAN_SECONDS:
+            console_log("Fumaris background bake: ended inside a frame, its Blender closed")
+            _cancel_job(context, bake)
+            domain = bpy.data.objects.get(bake._domain_name)
+            if domain:
+                mark_bake_cancelled(domain)
+                bake._store_bake_stats(domain)
+            break
         bake.tick(context)
         status.update(bake)
         time.sleep(TICK_SECONDS)

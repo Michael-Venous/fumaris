@@ -1611,7 +1611,7 @@ class FUMARIS_OT_add_sparks(Operator):
             self.report({"ERROR"}, f"Version '{props.cache_slot}' is not in the scene: import it in Versions, then add sparks")
             return {"CANCELLED"}
         sparks = add_sparks(context, domain, volume, name=f"{domain.name} Sparks")
-        self.report({"INFO"}, f"Added '{sparks.name}': play the timeline from the start to simulate")
+        self.report({"INFO"}, f"Added '{sparks.name}': its settings are on its Geometry Nodes modifier")
         return {"FINISHED"}
 
 

@@ -9,8 +9,11 @@ Needs a bake with the velocity and temperature grids (Output > Velocity).
 
 One node group and one material serve every sparks object; each object keeps
 its own values on its modifier. Its Volume input follows the bake its domain
-shows (follow_bakes), through re-bakes and version switches.
+shows (follow_bakes), through re-bakes and version switches; each time the
+volume changes the sparks are simulated again up to the current frame, so the
+frame on screen shows the new bake's sparks without playing from the start.
 """
+import math
 import os
 
 import bpy
@@ -26,6 +29,9 @@ VERSION = 3
 VERSION_KEY = "fumaris_sparks_version"
 DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
 GLOW_LIMIT = 700.0   # Kelvin: a cooler spark no longer glows and is removed
+# A spark lives at most 1.4 Lifetime (build_group): the frames before that
+# cannot change the current one, so simulate() starts there.
+LIFETIME_SPREAD = 1.4
 # Emission strength is temperature x 0.01 x Brightness. At 1 (beta 1) every
 # spark rendered pinkish white under AgX; at 0.1 the hottest just stay below
 # white (orange), cool ones are red (notes/experiments/sparks-followups-2026-11-14).
@@ -119,7 +125,7 @@ def build_group():
     _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0,
             "New sparks each frame, spread over the hot gas. At most one per hot voxel")
     _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0,
-            "Seconds a spark lives. Each spark gets between 0.6 and 1.4 times this")
+            f"Seconds a spark lives. Each spark gets between 0.6 and {LIFETIME_SPREAD} times this")
     _socket(tree, "Drag", "NodeSocketFloat", 3.0, 0.0,
             "How strongly the gas carries a spark: 0 flies free, higher values follow the gas closely")
     _socket(tree, "Gravity", "NodeSocketFloat", 9.81, None,
@@ -287,7 +293,7 @@ def build_group():
     life_random.data_type = "FLOAT"
     life_random.location = (650, -50)
     life_random.inputs["Min"].default_value = 0.6
-    life_random.inputs["Max"].default_value = 1.4
+    life_random.inputs["Max"].default_value = LIFETIME_SPREAD
     _link(tree, seed, life_random.inputs["Seed"])
     life = _math(tree, "MULTIPLY", life_random.outputs[0], group_in.outputs["Lifetime"], (850, -50))
     geometry = spawn_pos.outputs["Geometry"]
@@ -380,25 +386,68 @@ def missing_grids(path):
     return [name for name in ("velocity", "temperature") if name not in names]
 
 
+def _sparks_modifiers(obj):
+    return [modifier for modifier in obj.modifiers
+            if modifier.type == "NODES" and modifier.node_group is not None and modifier.node_group.get(VERSION_KEY)]
+
+
+def reset(obj):
+    """Drop the sparks' Simulation Zone cache: the next frame evaluated starts
+    the simulation afresh. (Only Blender's operator can; it works on any object
+    given as the active one.)"""
+    try:
+        with bpy.context.temp_override(active_object=obj, selected_objects=[obj], object=obj):
+            bpy.ops.object.simulation_nodes_cache_delete("EXEC_DEFAULT", False, selected=True)   # no undo step of its own
+    except RuntimeError:
+        pass
+
+
+def simulate(obj, scene=None):
+    """Simulate the sparks again up to the current frame, as playing from the
+    first frame would: drop the cache and step the frames a living spark can
+    have started in (at most 1.4 Lifetime seconds, in the sparks' time).
+    The current frame is kept.
+    """
+    scene = scene or bpy.context.scene
+    reset(obj)
+    current = scene.frame_current
+    frames = 0
+    for modifier in _sparks_modifiers(obj):
+        lifetime = _input(modifier, "Lifetime")
+        speed = _input(modifier, "Simulation Speed")
+        fps = scene.render.fps / scene.render.fps_base
+        seconds = LIFETIME_SPREAD * (lifetime.value if lifetime else 1.5)
+        frames = max(frames, int(math.ceil(seconds * fps / max(speed.value if speed else 1.0, 1e-3))) + 2)
+    first = max(scene.frame_start, current - frames)
+    for frame in range(min(first, current), current + 1):
+        scene.frame_set(frame)
+    obj.update_tag()
+
+
 def follow_bakes():
     """Point every sparks object at the bake its domain shows now.
 
     A bake or an import replaces the volume object, and a version switch
-    shows another one; the sparks go with the domain. A bake that is not in
-    the scene leaves them empty until it is.
+    shows another one; the sparks go with the domain and are simulated again
+    up to the current frame. A bake that is not in the scene leaves them
+    empty until it is.
     """
     for obj in bpy.data.objects:
         domain = obj.get(DOMAIN_MARKER)
         if domain is None or not hasattr(domain, "fumaris"):
             continue
         volume = shown_volume(domain)
-        for modifier in obj.modifiers:
-            if modifier.type != "NODES" or modifier.node_group is None or not modifier.node_group.get(VERSION_KEY):
-                continue
+        changed = False
+        for modifier in _sparks_modifiers(obj):
             target = _input(modifier, "Volume")
             if target is not None and target.value != volume:
                 target.value = volume
-                obj.update_tag()
+                changed = True
+        if changed:
+            if volume is None:
+                reset(obj)
+            else:
+                simulate(obj)
 
 
 def _collection_for(context, domain, volume):
@@ -413,7 +462,8 @@ def _collection_for(context, domain, volume):
 
 def add_sparks(context, domain, volume, name="Fumaris Sparks"):
     """Point-cloud object running the Sparks group on the bake `domain` shows,
-    in the volume's collection, selected and active."""
+    in the volume's collection, selected and active, simulated up to the
+    current frame."""
     tree = build_group()
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
@@ -435,4 +485,5 @@ def add_sparks(context, domain, volume, name="Fumaris Sparks"):
         context.view_layer.objects.active = obj
     except RuntimeError:
         pass   # its collection is excluded from the view layer
+    simulate(obj, context.scene)
     return obj

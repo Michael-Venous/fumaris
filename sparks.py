@@ -401,12 +401,23 @@ def follow_bakes():
                 obj.update_tag()
 
 
+def _collection_for(context, domain, volume):
+    """Where a new sparks object goes: beside the baked volume, else beside the domain."""
+    in_scene = [context.scene.collection, *context.scene.collection.children_recursive]
+    for obj in (volume, domain):
+        for collection in obj.users_collection:
+            if collection in in_scene:
+                return collection
+    return context.scene.collection
+
+
 def add_sparks(context, domain, volume, name="Fumaris Sparks"):
-    """Point-cloud object running the Sparks group on the bake `domain` shows."""
+    """Point-cloud object running the Sparks group on the bake `domain` shows,
+    in the volume's collection, selected and active."""
     tree = build_group()
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
-    context.scene.collection.objects.link(obj)
+    _collection_for(context, domain, volume).objects.link(obj)
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree
     obj[DOMAIN_MARKER] = domain
@@ -417,4 +428,11 @@ def add_sparks(context, domain, volume, name="Fumaris Sparks"):
     _input(modifier, "Spawn Temperature").value = 0.75 * props.flame_temperature
     _input(modifier, "Gravity").value = -props.gravity[2] / props.simulation_scale
     _input(modifier, "Simulation Speed").value = props.simulation_speed
+    try:
+        for other in context.selected_objects:
+            other.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+    except RuntimeError:
+        pass   # its collection is excluded from the view layer
     return obj

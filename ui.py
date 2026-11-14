@@ -360,8 +360,14 @@ def _draw_emitter(layout, obj, props):
         smoke_row = box.row(align=True)
         smoke_row.active = not props.emitter_influence
         smoke_row.prop(props, "emitter_smoke")
-        # With the domain's Colour Mixing: this emitter's smoke colour.
-        smoke_row.prop(props, "emitter_color", text="")
+        # Its own smoke color: the swatch while a domain of it has Per-Emitter
+        # Color on; otherwise a button that offers to turn it on (with its
+        # cost) or to set the domain's Color, so no one pays for it unawares.
+        domains = emitter_domains(obj)
+        if any(domain.fumaris.color_mixing for domain in domains):
+            smoke_row.prop(props, "emitter_color", text="")
+        elif domains:
+            smoke_row.operator("fumaris.emitter_color_offer", text="", icon="COLOR")
         box.prop(props, "emitter_temperature")
         box.prop(props, "emitter_fuel")
         if _hot_fuel_without_air(obj, props):
@@ -388,7 +394,7 @@ def _draw_emitter(layout, obj, props):
 
     box = layout.box()
     # A box of its own: the arrow at the box edge, like the domain's Advanced.
-    opened = _foldout(box, props, "show_emitter_coupling", "Channel Coupling")
+    opened = _foldout(box, props, "show_emitter_coupling", "Emission Blending")
     if opened:
         column = box.column(align=True)
         # The rate gets the room: its label is the channel's name.
@@ -721,6 +727,189 @@ def _draw_preview_cache_status(layout, scene, job, paused):
         _wrapped(layout, "Cache full: older frames dropped (Preferences > Preview Cache RAM)", "INFO")
 
 
+def _changed_count(props, names):
+    """How many of these settings differ from their defaults (a folded group
+    says so, so no changed value hides unnoticed)."""
+    count = 0
+    for name in names:
+        prop = props.bl_rna.properties.get(name)
+        if prop is None:
+            continue
+        value = getattr(props, name)
+        default = prop.default_array if getattr(prop, "is_array", False) else prop.default
+        if getattr(prop, "is_array", False):
+            if any(abs(float(a) - float(b)) > 1e-6 for a, b in zip(value, default)):
+                count += 1
+        elif isinstance(value, float):
+            if abs(value - float(default)) > 1e-6:
+                count += 1
+        elif value != default:
+            count += 1
+    return count
+
+
+# More emitters than this and the panel does not compare their colours.
+_COLOR_CHECK_LIMIT = 500
+
+
+def _emitter_color_note(props):
+    """None, or why Per-Emitter Color buys nothing in this domain: every
+    enabled emitter has one (unanimated) colour, which the domain's Color
+    gives without the second smoke field."""
+    collection = props.emitter_collection
+    if collection is None:
+        return None
+    colors = set()
+    for index, obj in enumerate(collection.all_objects):
+        if index >= _COLOR_CHECK_LIMIT:
+            return None
+        settings = getattr(obj, "fumaris", None)
+        if settings is None or settings.smoke_object_type != "emitter" or not settings.participant_enabled:
+            continue
+        animation = obj.animation_data
+        if animation is not None and (animation.drivers or animation.action is not None):
+            # (a keyed or driven colour may change: no claim)
+            if any(curve.data_path == "fumaris.emitter_color" for curve in animation.drivers):
+                return None
+            action = animation.action
+            curves = getattr(action, "fcurves", None) if action is not None else None
+            if curves is None or any(curve.data_path == "fumaris.emitter_color" for curve in curves):
+                return None
+        colors.add(tuple(round(float(c), 3) for c in settings.emitter_color))
+        if len(colors) > 1:
+            return None
+    if len(colors) != 1:
+        return None
+    return "Every emitter has the same color: turn this off and set Color, which looks the same at no cost"
+
+
+def _draw_emitter_colors(layout, props):
+    """Per-Emitter Color, under the smoke Color: the switch, its cost while
+    it is on, and a note when it buys nothing."""
+    layout.prop(props, "color_mixing")
+    if not props.color_mixing:
+        return
+    note = _emitter_color_note(props)
+    if note:
+        row = layout.column(align=True)
+        row.alert = True
+        _wrapped(row, note, "ERROR")
+    else:
+        _wrapped(layout, "Costs about 1.4x the simulation time and a third of the blocks per GB", "INFO")
+
+
+def emitter_domains(obj, scene=None):
+    """The scene's domains whose Emitters collection holds this object."""
+    scene = scene or bpy.context.scene
+    domains = []
+    for candidate in scene.objects:
+        settings = getattr(candidate, "fumaris", None)
+        if settings is None or settings.smoke_object_type != "domain":
+            continue
+        collection = settings.emitter_collection
+        if collection is not None and obj.name in collection.all_objects:
+            domains.append(candidate)
+    return domains
+
+
+class FUMARIS_MT_bake_more(bpy.types.Menu):
+    """Beside Play and Bake: the less common bake actions."""
+    bl_label = "Bake"
+    bl_idname = "FUMARIS_MT_bake_more"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.object
+        protected = obj is not None and is_protected(peek_output_directory_for_object(obj))
+        row = layout.row()
+        row.enabled = not protected
+        row.operator("fumaris.bake_background", text="Bake in Background", icon="RENDERLAYERS")
+        layout.separator()
+        row = layout.row()
+        row.enabled = not protected
+        row.operator("fumaris.delete", text="Delete Bake", icon="TRASH")
+
+
+class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
+    bl_idname = "fumaris.emitter_color_offer"
+    bl_label = "Own Smoke Color"
+    bl_description = ("Give this emitter's smoke its own color. That needs the domain's Per-Emitter Color "
+                      "(about 1.4x the simulation time and a third of the blocks per GB); for one color "
+                      "everywhere, set the domain's Color instead")
+
+    def invoke(self, context, _event):
+        obj = context.object
+        domains = emitter_domains(obj, context.scene) if obj is not None else []
+        if not domains:
+            self.report({"INFO"}, "This emitter is in no domain's Emitters collection")
+            return {"CANCELLED"}
+
+        def draw(menu, _context):
+            layout = menu.layout
+            layout.label(text="Per-Emitter Color: about 1.4x the simulation time", icon="INFO")
+            layout.label(text="and a third of the blocks per GB.", icon="BLANK1")
+            layout.separator()
+            for domain in domains:
+                on = layout.operator("fumaris.color_mixing_enable", text=f"Turn On in {domain.name}", icon="COLOR")
+                on.domain = domain.name
+            layout.separator()
+            for domain in domains:
+                look = layout.operator("fumaris.domain_show_look", text=f"Set {domain.name}'s Color Instead",
+                                       icon="SHADING_RENDERED")
+                look.domain = domain.name
+        context.window_manager.popup_menu(draw, title="Own Smoke Color", icon="COLOR")
+        return {"FINISHED"}
+
+    def execute(self, context):
+        return self.invoke(context, None)
+
+
+class FUMARIS_OT_color_mixing_enable(bpy.types.Operator):
+    bl_idname = "fumaris.color_mixing_enable"
+    bl_label = "Turn On Per-Emitter Color"
+    bl_description = ("Turn on the domain's Per-Emitter Color, so each emitter's smoke keeps its own color "
+                      "(about 1.4x the simulation time and a third of the blocks per GB)")
+    bl_options = {"REGISTER", "UNDO"}
+
+    domain: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    @classmethod
+    def poll(cls, _context):
+        if active_mode() == "baking":
+            cls.poll_message_set("Stop the bake first")
+            return False
+        return True
+
+    def execute(self, context):
+        domain = bpy.data.objects.get(self.domain)
+        if domain is None or domain.fumaris.smoke_object_type != "domain":
+            self.report({"WARNING"}, f"No domain named {self.domain}")
+            return {"CANCELLED"}
+        domain.fumaris.color_mixing = True
+        self.report({"INFO"}, f"Per-Emitter Color is on in {domain.name}: set this emitter's Smoke Color")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_domain_show_look(bpy.types.Operator):
+    bl_idname = "fumaris.domain_show_look"
+    bl_label = "Show the Domain's Look"
+    bl_description = "Make the domain the active object and open its Look section, where Color sets the smoke's color"
+
+    domain: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    def execute(self, context):
+        domain = bpy.data.objects.get(self.domain)
+        if domain is None:
+            return {"CANCELLED"}
+        domain.fumaris.show_appearance = True
+        if context.mode == "OBJECT" and domain.name in context.view_layer.objects:
+            for other in context.selected_objects:
+                other.select_set(False)
+            domain.select_set(True)
+            context.view_layer.objects.active = domain
+        return {"FINISHED"}
+
+
 def _draw_domain(layout, scene, props):
     job = active_job()
     mode = active_mode()
@@ -730,70 +919,51 @@ def _draw_domain(layout, scene, props):
         getattr(job, "_pause_requested", False)
     )
     is_initializing = job is not None and not getattr(job, "_accepted", False)
-
-    compare_box = layout.box()
-    if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
-        from .compare import draw_compare
-        draw_compare(compare_box, props.id_data, props)
+    domain = props.id_data
+    slot_directory = peek_output_directory_for_object(domain)
+    slot_protected = is_protected(slot_directory)
+    # This domain's background bake (others, and the preview, stay usable).
+    background = background_job(domain)
 
     simulate_box = layout.box()
     if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
         controls = simulate_box.column(align=True)
-        slot_directory = peek_output_directory_for_object(props.id_data)
-        slot_protected = is_protected(slot_directory)
+        # Tight: words without icons, so no word is cut off.
+        icon = (lambda name: "NONE") if _TIGHT else (lambda name: name)
+        # One row for what runs: Play and Bake when idle; while something
+        # runs, its own buttons and one Stop for it. The menu at the end
+        # holds Bake in Background and Delete Bake.
         row = controls.row(align=True)
-        # One button: Bake, or Stop while baking. Tight: words without icons,
-        # so Delete is not cut off.
-        sub = row.row(align=True)
-        # This domain's background bake (others, and the preview, stay usable).
-        background = background_job(props.id_data)
         if background is not None:
             from .background import stop_label
+            sub = row.row(align=True)
             # (Ended and waiting to be imported: nothing left to stop.)
             sub.enabled = background.state != "ended"
-            sub.operator("fumaris.bake_background_stop", icon="NONE" if _TIGHT else "CANCEL",
-                         text=stop_label(background))
+            sub.operator("fumaris.bake_background_stop", icon=icon("CANCEL"), text=stop_label(background))
         elif is_baking:
-            sub.operator("fumaris.stop", icon="NONE" if _TIGHT else "CANCEL", text="Stop")
-        else:
-            sub.enabled = mode is None and not slot_protected
-            sub.operator("fumaris.bake", icon="NONE" if _TIGHT else "RENDER_ANIMATION", text="Bake")
-        if background is None:
-            # A small Bake in Background, right of Bake.
-            in_background = row.row(align=True)
-            in_background.enabled = not slot_protected
-            in_background.operator("fumaris.bake_background", icon="RENDERLAYERS", text="")
-        delete = row.row(align=True)
-        delete.enabled = mode is None and not slot_protected
-        delete.operator("fumaris.delete", icon="NONE" if _TIGHT else "TRASH", text="Delete")
-        if slot_protected:
-            controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
-
-        controls.separator(factor=0.6)
-        preview = controls.row(align=True)
-        # Tight: words without icons, so Resume is not cut off.
-        icon = (lambda name: "NONE") if _TIGHT else (lambda name: name)
-        # One button: Play, or Pause / Resume while previewing.
-        play = preview.row(align=True)
-        if is_previewing:
+            row.operator("fumaris.stop", icon=icon("CANCEL"), text="Stop Bake")
+        elif is_previewing:
+            play = row.row(align=True)
             play.enabled = not is_initializing
             play.operator(
                 "fumaris.preview_pause",
                 icon=icon("PLAY" if is_preview_paused else "PAUSE"),
                 text="Resume" if is_preview_paused else "Pause",
             )
-        else:
-            play.enabled = mode is None and background is None
-            play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
-        preview_stop = preview.row(align=True)
-        # A preview that is still starting (or paused) can always be stopped.
-        preview_stop.enabled = job is not None and not is_baking
-        preview_stop.operator("fumaris.preview_stop", icon=icon("CANCEL"), text="Stop")
-        # A small Restart, right of Stop, only while previewing.
-        if is_previewing:
-            restart = preview.row(align=True)
+            row.operator("fumaris.preview_stop", icon=icon("CANCEL"), text="Stop")
+            restart = row.row(align=True)
             restart.enabled = not is_initializing
             restart.operator("fumaris.preview_restart", icon="FILE_REFRESH", text="")
+        else:
+            play = row.row(align=True)
+            play.enabled = mode is None
+            play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
+            bake = row.row(align=True)
+            bake.enabled = mode is None and not slot_protected
+            bake.operator("fumaris.bake", icon=icon("RENDER_ANIMATION"), text="Bake")
+        row.menu("FUMARIS_MT_bake_more", text="", icon="DOWNARROW_HLT")
+        if slot_protected:
+            controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
         controls.separator(factor=0.5)
         cache_preview = controls.row(align=True)
         cache_preview.enabled = mode is None
@@ -867,7 +1037,6 @@ def _draw_domain(layout, scene, props):
                 # (A cached preview says so with its cache status.)
                 _wrapped(status, "At the end: Resume starts over", "INFO")
             _draw_preview_cache_status(status, scene, job, is_preview_paused)
-        domain = props.id_data
         if not domain.visible_get(view_layer=bpy.context.view_layer):
             status.label(text="Domain hidden: simulation can still run", icon="INFO")
             status.label(text="Unhide the domain to see the preview")
@@ -906,100 +1075,40 @@ def _draw_domain(layout, scene, props):
         cells.active = props.num_sub_steps > 1
         cells.prop(props, "adaptive_cfl")
 
-        appearance, appearance_open = _nested_foldout(
-            settings,
-            props,
-            "show_appearance",
-            "Appearance",
-        )
-        if appearance_open:
-            appearance.label(text="Smoke")
-            smoke = appearance.column(align=True)
-            smoke_row = _pair(smoke)
-            smoke_row.prop(props, "shader_smoke_density")
-            smoke_row.prop(props, "shader_anisotropy")
-            color = _label_split(smoke, 0.2, 0.3)
-            color.label(text="Color")
-            color.prop(props, "shader_smoke_color", text="")
-            appearance.separator()
-            flame_header = appearance.row(align=True)
-            flame_header.prop(props, "shader_flame_enabled")
-            if props.shader_flame_enabled:
-                flame_header.prop(props, "shader_look", text="")
-                _draw_fire_look(appearance.column(align=True), props)
-            cycles = getattr(scene, "cycles", None)
-            if scene.render.engine == "CYCLES" and cycles is not None and hasattr(cycles, "volume_biased"):
-                # Cycles' volume method, as a switch: Biased (ray-marched) or
-                # Unbiased. Which renders faster depends on the scene.
-                volumes = _pair(appearance)
-                volumes.label(text="Cycles Volumes")
-                volumes.prop(cycles, "volume_biased", toggle=True,
-                             text="Biased" if cycles.volume_biased else "Unbiased")
-            if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
-                appearance.label(
-                    text="Custom material overrides this",
-                    icon="INFO",
-                )
-
-        output, output_open = _nested_foldout(settings, props, "show_cache_location", "Output")
-        if output_open:
-            # One label column for every row, so labels line up and none truncate.
-            split = _label_split(output, 0.2, 0.3)
-            labels = split.column(align=True)
-            fields = split.column(align=True)
-            # The bake the domain shows (chosen in Versions) and tools for it.
-            labels.label(text="Bake")
-            slot = fields.row(align=True)
-            slot.label(text=props.cache_slot)
-            slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
-            slot.operator("fumaris.add_sparks", icon="PARTICLES", text="")
-            slot.operator(
-                "fumaris.cache_protect",
-                icon="LOCKED" if slot_protected else "UNLOCKED",
-                text="",
-                depress=slot_protected,
+    look_box = layout.box()
+    look_box.enabled = not is_baking
+    if _section(look_box, props, "show_appearance", "Look", "SHADING_RENDERED"):
+        appearance = look_box.column(align=True)
+        appearance.label(text="Smoke")
+        smoke = appearance.column(align=True)
+        smoke_row = _pair(smoke)
+        smoke_row.prop(props, "shader_smoke_density")
+        smoke_row.prop(props, "shader_anisotropy")
+        color = _label_split(smoke, 0.2, 0.3)
+        color.label(text="Color")
+        color.prop(props, "shader_smoke_color", text="")
+        _draw_emitter_colors(smoke, props)
+        appearance.separator()
+        flame_header = appearance.row(align=True)
+        flame_header.prop(props, "shader_flame_enabled")
+        if props.shader_flame_enabled:
+            flame_header.prop(props, "shader_look", text="")
+            _draw_fire_look(appearance.column(align=True), props)
+        cycles = getattr(scene, "cycles", None)
+        if scene.render.engine == "CYCLES" and cycles is not None and hasattr(cycles, "volume_biased"):
+            # Cycles' volume method, as a switch: Biased (ray-marched) or
+            # Unbiased. Which renders faster depends on the scene.
+            volumes = _pair(appearance)
+            volumes.label(text="Cycles Volumes")
+            volumes.prop(cycles, "volume_biased", toggle=True,
+                         text="Biased" if cycles.volume_biased else "Unbiased")
+        if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
+            appearance.label(
+                text="Custom material overrides this",
+                icon="INFO",
             )
-            missing_for_sparks = domain.get(SPARKS_MISSING_MARKER)
-            if missing_for_sparks:
-                # This bake lacks a grid the domain's sparks need (sparks.follow_bakes).
-                labels.label(text="Sparks")
-                fields.label(text=f"No {missing_for_sparks}: bake again", icon="ERROR")
-            labels.label(text="Directory")
-            fields.prop(props, "output_dir", text="")
-            labels.label(text="Prefix")
-            fields.prop(props, "output_prefix", text="")
-            labels.label(text="VDB")
-            vdb = fields.row(align=True)
-            vdb.prop(props, "vdb_compression", text="")
-            vdb.prop(props, "vdb_precision", text="")
-            labels.label(text="Material")
-            fields.prop(props, "volume_material", text="")
-            output.prop(props, "vdb_writers", **({"text": "Writers"} if _NARROW else {}))
-            output.separator()
-            output.prop(props, "volume_selectable")
-            output.separator()
-            # Each grid: write it, and at which resolution.
-            channels = output.column(align=True)
-            for name in ("density", "temperature", "fuel", "burn", "velocity"):
-                row = channels.split(factor=0.6, align=True)
-                row.prop(props, f"export_{name}_vdb", text=name.title())
-                resolution = row.row(align=True)
-                resolution.active = getattr(props, f"export_{name}_vdb")
-                resolution.prop(props, f"export_{name}_resolution", text="")
-            row = channels.split(factor=0.6, align=True)
-            row.prop(props, "export_glow_vdb", text="Glow")
-            resolution = row.row(align=True)
-            resolution.active = props.export_glow_vdb
-            resolution.prop(props, "export_glow_resolution", text="")
-            if props.export_glow_vdb:
-                output.prop(props, "glow_radius")
-            if props.volume_material is None:
-                output.label(
-                    text="Density + temperature always written",
-                    icon="INFO",
-                )
-
-        preview, preview_open = _nested_foldout(settings, props, "show_preview_display", "Preview Settings")
+        appearance.separator()
+        preview, preview_open = _nested_foldout(appearance, props, "show_preview_display", "Live Preview")
         if preview_open:
             preview.prop(props, "preview_field_view")
             if props.preview_field_view == "blocks":
@@ -1053,23 +1162,15 @@ def _draw_domain(layout, scene, props):
                 color.prop(props, "preview_exposure_offset", slider=True)
             preview.label(text="The preview keeps its VRAM until Stop", icon="INFO")
 
-    participants_box = layout.box()
-    participants_box.enabled = not is_baking
-    if _section(participants_box, props, "show_panel_participants", "Participants", "OUTLINER_COLLECTION"):
-        participants = participants_box.column(align=True)
-        # Labels in a narrow column so the collection fields start close to them.
-        for name, label in (("emitter_collection", "Emitters"), ("collider_collection", "Colliders"),
-                            ("effector_collection", "Effectors"), ("outflow_collection", "Outflows")):
-            split = _label_split(participants, 0.18, 0.3)
-            split.label(text=label)
-            split.prop(props, name, text="")
-        participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
-        _draw_participant_list(participants, props)
-
     behavior_box = layout.box().column(align=True)
     behavior_box.enabled = not is_baking
     if _section(behavior_box, props, "show_panel_behavior", "Smoke Behavior", "MOD_FLUID"):
         behavior = behavior_box.column(align=True)
+        # How fast and how large the simulated world is.
+        world = _pair(behavior)
+        world.prop(props, "simulation_speed", text="Speed")
+        world.prop(props, "simulation_scale", text="Scale")
+        behavior.separator()
         # One split for both rows so their X / Y / Z columns line up; the Gravity
         # from Scene button sits just left of the fields (a blank slot for Wind).
         for name, label, button in (("gravity", "Gravity", True), ("wind", "Wind", False)):
@@ -1090,6 +1191,12 @@ def _draw_domain(layout, scene, props):
             else:
                 right.label(text="", icon="BLANK1")
             right.prop(props, name, text="")
+        # A domain that travels with its object (vehicles), and how much of
+        # that motion the air shares.
+        move = _pair(behavior)
+        move.prop(props, "follow_object")
+        if props.follow_object:
+            move.prop(props, "carry_air", slider=True)
         behavior.separator()
         buoyancy = _pair(behavior)
         temperature = buoyancy.row(align=True)
@@ -1129,33 +1236,117 @@ def _draw_domain(layout, scene, props):
         times = _pair(combustion)
         times.prop(props, "burn_time")
         times.prop(props, "cooling_time")
-        combustion.prop(props, "temperature_diffusion")
         combustion.prop(props, "smoke_per_burn", text="Smoke Amount")
-        combustion.separator()
         combustion.prop(props, "gas_expansion")
-        shaping = _pair(combustion)
-        shaping.prop(props, "wisp_cooling")
-        shaping.prop(props, "fuel_threshold")
-        air = _pair(combustion)
-        air.prop(props, "oxygen_limit")
-        air.prop(props, "soot_radiation")
-        oxygen = combustion.row(align=True)
-        oxygen.active = props.oxygen_limit > 0.0
-        oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
-        field = oxygen.row(align=True)
-        field.active = props.oxygen_field and props.oxygen_limit > 0.0
-        field.prop(props, "oxygen_use", text="Use")
-        field.prop(props, "oxygen_mixing", text="Mixing")
+        # The rest of the combustion model, folded (with a count of the
+        # settings changed from their defaults, so none hides unnoticed).
+        more_names = ("temperature_diffusion", "wisp_cooling", "fuel_threshold", "oxygen_limit",
+                      "soot_radiation", "oxygen_field", "oxygen_use", "oxygen_mixing")
+        changed = _changed_count(props, more_names)
+        more, more_open = _nested_foldout(combustion, props, "show_combustion_more",
+                                          f"More ({changed} changed)" if changed else "More")
+        if more_open:
+            more.prop(props, "temperature_diffusion")
+            shaping = _pair(more)
+            shaping.prop(props, "wisp_cooling")
+            shaping.prop(props, "fuel_threshold")
+            air = _pair(more)
+            air.prop(props, "oxygen_limit")
+            air.prop(props, "soot_radiation")
+            oxygen = more.row(align=True)
+            oxygen.active = props.oxygen_limit > 0.0
+            oxygen.prop(props, "oxygen_field", text="", icon="FORCE_WIND", toggle=True)
+            field = oxygen.row(align=True)
+            field.active = props.oxygen_field and props.oxygen_limit > 0.0
+            field.prop(props, "oxygen_use", text="Use")
+            field.prop(props, "oxygen_mixing", text="Mixing")
+
+    participants_box = layout.box()
+    participants_box.enabled = not is_baking
+    if _section(participants_box, props, "show_panel_participants", "Participants", "OUTLINER_COLLECTION"):
+        participants = participants_box.column(align=True)
+        # Labels in a narrow column so the collection fields start close to them.
+        for name, label in (("emitter_collection", "Emitters"), ("collider_collection", "Colliders"),
+                            ("effector_collection", "Effectors"), ("outflow_collection", "Outflows")):
+            split = _label_split(participants, 0.18, 0.3)
+            split.label(text=label)
+            split.prop(props, name, text="")
+        participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
+        _draw_participant_list(participants, props)
+
+    output_box = layout.box()
+    output_box.enabled = not is_baking
+    if _section(output_box, props, "show_cache_location", "Output", "OUTPUT"):
+        output = output_box.column(align=True)
+        # One label column for every row, so labels line up and none truncate.
+        split = _label_split(output, 0.2, 0.3)
+        labels = split.column(align=True)
+        fields = split.column(align=True)
+        # The bake the domain shows (chosen in Versions) and tools for it.
+        labels.label(text="Bake")
+        slot = fields.row(align=True)
+        slot.label(text=props.cache_slot)
+        slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
+        slot.operator("fumaris.add_sparks", icon="PARTICLES", text="")
+        slot.operator(
+            "fumaris.cache_protect",
+            icon="LOCKED" if slot_protected else "UNLOCKED",
+            text="",
+            depress=slot_protected,
+        )
+        delete = slot.row(align=True)
+        delete.enabled = mode is None and not slot_protected
+        delete.operator("fumaris.delete", icon="TRASH", text="")
+        missing_for_sparks = domain.get(SPARKS_MISSING_MARKER)
+        if missing_for_sparks:
+            # This bake lacks a grid the domain's sparks need (sparks.follow_bakes).
+            labels.label(text="Sparks")
+            fields.label(text=f"No {missing_for_sparks}: bake again", icon="ERROR")
+        labels.label(text="Directory")
+        fields.prop(props, "output_dir", text="")
+        labels.label(text="Prefix")
+        fields.prop(props, "output_prefix", text="")
+        labels.label(text="VDB")
+        vdb = fields.row(align=True)
+        vdb.prop(props, "vdb_compression", text="")
+        vdb.prop(props, "vdb_precision", text="")
+        labels.label(text="Material")
+        fields.prop(props, "volume_material", text="")
+        output.prop(props, "vdb_writers", **({"text": "Writers"} if _NARROW else {}))
+        output.separator()
+        output.prop(props, "volume_selectable")
+        output.separator()
+        # Each grid: write it, and at which resolution.
+        channels = output.column(align=True)
+        for name in ("density", "temperature", "fuel", "burn", "velocity"):
+            row = channels.split(factor=0.6, align=True)
+            row.prop(props, f"export_{name}_vdb", text=name.title())
+            resolution = row.row(align=True)
+            resolution.active = getattr(props, f"export_{name}_vdb")
+            resolution.prop(props, f"export_{name}_resolution", text="")
+        row = channels.split(factor=0.6, align=True)
+        row.prop(props, "export_glow_vdb", text="Glow")
+        resolution = row.row(align=True)
+        resolution.active = props.export_glow_vdb
+        resolution.prop(props, "export_glow_resolution", text="")
+        if props.export_glow_vdb:
+            output.prop(props, "glow_radius")
+        if props.volume_material is None:
+            output.label(
+                text="Density + temperature always written",
+                icon="INFO",
+            )
+
+    compare_box = layout.box()
+    if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
+        from .compare import draw_compare
+        draw_compare(compare_box, props.id_data, props)
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking
     if _foldout(advanced_box, props, "show_panel_advanced", "Advanced"):
-        # Rarely touched. What a shot is tuned with lives with Resolution above.
+        # Rarely touched. What a shot is tuned with lives above.
         advanced = advanced_box.column(align=True)
-        advanced.prop(props, "simulation_speed")
-        advanced.prop(props, "simulation_scale")
-        advanced.prop(props, "trace_steps")
-        advanced.separator()
         detail = _pair(advanced)
         if _NARROW:
             choice = _label_split(detail, 0.4, 0.4)
@@ -1164,29 +1355,33 @@ def _draw_domain(layout, scene, props):
         else:
             detail.prop(props, "smoke_detail", text="Smoke Detail")
         detail.prop(props, "edge_sharpness", text="Edges")
+        if props.smoke_detail == "sharp":
+            _wrapped(advanced, "Sharp: about 2.4x the simulation time", "INFO")
         advanced.prop(props, "projection_filter", slider=True)
-        advanced.separator()
-        advanced.prop(props, "auto_cell_size")
-        advanced.prop(props, "sparse_block_min_lifetime")
-        allocation = _pair(advanced)
-        allocation.prop(props, "allocation_smoke_threshold")
-        allocation.prop(props, "allocation_speed_threshold")
         advanced.separator()
         # The on/off switches, two by two.
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
         grid.prop(props, "full_resolution_velocity")
-        grid.prop(props, "conserve_smoke")
-        grid.prop(props, "color_mixing")
-        grid.prop(props, "follow_object")
-        grid.prop(props, "physics_convex_collision")
+        grid.prop(props, "auto_cell_size")
         advanced.separator()
-        if props.follow_object:
-            advanced.prop(props, "carry_air", slider=True)
         walls = _pair(advanced)
         walls.prop(props, "open_collider_wall")
         walls.prop(props, "closed_collider_margin")
-        advanced.prop(props, "collider_face_flux")
+        advanced.separator()
+        # Settings that tune the solver itself; rarely worth changing.
+        internal_names = ("trace_steps", "sparse_block_min_lifetime", "allocation_smoke_threshold",
+                          "allocation_speed_threshold", "physics_convex_collision")
+        changed = _changed_count(props, internal_names)
+        internals, internals_open = _nested_foldout(advanced, props, "show_advanced_internals",
+                                                    f"Solver Internals ({changed} changed)" if changed else "Solver Internals")
+        if internals_open:
+            internals.prop(props, "trace_steps")
+            internals.prop(props, "sparse_block_min_lifetime")
+            allocation = _pair(internals)
+            allocation.prop(props, "allocation_smoke_threshold", text="Smoke Threshold")
+            allocation.prop(props, "allocation_speed_threshold", text="Speed Threshold")
+            internals.prop(props, "physics_convex_collision")
 
     _draw_diagnostics(layout, props)
 
@@ -1372,7 +1567,8 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
 
 
-CLASSES = (FUMARIS_MT_presets, FUMARIS_PT_main, FUMARIS_OT_participant_list_more, FUMARIS_PT_sidebar)
+CLASSES = (FUMARIS_MT_presets, FUMARIS_MT_bake_more, FUMARIS_OT_emitter_color_offer, FUMARIS_OT_color_mixing_enable,
+           FUMARIS_OT_domain_show_look, FUMARIS_PT_main, FUMARIS_OT_participant_list_more, FUMARIS_PT_sidebar)
 
 
 def register():

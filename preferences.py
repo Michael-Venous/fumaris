@@ -115,8 +115,8 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     bake_workers: IntProperty(
         name="Background Bakes",
-        description="How many domains Bake in Background and Bake All bake at once, each in its own Blender process. More domains wait their turn",
-        default=1, min=1, max=8, update=_preferences_changed,
+        description="How many domains Bake in Background and Bake All bake at once, each in its own Blender process. 0 (Auto): one per ticked GPU. More domains wait their turn",
+        default=0, min=0, max=8, update=_preferences_changed,
     )
     bake_gpus: CollectionProperty(type=FumarisBakeGpu)
 
@@ -151,7 +151,8 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
         box = layout.box()
         box.label(text="Baking", icon='RENDER_ANIMATION')
-        box.prop(self, "bake_workers")
+        row = box.row()
+        row.prop(self, "bake_workers", text="Background Bakes (0 = Auto)")
         gpus = box.column(heading="On GPUs", align=True)
         for gpu in self.bake_gpus:
             row = gpus.row(align=True)
@@ -159,6 +160,8 @@ class FumarisPreferences(bpy.types.AddonPreferences):
             if gpu.use and _devices and not any(d["uuid"] == gpu.uuid for d in _devices):
                 row.label(text="unavailable", icon='ERROR')
         ticked = sum(1 for gpu in self.bake_gpus if gpu.use)
+        if self.bake_workers == 0:
+            box.label(text=f"Auto: {max(1, ticked)} at once, one per ticked GPU", icon='INFO')
         if not self.bake_gpus:
             box.label(text="Press Refresh above to list the GPUs; with none ticked, bakes use the Simulation GPU", icon='INFO')
         elif not ticked:

@@ -70,7 +70,11 @@ Back up production `.blend` files before moving between versions.
 ## The Basic Workflow
 
 Fumaris uses one object as the domain settings host and collections to identify
-simulation participants. Unlike Mantaflow, the domain object's dimensions do
+simulation participants. The domain's panel runs top to bottom in the order you
+usually need it: `Simulate` (Play, Bake, frame range, Resolution and memory),
+`Look` (smoke and fire appearance and the live preview's settings), `Smoke
+Behavior` (with Detail & Shaping and Combustion), `Participants`, `Output`,
+`Versions` and `Advanced`. Unlike Mantaflow, the domain object's dimensions do
 not form a hard simulation box; Flow allocates a sparse grid around active
 smoke.
 
@@ -79,7 +83,7 @@ smoke.
 3. Put source objects in that collection. Set each one's `Role` to
    `Emitter` and choose its source shape.
 4. Select the domain and press `Play` to see an interactive volume preview.
-   `Pause` freezes simulation but keeps camera and Appearance rerenders active;
+   `Pause` freezes simulation but keeps camera and Look rerenders active;
    `Resume` continues from the next frame.
 5. Tune the domain, emitters, effectors, and other participants.
 6. Press `Stop`, configure `Output`, and press `Bake` for final OpenVDB files.
@@ -118,17 +122,17 @@ without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
 simulating while its viewport overlay is suppressed.
 
-`Show` (Preview Settings) switches the live preview from the Look to Speed:
+`Show` (Look > Live Preview) switches the live preview from the Look to Speed:
 how fast the air moves, drawn as fire (still air dark, about 5 m/s glowing like
 gas at 1600 K). Use it to see where emitters, effectors and expansion push.
 
 The live preview shows in one 3D viewport: the one picked with View > Show
 Fumaris Preview Here (until Blender closes), otherwise the largest in the
-window the preview was started from. `All Viewports` (Preview Settings) shows
+window the preview was started from. `All Viewports` (Look > Live Preview) shows
 it in every 3D viewport that shows the domain, in any window or on any
 monitor; each extra viewport renders the volume again every frame.
 
-`Scene Occlusion` (Preview Settings, on by default) hides preview smoke behind
+`Scene Occlusion` (Look > Live Preview, on by default) hides preview smoke behind
 solid objects, using the viewport's own depth. It follows whatever the viewport
 draws, so wireframe objects and overlays that write depth also hide smoke, and
 a transparent object occludes like a solid one. Smoke in front of an object is
@@ -160,7 +164,7 @@ Useful preview controls:
   preview image is dithered so dark smoke does not band.
 - `Exposure` follows the scene's exposure; the offset here adds to it (+1 doubles
   the light). It affects only the preview, not baked grids or materials.
-- The domain's `Appearance` group controls smoke density and color plus fire
+- The domain's `Look` section controls smoke density and color plus fire
   visibility, brightness, temperature range, and Blackbody scale. The same
   values drive the live raymarch and Fumaris's generated Blender material.
 - `Lighting: Scene` lights the preview with the scene's lights and world in
@@ -171,7 +175,7 @@ Useful preview controls:
   `Sky` of its own, which the smoke shadows (soft ambient darkening in crevices):
   the same lighting in every scene. Strength 0 and Sky 0 show only the fire.
 - `Self Shadows` shadows the smoke from that light and from the sky, at some GPU
-  cost; off lights every voxel fully. Changing Appearance Density rebuilds the
+  cost; off lights every voxel fully. Changing the Look's Density rebuilds the
   shadow field so light and camera attenuation stay consistent.
 - `Fire Lighting` makes flames light the smoke around them. The glow takes the
   flame's color, is strongest beside the fire, falls off with distance and is
@@ -181,7 +185,7 @@ Useful preview controls:
   from each flame and does not cast sharp shadows, and it does not light
   objects in the scene. Baked volumes and the generated material are not
   changed; Cycles and EEVEE compute their own fire lighting.
-- `Scatter Glow` (Appearance) also shows in the preview: smoke around flames
+- `Scatter Glow` (Look) also shows in the preview: smoke around flames
   glows with their light as in renders.
 
 The live volume preview uses a simplified Flow shader. `Scene Occlusion` uses
@@ -213,7 +217,8 @@ bake.
   that Bake can replace.
 - Play works after a bake: the bake stays in Versions (its eye shows it again)
   and the preview never writes over it.
-- `Delete` (beside Bake) asks before removing the bake the domain shows and
+- `Delete Bake` (in the menu beside Bake, and the bin icon beside the bake's
+  name under Output) asks before removing the bake the domain shows and
   removes only its files. It is unavailable while a job is active. Scripts that
   call the operators directly are not asked, but a protected bake still
   refuses them.
@@ -244,7 +249,7 @@ the next Bake starts from the beginning.
 
 ### Bake in Background
 
-`Bake in Background` (the small button beside Bake) bakes the domain in a
+`Bake in Background` (in the menu beside Bake) bakes the domain in a
 separate Blender process, so you can keep working: edit the scene, play a live
 preview or bake another domain. `Bake All` and `Bake Selected`, in the Fumaris
 tab of the 3D Viewport's sidebar, do the same for every domain in the scene or
@@ -255,11 +260,14 @@ for the selected domains.
 - It asks the same question as Bake (Replace or New Bake) and writes the same
   files to the same place.
 - **Background Bakes** in the Fumaris preferences (Baking) sets how many
-  domains bake at once, from 1 to 8. The others wait their turn.
+  domains bake at once, from 1 to 8; the default, 0 (Auto), bakes one per
+  ticked GPU (one if none is ticked). The others wait their turn.
 - Under **On GPUs**, tick the GPUs they may use (the refresh icon beside
   Simulation GPU lists them). The bakes take the ticked GPUs in turn: with two
   bakes and two GPUs ticked, each GPU runs one. With none ticked they use the
   Simulation GPU.
+- With more than one GPU in use, each bake's progress says which GPU it runs
+  on.
 - When more bakes run than GPUs are ticked, several share a GPU. Give each
   domain a fixed `VRAM (GB)` instead of Auto, so they fit together.
 - While a domain bakes, its panel and its row in the sidebar show the frame,
@@ -337,8 +345,8 @@ Click a row to select it; its buttons appear below the list:
   and a menu with **Rename**, **Save Settings as Preset** and **Delete**.
 - Snapshot: **Preview** opens it, **View Changes**, and the same menu.
 - **Sync Material** (VDB versions): on, the version uses Fumaris's material,
-  kept in step with Appearance (shared with the other synced versions; your
-  Volume Material if one is set). Off, it gets its own copy, which Appearance
+  kept in step with Look (shared with the other synced versions; your
+  Volume Material if one is set). Off, it gets its own copy, which Look
   no longer changes: a look you liked stays put. Bakes start synced; saves from
   the live preview start with their own copy.
 - **View Changes** lists every setting that differs from the current settings,
@@ -482,11 +490,18 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 
 ### Smoke Behavior
 
+- `Speed` (Simulation Speed) scales time: 0.5 plays the motion at half speed,
+  and it can be animated for slow motion. `Scale` (Simulation Scale) is the
+  physical size the scene stands for: 2 makes the simulation behave twice as
+  large (slower-looking, heavier plumes), with the scene's dimensions,
+  voxel size and speeds in Blender units unchanged.
 - `Gravity` is the domain's own gravity (the button beside it copies the
   Scene's). It acts through buoyancy only: hot gas rises against it, and cold
   smoke ignores it unless Smoke Buoyancy is negative.
 - `Wind` carries all air along at a steady speed, so plumes lean and trail
   while sources stay put. It costs nothing; use Wind effectors for gusts.
+- `Move With Object` and `Carry Air`: see Fast Emitters, Vehicles And Move
+  With Object.
 - `Temperature Buoyancy` lifts hot gas. The checkbox beside it, `Physical
   Buoyancy`, replaces it with the gas-law lift for Flame Temperature (gas at
   2000 K is 6.8 times lighter than 293 K air: about 5.8 g).
@@ -552,7 +567,9 @@ nothing).
 ### Combustion
 
 Every domain uses one physical combustion model (the Classic model was removed
-in 2.0).
+in 2.0). Flame Temperature, Fuel Energy, Ignition, Burn and Cooling Time, Smoke
+Amount and Gas Expansion are always shown; the rest folds under `More`, whose
+title counts the settings changed from their defaults.
 
 - Gas with fuel that is hotter than `Ignition Temperature` burns a fixed share
   of its fuel each second: 95% within `Burn Time`, so Burn Time is how long
@@ -591,40 +608,51 @@ that expands a lot before burning (a growing fireball) needs more, about
 
 ### Advanced
 
-- `Simulation Speed` scales time.
 - `Smoke Detail` chooses how smoke and heat are carried between cells:
-  Standard (linear) or Sharp (cubic, finer billows, slower). `Edges` (Edge
-  Sharpness) sets how strongly each step restores detail lost to
-  interpolation; about 0.5 avoids stair-stepped edges in close-ups.
+  Standard (linear) or Sharp (cubic: billows about twice as fine, at about
+  2.4x the simulation time). `Edges` (Edge Sharpness) sets how strongly each
+  step restores detail lost to interpolation; about 0.5 avoids stair-stepped
+  edges in close-ups.
 - `Projection Filter` (1 = Flow's) is how strongly the pressure solve smooths
   out cell-to-cell motion; lower lets fire flicker and puff (about 0.25) at
   the risk of grid-scale noise.
 - `Preserve Turbulence` (see Smoke Behavior), `Full-Resolution Velocity`
   (motion at the full Resolution: rounder, finer billows at about twice the
-  memory per block; changing it restarts the simulation), `Conserve Smoke`,
-  `Move With Object` and `Convex Collision`.
-- `Conserve Smoke` (on by default) keeps the smoke's total through transport:
-  the solver's advection gains a little smoke where gas expands and loses some
-  where it swirls (the Explosion preset ends with about 10% less); each step
-  scales the moved smoke back to the amount it started with, within 5%.
-  Dissipation, Decay and combustion still add and remove smoke as set. It
-  costs about half a percent of the frame time. Off reproduces earlier bakes.
+  memory per block; changing it restarts the simulation) and `Auto Cell Size`
+  (see Resolution And Simulation Memory).
 - `Open Collider Wall` is the minimum thickness, in velocity cells, of the
   wall behind open collider meshes such as planes, so smoke cannot leak through
   when Collider Margin is thin. `Closed Collider Margin` (0 = the full Collider
   Margin) holds the air still only that many velocity cells out from closed
   colliders, so fire resting on them rises freely.
-- `Colour Mixing`: each emitter's smoke carries its own `Smoke Colour` (the
-  swatch beside Smoke on the emitter, times the material's Colour). Where
-  plumes meet, the colours mix by amount; smoke that combustion forms takes
-  the colour of the emitted smoke around it. The live preview tints the smoke,
-  bakes gain a `color` grid, and the generated material multiplies its Colour
-  by that grid (the Colour Mixing node; a volume without the grid is
-  unchanged). The colour travels in a second density-sized field, so the
-  simulation needs about a third more memory and about 1.4x the time per
-  frame; off by default. Mesh, box, sphere, Collection Points, Collection
-  Mesh, particle and OpenVDB sources all carry a colour (one per emitter, or
-  per particle system).
+- `Solver Internals` (folded; its title counts the settings changed from
+  their defaults): `Trace Steps`, `Sparse Block Lifetime`, the two allocation
+  thresholds and `Convex Collision`. The defaults suit almost every scene.
+
+The smoke's total is kept through transport in every simulation: the solver's
+advection gains a little smoke where gas expands and loses some where it
+swirls (an explosion lost about 10% by its end); each step scales the moved
+smoke back to the amount it started with, within 5%. Dissipation, Decay and
+combustion still add and remove smoke as set. (Beta 1 had a `Conserve Smoke`
+switch for this; scripts can still set `conserve_smoke`.)
+
+### Per-Emitter Color
+
+`Per-Emitter Color` (Look, under the smoke Color) lets each emitter's smoke
+carry its own `Smoke Color`, set with the swatch beside Smoke on the emitter
+(times the domain's Color). Where plumes meet, the colors mix by amount; smoke
+that combustion forms takes the color of the emitted smoke around it. The live
+preview tints the smoke, bakes gain a `color` grid, and the generated material
+multiplies its Color by that grid (a volume without the grid is unchanged).
+
+The color travels in a second smoke field: about 1.4x the simulation time and
+a third fewer blocks for the same VRAM, so it is off by default. While it is
+off, an emitter shows a color button instead of the swatch: it offers to turn
+the option on for the emitter's domain or to show the domain's Color, which
+colors all of its smoke at no cost. With the option on and every emitter the
+same color, the domain's Look says so. Mesh, box, sphere, Collection Points,
+Collection Mesh, particle and OpenVDB sources all carry a color (one per
+emitter, or per particle system).
 
 ## Emitters
 
@@ -658,7 +686,7 @@ Point and volume modes do not support this control.
 ### Source Operations
 
 Each of Smoke, Temperature, Fuel and Burn has an operation beside its rate under
-`Channel Coupling`. It decides how the emitter writes that channel:
+`Emission Blending`. It decides how the emitter writes that channel:
 
 - `Blend` (default) pulls the field toward the emitter's value at the coupling
   rate. Overlapping emitters settle on a mix, and an emitter with a low value
@@ -820,7 +848,7 @@ Assign optional collections to the domain's participant fields.
 ### Colliders
 
 Mesh, box, and sphere colliders transfer boundary velocity into smoke. Mesh
-`Convex Collision` treats a suitable closed convex mesh as a filled volume;
+`Convex Collision` (Advanced > Solver Internals) treats a suitable closed convex mesh as a filled volume;
 unsupported meshes fall back to the regular shell behavior. Increase Collider
 Margin for fast smoke or thin geometry.
 
@@ -889,8 +917,8 @@ Density is the standard smoke grid. Additional outputs are:
   Temperature and Velocity average the gas only. Velocity is simulated at half
   resolution and written at Half by default; Full appears with Full-Resolution
   Velocity. VDB Precision Half (default) stores 16-bit values.
-- `color` (with Colour Mixing): the smoke's colour per voxel, as the emitters'
-  Smoke Colours mixed by amount; white where no emitted smoke is. The
+- `color` (with Per-Emitter Color): the smoke's color per voxel, as the emitters'
+  Smoke Colors mixed by amount; white where no emitted smoke is. The
   generated material multiplies its Colour by it; in your own material, an
   Attribute node named `color` does the same.
 - `burn`: raw timestep-dependent combustion activity for advanced control.
@@ -921,7 +949,7 @@ Fumaris 2.0 or later (heat and soft density grids, written with the glow
 grids).
 
 When `Volume Material` is unset, Fumaris creates a material driven by the
-domain's Appearance settings; changing them does not require a rebake.
+domain's Look settings; changing them does not require a rebake.
 
 - Smoke: `Density`, `Color` and `Anisotropy` (forward scattering, 0.3 by
   default, like real smoke).

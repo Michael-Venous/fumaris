@@ -292,8 +292,8 @@ class FumarisSettings(PropertyGroup):
     )
 
     emitter_color: FloatVectorProperty(
-        name="Smoke Colour",
-        description="Colour of this emitter's smoke, times the domain's smoke Colour. Used when the domain's Colour Mixing is on",
+        name="Smoke Color",
+        description="Color of this emitter's smoke, times the domain's smoke Color. Used when the domain's Per-Emitter Color (Look) is on",
         default=(1.0, 1.0, 1.0), min=0.0, soft_max=1.0, size=3, subtype="COLOR",
     )
 
@@ -773,8 +773,8 @@ class FumarisSettings(PropertyGroup):
     )
 
     color_mixing: BoolProperty(
-        name="Colour Mixing",
-        description="Each emitter's smoke carries its own Smoke Colour; where plumes meet, the colours mix by amount. Bakes gain a color grid and the material and preview use it. Costs one more density-sized field (about a third more simulation memory for fire, more for smoke-only scenes, which then store all four channels)",
+        name="Per-Emitter Color",
+        description="Each emitter's smoke carries its own Smoke Color (set on the emitter); where plumes meet, the colors mix by amount. Bakes gain a color grid and the material and preview use it. Costs a second smoke field: about 1.4x the simulation time and a third fewer blocks for the same VRAM. For one color everywhere, leave this off and set Color",
         default=False,
     )
 
@@ -1541,7 +1541,7 @@ class FumarisSettings(PropertyGroup):
         description="How smoke and heat are carried between cells each step",
         items=[
             ("standard", "Standard", "Linear interpolation: fastest, softest fine detail"),
-            ("sharp", "Sharp", "Cubic interpolation: keeps billows about twice as fine, so lobes nest down to a few voxels instead of fading out near eight; slower smoke transport. Pair with Edge Sharpness about 0.45 to avoid stair-stepped edges in close-ups"),
+            ("sharp", "Sharp", "Cubic interpolation: keeps billows about twice as fine, so lobes nest down to a few voxels instead of fading out near eight; about 2.4x the simulation time. Pair with Edge Sharpness about 0.45 to avoid stair-stepped edges in close-ups"),
         ],
         default="standard",
     )
@@ -2247,7 +2247,7 @@ class FumarisSettings(PropertyGroup):
     )
 
     show_emitter_coupling: BoolProperty(
-        name="Channel Coupling",
+        name="Emission Blending",
         default=False,
     )
 
@@ -2260,6 +2260,16 @@ class FumarisSettings(PropertyGroup):
 
     show_domain_combustion: BoolProperty(
         name="Combustion",
+        default=False,
+    )
+
+    show_combustion_more: BoolProperty(
+        name="More Combustion",
+        default=False,
+    )
+
+    show_advanced_internals: BoolProperty(
+        name="Solver Internals",
         default=False,
     )
 

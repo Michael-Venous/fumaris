@@ -61,30 +61,36 @@ All notable customer-facing changes are recorded here.
   frame (which made each next frame page it in again). The 200-frame
   comparison explosion bakes in 43 s instead of 61 on a 24-core machine; the
   bridge keeps about 2 GB more RAM while a large bake runs.
-- **Conserve Smoke** (Advanced, on): smoke no longer thins out as it moves.
+- **Smoke no longer thins out as it moves.**
   The solver's transport gained a little smoke where gas expanded and lost some
   where it swirled (the Explosion preset ended with about 10% less than it
   made); each step now scales the moved smoke back to the amount it started
   with. Dissipation, Decay and combustion still apply as set. Bakes from beta
-  1 keep slightly more smoke late in a shot; turn it off to reproduce them.
-  About half a percent of the frame time.
+  1 keep slightly more smoke late in a shot. It costs nothing measurable and
+  has no switch (scripts can set `conserve_smoke` to reproduce beta 1).
 - **The live preview plays faster**: while it plays every frame as fast as
   the GPU goes (Frame Rate Uncapped), the next frame is sent before the
   current one is shown, so the solver's CPU work and the image hand-off no
   longer wait between GPU frames (Explosion 1024 on an RTX 4060 Ti: 18 to 22
   frames a second). The frames and images are the same.
-- **Colour Mixing** (Advanced): each emitter's smoke carries its own Smoke
-  Colour (the swatch beside Smoke); where plumes meet, the colours mix by
-  amount, and smoke from combustion takes the colour around it. The preview
-  shows it, bakes gain a `color` grid, and the generated material multiplies
-  its Colour by that grid. Costs a second density-sized field: about a third
-  more simulation memory and about 1.4x the time per frame; off by default.
-  The density itself is unchanged by the option (byte-identical bakes).
-- **Bake in Background** (beside Bake), **Bake All** and **Bake Selected**
-  (Fumaris tab of the sidebar): bake several domains at once, each in its own Blender process,
-  while you keep editing or previewing. The Fumaris preferences (Baking) set
-  how many bake at once and on which GPUs: with two GPUs ticked, each runs
-  one bake. Progress and Stop are on the domain's panel and in the sidebar.
+- **Per-Emitter Color** (Look, under the smoke Color): each emitter's smoke
+  carries its own Smoke Color (the swatch beside Smoke on the emitter); where
+  plumes meet, the colors mix by amount, and smoke from combustion takes the
+  color around it. The preview shows it, bakes gain a `color` grid, and the
+  generated material multiplies its Color by that grid. It costs a second
+  smoke field (about 1.4x the time per frame and a third fewer blocks for the
+  same VRAM), so it is off by default and cannot be turned on unawares: until
+  it is on, an emitter shows a color button that explains the cost and offers
+  to turn it on, or to set the domain's Color instead; with it on and every
+  emitter one color, the domain says that Color does the same for free. The
+  density itself is unchanged by the option (byte-identical bakes).
+- **Bake in Background** (the menu beside Bake), **Bake All** and **Bake
+  Selected** (Fumaris tab of the sidebar): bake several domains at once, each
+  in its own Blender process, while you keep editing or previewing. The
+  Fumaris preferences (Baking) set on which GPUs; by default (Auto) one bake
+  runs per ticked GPU. Progress, the GPU in use and Stop are on the domain's
+  panel and in the sidebar. A bake starts about a second later than in the
+  foreground (a second Blender loads the scene).
 - New domains start with the cache directory you last set, in any scene
   (stored in the Fumaris preferences as Default Cache Directory).
 - Preview **View and Look**, side by side like Blender's Color Management:
@@ -95,7 +101,18 @@ All notable customer-facing changes are recorded here.
   Preview Shortcuts, Runtime.
 - A long list of separate mesh or sphere emitters shows a hint: one Collection
   Mesh or Collection Points emitter simulates several times faster.
-- Trace Steps sits under Simulation Scale in Advanced.
+- **The domain panel is reorganised** in the order a shot is usually set up:
+  Simulate, Look (Appearance and the live preview's settings, which were
+  folded inside Simulate), Smoke Behavior, Participants, Output, Versions,
+  Advanced. Play, Bake and their Stop share one row; Bake in Background and
+  Delete Bake are in the menu beside Bake (Delete also beside the bake's name
+  under Output). Simulation Speed, Simulation Scale and Move With Object moved
+  from Advanced to Smoke Behavior. Combustion shows its seven main settings
+  and folds the rest under More; Advanced folds the solver's internals (Trace
+  Steps, block lifetime, allocation thresholds, Convex Collision). A folded
+  group's title counts the settings changed from their defaults. Collider
+  Face Flux left the panel (with moving colliders it changed nothing
+  visible); the emitter's Channel Coupling is now Emission Blending.
 - **The live preview's sun shadows match Cycles.** Sun-lit smoke previewed
   1.3-1.7x brighter than it rendered: the preview's shadows reached only 12
   voxels into the smoke. They now reach across the whole simulation, at the

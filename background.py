@@ -159,8 +159,21 @@ def jobs():
 
 
 def worker_count():
+    """Bakes at once: Background Bakes, or with 0 (Auto) one per ticked GPU."""
     prefs = get_addon_preferences()
-    return max(1, min(8, int(getattr(prefs, "bake_workers", 1) or 1)))
+    workers = int(getattr(prefs, "bake_workers", 0) or 0)
+    if workers <= 0:
+        workers = sum(1 for gpu in getattr(prefs, "bake_gpus", ()) if gpu.use and gpu.uuid)
+    return max(1, min(8, workers))
+
+
+def gpu_name(uuid):
+    """A ticked GPU's name, for a bake's status ("" for the Simulation GPU)."""
+    prefs = get_addon_preferences()
+    for gpu in getattr(prefs, "bake_gpus", ()):
+        if gpu.uuid == uuid:
+            return gpu.name
+    return ""
 
 
 def worker_gpus():
@@ -817,6 +830,11 @@ def draw_status(layout, job):
             column.label(text=line, icon="TIME")
     if detail:
         column.label(text=detail)
+    # With several GPUs in use, which one this bake runs on.
+    if job.gpu and job.state not in ("queued", "ended") and len(worker_gpus()) > 1:
+        name = gpu_name(job.gpu)
+        if name:
+            column.label(text=f"On {name}", icon="MEMORY")
 
 
 def stop_label(job):

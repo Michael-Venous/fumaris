@@ -12,6 +12,7 @@ from bpy.types import Operator
 
 from .bake_state import mark_bake_cancelled, mark_bake_complete, mark_bake_running
 from .cache import (
+    RefusedError,
     cache_lock,
     is_protected,
     next_slot_name,
@@ -34,7 +35,7 @@ from .importers import (
     import_sequence,
     _frame_files,
 )
-from .jobs import FrameRangeJob
+from .jobs import FrameRangeJob, stop_message
 from .protocol import PREVIEW_CACHE_EXPORTED
 from .preview import (
     capture_volume_preview,
@@ -53,6 +54,7 @@ from .utils import (
 )
 from .runtime import (
     GPU_INITIALIZATION_MESSAGE,
+    gpu_notice_due,
     active_job,
     active_mode,
     background_bake,
@@ -86,7 +88,6 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
 
     _timer = None
     _worker = None
-    _domain_name = ""
     _directory = ""
     _frame = 0
     _end_frame = 0
@@ -161,7 +162,9 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 show_progress=True,
             )
         except Exception as error:
-            self._record_failure(str(error))
+            # (a refusal is reported, not kept as the domain's last failure)
+            if not isinstance(error, RefusedError):
+                self._record_failure(str(error))
             release_job(self)
             self._restore_imported_volumes()
             self._cleanup_volume_staging()
@@ -178,7 +181,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         domain.fumaris.bake_elapsed = 0.0
         domain.fumaris.bake_peak_vram_mb = 0.0
         domain.fumaris.bake_peak_ram_mb = 0.0
-        self.report({"INFO"}, GPU_INITIALIZATION_MESSAGE)
+        if gpu_notice_due():
+            self.report({"INFO"}, GPU_INITIALIZATION_MESSAGE)
         return self._start_modal(context)
 
     def _after_frame_complete(self, context, domain, completed, data, payload):
@@ -223,10 +227,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         self._finish(context)
         if domain:
             self._store_bake_stats(domain)
-        message = data.get("message", "Bake stopped")
-        stderr = data.get("stderr") or self._worker.stderr()
-        if stderr:
-            message = f"{message}: {stderr}"
+        message = stop_message(data.get("message", "Bake stopped"),
+                               data.get("stderr") or self._worker.stderr())
         console_log(f"Fumaris bake stopped: {message}")
         self.report({"ERROR"}, message)
         return {"CANCELLED"}
@@ -407,7 +409,6 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
 
     _timer = None
     _worker = None
-    _domain_name = ""
     _directory = ""
     _frame = 0
     _end_frame = 0
@@ -446,8 +447,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if active_job() or domain.fumaris.simulation_state == "baking":
             self.report({"WARNING"}, "Stop the active job before previewing")
             return {"CANCELLED"}
-        if background_job(domain):
-            self.report({"WARNING"}, f"'{domain.name}' is baking in the background: stop that bake or wait for it")
+        job = background_job(domain)
+        if job:
+            waiting = "is queued to bake" if job.state == "queued" else "is baking"
+            self.report({"WARNING"}, f"'{domain.name}' {waiting} in the background: stop that bake or wait for it")
             return {"CANCELLED"}
         if domain.fumaris.simulation_state == "baked":
             # The bake stays in Versions (its eye shows it again); the preview
@@ -474,13 +477,15 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             clear_all_previews()
             self._start_preview_session(context, domain, clear_preview_image=True)
         except Exception as error:
-            self._record_failure(str(error))
+            if not isinstance(error, RefusedError):
+                self._record_failure(str(error))
             self._finish(context)
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
         domain.fumaris.baked_frames = 0
-        self.report({"INFO"}, GPU_INITIALIZATION_MESSAGE)
+        if gpu_notice_due():
+            self.report({"INFO"}, GPU_INITIALIZATION_MESSAGE)
         console_log(f"Fumaris preview started for {domain.name} frame {self._frame}")
         return self._start_modal(context)
 
@@ -1154,10 +1159,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             domain.fumaris.simulation_state = "idle"
             domain.fumaris.bake_elapsed = time.monotonic() - self._started_at
         self._finish(context)
-        message = data.get("message", "Preview stopped")
-        stderr = data.get("stderr") or self._worker.stderr()
-        if stderr:
-            message = f"{message}: {stderr}"
+        message = stop_message(data.get("message", "Preview stopped"),
+                               data.get("stderr") or self._worker.stderr())
         console_log(f"Fumaris preview stopped: {message}")
         self.report({"ERROR"}, message)
         return {"CANCELLED"}
@@ -1555,7 +1558,10 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
 class FUMARIS_OT_cache_make_lighter(Operator):
     bl_idname = "fumaris.cache_make_lighter"
     bl_label = "Make Lighter Copy"
-    bl_description = "Copy this bake into a new version at half the resolution, without the faintest smoke: files several times smaller for layout, previews and render tests. The original slot is kept"
+    bl_description = ("Copy this bake into a new version at half the resolution, without the faintest smoke: "
+                      "about 8 times smaller on a large bake (less on a small one, whose files are mostly fixed "
+                      "overhead), for layout, previews and render tests. The domain then shows the copy; "
+                      "the original version is kept in Versions")
 
     cull: bpy.props.FloatProperty(
         name="Drop Below",
@@ -1569,6 +1575,9 @@ class FUMARIS_OT_cache_make_lighter(Operator):
     def poll(cls, context):
         domain = _active_domain(context)
         if not domain or active_job():
+            return False
+        if "_lite" in (domain.fumaris.cache_slot or ""):
+            cls.poll_message_set("This version is already a lighter copy")
             return False
         directory = peek_output_directory_for_object(domain)
         return bool(directory) and bool(baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"))
@@ -1669,7 +1678,7 @@ class FUMARIS_OT_add_source(Operator):
         if not domain.fumaris.shader_flame_enabled:
             # Every source burns; a smoke setup (Rising Smoke) shows no flames.
             self.report({"WARNING"}, f"Added '{obj.name}' to {domain.name}'s emitters. Its fire is not shaded: "
-                        "turn on Flame in the domain's Appearance (hot smoke will glow too)")
+                        "turn on Flame in the domain's Look (hot smoke will glow too)")
         else:
             self.report({"INFO"}, f"Added '{obj.name}' to {domain.name}'s emitters")
         return {"FINISHED"}
@@ -1767,6 +1776,10 @@ class FUMARIS_OT_cache_protect(Operator):
         domain = _active_domain(context)
         directory = output_directory_for_object(domain)
         protect = not is_protected(directory)
+        if protect and not baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
+            # (a locked empty version only refuses the bake that would fill it)
+            self.report({"WARNING"}, f"Version '{domain.fumaris.cache_slot}' holds no baked frames: nothing to protect")
+            return {"CANCELLED"}
         try:
             set_protected(directory, protect)
         except OSError as error:
@@ -1822,6 +1835,7 @@ class FUMARIS_OT_delete(Operator):
             return {"CANCELLED"}
         prefix = domain.fumaris.output_prefix or "fumaris_"
         directory = output_directory_for_object(domain)
+        frames = baked_frame_count(directory, prefix)
         try:
             require_unprotected(directory, "delete it")
             recover_cache_lock(directory, owner_pid=os.getpid())
@@ -1839,6 +1853,8 @@ class FUMARIS_OT_delete(Operator):
         domain.fumaris.bake_elapsed = 0.0
         domain.fumaris.bake_peak_vram_mb = 0.0
         domain.fumaris.bake_peak_ram_mb = 0.0
+        if not frames:
+            self.report({"INFO"}, f"Version '{domain.fumaris.cache_slot}' held no baked frames")
         return {"FINISHED"}
 
 

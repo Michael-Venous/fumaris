@@ -477,7 +477,7 @@ def draw(layout, domain):
     box.active = layer.enabled
     kind = layer.layer_type
     if kind in {"DISTURB", "GRAIN"}:
-        row = box.row(align=True)
+        row = box.column(align=True) if _narrow() else box.row(align=True)
         row.prop(layer, "strength")
         row.prop(layer, "size")
         box.prop(layer, "detail", text="Detail" if kind == "DISTURB" else "Layers")
@@ -510,6 +510,15 @@ def draw(layout, domain):
     if mask.field == "NOISE":
         column.prop(mask, "noise_size")
     units = FIELD_UNITS.get(mask.field, "")
+    if _narrow():
+        # "From Min" beside "From Max" left no room for the values.
+        source = f"From ({units.strip()})" if units else "From"
+        for name, text in (("range", source), ("values", "To")):
+            column.label(text=text)
+            row = column.row(align=True)
+            row.prop(mask, name, index=0, text="Min")
+            row.prop(mask, name, index=1, text="Max")
+        return
     row = column.row(align=True)
     row.prop(mask, "range", index=0, text=f"From Min{units}")
     row.prop(mask, "range", index=1, text=f"From Max{units}")

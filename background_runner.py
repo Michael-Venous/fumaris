@@ -89,7 +89,6 @@ class BackgroundBake(FrameRangeJob):
 
     _timer = None
     _worker = None
-    _domain_name = ""
     _directory = ""
     _participants = ()
     _prefix = "fumaris_"

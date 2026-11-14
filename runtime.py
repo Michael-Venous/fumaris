@@ -12,6 +12,18 @@ GPU_INITIALIZATION_MESSAGE = (
     "Initializing Flow GPU; first-run shader compilation may take several minutes"
 )
 
+# Said once per Blender session: shaders compiled once stay in the driver's
+# cache, and the report on every Play read as a problem (2026-11-14 UX test).
+_GPU_NOTICE_GIVEN = False
+
+
+def gpu_notice_due():
+    """True the first time a preview or bake starts in this Blender."""
+    global _GPU_NOTICE_GIVEN
+    due = not _GPU_NOTICE_GIVEN
+    _GPU_NOTICE_GIVEN = True
+    return due
+
 
 def active_job():
     global _ACTIVE_JOB

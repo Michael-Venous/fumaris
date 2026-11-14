@@ -3,9 +3,16 @@
 Writes a derived cache slot next to the source one (FUTURE "Bake
 post-processing", default chosen 2026-11-05): every frame's grids are
 averaged 2x2x2 into voxels twice as large, and voxels whose smoke falls below
-the cull threshold are dropped. Grids already coarser than the density grid
-(the baked glow) are copied unchanged.
+the cull threshold are dropped. The glow grids are copied unchanged (already
+coarse, and their lattice is the light's spread). The Pyro look's heat and
+density_soft, already at half resolution, are halved again: copied as they
+were, they were most of a fire's lighter copy (121 -> 115 MB, 2026-11-14).
 """
+
+# Copied as they are.
+_KEEP = ("glow", "glow_wide", "glow_depth")
+# Culled by their own values when no density mask applies.
+_CULLED = ("density", "fuel", "flame", "density_soft")
 import os
 import shutil
 
@@ -120,8 +127,8 @@ def lighten_file(source, target, cull=0.01):
     for grid in sorted(grids, key=lambda g: g.name != "density"):
         vector = "Vec3" in type(grid).__name__
         size = grid.transform.voxelSize()[0]
-        if fine_size is not None and size > fine_size * 1.5 and grid.name != "velocity":
-            out[id(grid)] = grid  # already coarse (glow)
+        if grid.name in _KEEP:
+            out[id(grid)] = grid
             continue
         box = _active_box(grid)
         if not _fits(box, vector):
@@ -132,7 +139,7 @@ def lighten_file(source, target, cull=0.01):
                 masked = False
             out[id(grid)] = _lighten_regions(
                 grid, vector, cull, culled_density if masked and box == density_box else None,
-                not masked and not vector and grid.name in ("density", "fuel", "flame"))
+                not masked and not vector and grid.name in _CULLED)
             if grid.name == "density":
                 culled_density = out[id(grid)]
             continue
@@ -149,7 +156,7 @@ def lighten_file(source, target, cull=0.01):
                     coarse[~keep] = 0.0
                 else:
                     coarse = np.where(keep, coarse, 0.0).astype(np.float32)
-        elif not vector and grid.name in ("density", "fuel", "flame"):
+        elif not vector and grid.name in _CULLED:
             coarse = np.where(coarse >= cull, coarse, 0.0).astype(np.float32)
         result = type(grid)()
         result.name = grid.name

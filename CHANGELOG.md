@@ -154,6 +154,39 @@ All notable customer-facing changes are recorded here.
 - Importing a bake with velocity no longer logs "Could not find grid with name
   velocity"; the volume's Velocity Grid is set, so Cycles' motion blur follows
   the baked velocity.
+- Renaming a domain no longer stops its live preview or its bake (it stopped
+  with "The active Fumaris domain was deleted", and Play stayed unavailable
+  until the file was reopened). A domain deleted with Blender's X stops its
+  preview at once, and its background bake no longer reports finishing for a
+  domain that is gone.
+- Play and Bake in an emitter's panel run that emitter's own domain (they ran
+  the domain chosen in the sidebar), and a selected domain is the one the
+  sidebar's Play and Bake run. Selecting an emitter keeps the sidebar's
+  choice, so Add Objects still adds to it.
+- A refused action (Bake or Delete on a protected version, Play without
+  emitters) is reported without becoming the domain's lasting error in
+  Simulate. Clearer messages: Bake Selected with no domain selected, Play
+  without an emitter collection, Play on a domain waiting for a background
+  bake. Protect refuses an empty version, and Delete on one says there is
+  nothing to delete.
+- Warnings for an End frame before Start and for VRAM (GB) set above the
+  GPU's memory (it ran, slowly, in system memory).
+- Make Lighter Copy also halves the Pyro look's `heat` and `density_soft`
+  grids (large frames 8.4 times smaller instead of 7.2) and is unavailable on
+  a version that is already a lighter copy.
+- The "first-run shader compilation" notice shows once per Blender session,
+  not on every Play, and a stop's message no longer ends with the list of
+  GPUs.
+- A narrow Properties editor cuts off less: the Simulate box's status lines
+  wrap; Gravity and Wind stack their fields; the emitter's shape settings,
+  Detail & Shaping and its masks have shorter or stacked labels; Physical
+  Buoyancy has its own labelled checkbox. Under Output the version is named
+  `Version` with its tools `Lighter` and `Sparks` named where they fit; empty
+  Directory and Prefix fields show their defaults; Density and Temperature
+  show ticked and greyed when the generated material needs them. Advanced and
+  Diagnostics have headers like the other sections. The live preview's
+  `Show` calls the Look `Smoke & Fire`, its colour settings are headed
+  `Color Management`, and `Colour` labels are `Color`.
 
 ## 2.0.0 beta 1 — 2026-11-12
 

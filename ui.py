@@ -1,4 +1,5 @@
 import bpy
+import os
 import textwrap
 from bpy.types import Panel
 
@@ -13,6 +14,9 @@ from .utils import FLAME_VALUE_KEYS, flame_value, peek_output_directory_for_obje
 
 def _foldout(layout, props, property_name, label):
     row = layout.row(align=True)
+    # Left, like the section headers (a full-width unembossed button centres
+    # its text, 2026-11-14 UX test).
+    row.alignment = "LEFT"
     opened = getattr(props, property_name)
     row.prop(
         props,
@@ -259,6 +263,7 @@ def _draw_emitter_shape(box, obj, props):
             obj,
             "particle_systems",
             icon="PARTICLE_DATA",
+            text="System",
         )
         box.prop(props, "particle_subtype", text="Type")
         if props.particle_subtype == "point_cloud":
@@ -275,12 +280,14 @@ def _draw_emitter_shape(box, obj, props):
         elif props.gn_subtype == "volume":
             box.label(text="Uses evaluated Geometry Nodes volume grids")
     elif props.participant_type == "openvdb":
-        box.prop(props, "volume_filepath")
+        # Short labels: Blender gives a text field's label 40% of a narrow
+        # panel, which cut "OpenVDB File" to "OpenV..." (2026-11-14 UX test).
+        box.prop(props, "volume_filepath", text="File")
         row = box.row(align=True)
         row.prop(props, "volume_use_sequence")
         sub = row.row(align=True)
         sub.enabled = props.volume_use_sequence
-        sub.prop(props, "volume_frame_offset")
+        sub.prop(props, "volume_frame_offset", text="Offset")
         box.prop(props, "volume_use_velocity")
         grids, grids_open = _nested_foldout(box, props, "show_volume_grids", "Grid Names")
         if grids_open:
@@ -290,9 +297,9 @@ def _draw_emitter_shape(box, obj, props):
             grids.prop(props, "volume_grid_burn", text="Burn")
             grids.prop(props, "volume_grid_velocity", text="Velocity")
     elif props.participant_type == "collection_points":
-        box.prop(props, "source_collection")
-        box.prop(props, "collection_point_center")
-        box.prop(props, "collection_radius_mode")
+        box.prop(props, "source_collection", text="Source")
+        box.prop(props, "collection_point_center", text="Center")
+        box.prop(props, "collection_radius_mode", text="Radius")
         if props.collection_radius_mode == "bounds":
             box.prop(props, "collection_radius_scale")
         else:
@@ -301,7 +308,7 @@ def _draw_emitter_shape(box, obj, props):
         box.label(text="Automatic motion velocity")
         box.label(text="Source meshes need no Fumaris role")
     elif props.participant_type == "collection_mesh":
-        box.prop(props, "source_collection")
+        box.prop(props, "source_collection", text="Source")
         _draw_mesh_emitter_options(box, props)
         box.label(text="Combined geometry, shared settings")
         box.label(text="Source meshes need no Fumaris role")
@@ -364,10 +371,13 @@ def _draw_emitter(layout, obj, props):
         # Color on; otherwise a button that offers to turn it on (with its
         # cost) or to set the domain's Color, so no one pays for it unawares.
         domains = emitter_domains(obj)
+        # (narrow, so the Smoke label keeps its room)
+        color = smoke_row.row(align=True)
+        color.ui_units_x = 1.6
         if any(domain.fumaris.color_mixing for domain in domains):
-            smoke_row.prop(props, "emitter_color", text="")
+            color.prop(props, "emitter_color", text="")
         elif domains:
-            smoke_row.operator("fumaris.emitter_color_offer", text="", icon="COLOR")
+            color.operator("fumaris.emitter_color_offer", text="", icon="COLOR")
         box.prop(props, "emitter_temperature")
         box.prop(props, "emitter_fuel")
         if _hot_fuel_without_air(obj, props):
@@ -394,7 +404,7 @@ def _draw_emitter(layout, obj, props):
 
     box = layout.box()
     # A box of its own: the arrow at the box edge, like the domain's Advanced.
-    opened = _foldout(box, props, "show_emitter_coupling", "Emission Blending")
+    opened = _section(box, props, "show_emitter_coupling", "Emission Blending", "MOD_DATA_TRANSFER")
     if opened:
         column = box.column(align=True)
         # The rate gets the room: its label is the channel's name.
@@ -404,7 +414,7 @@ def _draw_emitter(layout, obj, props):
             row.prop(props, f"source_op_{channel}", text="")
 
     box = layout.box()
-    opened = _foldout(box, props, "show_emitter_advanced", "Advanced")
+    opened = _section(box, props, "show_emitter_advanced", "Advanced", "PREFERENCES")
     if opened:
         column = box.column(align=True)
         column.prop(props, "emitter_influence")
@@ -552,7 +562,7 @@ def _draw_diagnostics(layout, props):
     # Blender's dark theme. Do not change the user's global theme colors.
     layout.separator()
     box = layout.column()
-    opened = _foldout(box, props, "show_diagnostics", "Diagnostics")
+    opened = _section(box, props, "show_diagnostics", "Diagnostics", "SYSTEM")
     if not opened:
         error = diagnostics.error_summary(state)
         if error:
@@ -618,9 +628,15 @@ def _draw_memory_usage(layout, domain):
         allocated = diagnostics.value(state, "flow_auto_memory_bytes")
     used = fraction * allocated
     # GPU memory: the simulation's reserved pool and the share smoke fills.
-    text = f"VRAM in use: {used / gib:.1f} of {allocated / gib:.1f} GB ({fraction:.0%})"
+    if _NARROW:
+        # (the whole line no longer fits: the bar cut it mid-text)
+        text = f"In use {used / gib:.1f}/{allocated / gib:.1f} GB ({fraction:.0%})"
+    else:
+        # "reserved": the total is the pool Flow holds, the fill what smoke
+        # uses of it (0.0 of 1.0 GB read as wrong while Flow held 823 MB).
+        text = f"VRAM in use: {used / gib:.1f} of {allocated / gib:.1f} GB reserved ({fraction:.0%})"
     if not state.get("active"):
-        text = "Last run · " + text
+        text = ("Last run: " if _NARROW else "Last run · ") + text
     elif diagnostics.vram_setting_changed(domain, state):
         text += " · VRAM changes on restart"
     try:
@@ -791,9 +807,8 @@ def _draw_emitter_colors(layout, props):
         return
     note = _emitter_color_note(props)
     if note:
-        row = layout.column(align=True)
-        row.alert = True
-        _wrapped(row, note, "ERROR")
+        # (advice, not an error: the result is right, only slower)
+        _wrapped(layout, note, "INFO")
     else:
         _wrapped(layout, "Costs about 1.4x the simulation time and a third of the blocks per GB", "INFO")
 
@@ -1002,19 +1017,17 @@ def _draw_domain(layout, scene, props):
         elif failure:
             error_row = status.row(align=True)
             error_row.alert = True
-            error_row.label(text=failure, icon="ERROR")
-            status.label(text="See Diagnostics below for details.")
+            _wrapped(error_row.column(align=True), failure, "ERROR")
+            _wrapped(status, "See Diagnostics below for details.")
         elif is_initializing:
             status.label(text="Initializing Flow GPU…", icon="INFO")
-            status.label(text="First-run shaders can take several minutes")
+            _wrapped(status, "First-run shaders can take several minutes")
         elif is_baking:
             status.label(text="Baking…", icon="TIME")
         elif mode is None and props.simulation_state in {"baked", "stopped"}:
             completed = props.simulation_state == "baked"
-            status.label(
-                text=_bake_summary(props, "Baked" if completed else "Stopped"),
-                icon="CHECKMARK" if completed else "PAUSE",
-            )
+            _wrapped(status, _bake_summary(props, "Baked" if completed else "Stopped"),
+                     "CHECKMARK" if completed else "PAUSE")
         elif is_previewing:
             replaying = getattr(job, "_replaying", False)
             if replaying:
@@ -1038,8 +1051,7 @@ def _draw_domain(layout, scene, props):
                 _wrapped(status, "At the end: Resume starts over", "INFO")
             _draw_preview_cache_status(status, scene, job, is_preview_paused)
         if not domain.visible_get(view_layer=bpy.context.view_layer):
-            status.label(text="Domain hidden: simulation can still run", icon="INFO")
-            status.label(text="Unhide the domain to see the preview")
+            _wrapped(status, "Domain hidden: the simulation still runs; unhide it to see the preview", "INFO")
 
         _draw_capacity_warning(status, domain)
         _draw_memory_usage(status, domain)
@@ -1054,6 +1066,10 @@ def _draw_domain(layout, scene, props):
         else:
             row.prop(props, "sim_start_frame", text="Start")
             row.prop(props, "sim_end_frame", text="End")
+            if props.sim_end_frame < props.sim_start_frame:
+                warning = settings.row()
+                warning.alert = True
+                warning.label(text="End is before Start: one frame runs", icon="ERROR")
         grid_row = settings.row(align=True)
         if _NARROW:
             settings.prop(props, "resolution")
@@ -1147,8 +1163,9 @@ def _draw_domain(layout, scene, props):
                     fire.enabled = props.shader_flame_enabled
                     fire.prop(props, "preview_fire_lighting", slider=True)
 
-                # View and Look side by side, as in Blender's Color Management.
-                preview.label(text="View and Look")
+                # View and Look side by side, as in Blender's Color Management
+                # (named after it: "Look" is also this section's name).
+                preview.label(text="Color Management")
                 color = preview.column(align=True)
                 view = color.row(align=True)
                 view.prop(props, "preview_tone_mapping", text="")
@@ -1160,7 +1177,7 @@ def _draw_domain(layout, scene, props):
                 else:
                     look.prop(props, "preview_look", text="")
                 color.prop(props, "preview_exposure_offset", slider=True)
-            preview.label(text="The preview keeps its VRAM until Stop", icon="INFO")
+            _wrapped(preview, "The preview keeps its VRAM until Stop", "INFO")
 
     behavior_box = layout.box().column(align=True)
     behavior_box.enabled = not is_baking
@@ -1181,7 +1198,10 @@ def _draw_domain(layout, scene, props):
                 header.label(text=label)
                 if button:
                     header.operator("fumaris.gravity_from_scene", text="", icon="SCENE_DATA")
-                behavior.row(align=True).prop(props, name, text="")
+                # Narrower still, a third of the row cut "-9.8 m/s²" to
+                # "-9.8 m/": one field per row, as Blender's Scene Gravity.
+                fields = behavior.column(align=True) if _TIGHT else behavior.row(align=True)
+                fields.prop(props, name, text="")
                 continue
             split = _label_split(behavior, 0.12, 0.22)
             split.label(text=label)
@@ -1199,16 +1219,17 @@ def _draw_domain(layout, scene, props):
             move.prop(props, "carry_air", slider=True)
         behavior.separator()
         buoyancy = _pair(behavior)
-        temperature = buoyancy.row(align=True)
-        temperature.prop(props, "physical_buoyancy", text="")
         if props.physical_buoyancy:
             # The gas-law lift replaces the slider; shown greyed for reference.
-            value = temperature.row(align=True)
+            value = buoyancy.row(align=True)
             value.enabled = False
             value.label(text=f"Physical Buoyancy {physical_buoyancy(props):.1f}")
         else:
-            temperature.prop(props, "buoyancy_per_temp")
+            buoyancy.prop(props, "buoyancy_per_temp")
         buoyancy.prop(props, "buoyancy_per_smoke")
+        # Its own labelled row: an unlabelled checkbox beside the slider read
+        # as nothing (2026-11-14 UX test).
+        behavior.prop(props, "physical_buoyancy")
         behavior.separator()
         fade = _pair(behavior)
         fade.prop(props, "dissipation")
@@ -1283,11 +1304,22 @@ def _draw_domain(layout, scene, props):
         labels = split.column(align=True)
         fields = split.column(align=True)
         # The bake the domain shows (chosen in Versions) and tools for it.
-        labels.label(text="Bake")
+        # "Version", as in Versions below ("Bake: bake" read as a typo).
+        labels.label(text="Version")
+        fields.label(text=props.cache_slot)
+        # Its tools, named where they fit (four bare icons were a guess).
+        labels.label(text="")
         slot = fields.row(align=True)
-        slot.label(text=props.cache_slot)
-        slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="")
-        slot.operator("fumaris.add_sparks", icon="PARTICLES", text="")
+        named = not _TIGHT
+        slot.operator("fumaris.cache_make_lighter", icon="MOD_DECIM", text="Lighter" if named else "")
+        sparks = slot.row(align=True)
+        # Dimmed without baked frames (not disabled: it says what is missing
+        # when clicked). From the folder scan Versions draws: Baked Frames
+        # also counts what a live preview simulated.
+        from .compare import list_versions
+        shown = os.path.basename(peek_output_directory_for_object(props.id_data) or "")
+        sparks.active = any(v["name"] == shown and v["frames"] for v in list_versions(props.id_data))
+        sparks.operator("fumaris.add_sparks", icon="PARTICLES", text="Sparks" if named else "")
         slot.operator(
             "fumaris.cache_protect",
             icon="LOCKED" if slot_protected else "UNLOCKED",
@@ -1303,11 +1335,15 @@ def _draw_domain(layout, scene, props):
             labels.label(text="Sparks")
             fields.label(text=f"No {missing_for_sparks}: bake again", icon="ERROR")
         labels.label(text="Directory")
-        fields.prop(props, "output_dir", text="")
+        # Empty fields show the defaults they fall back to.
+        fields.prop(props, "output_dir", text="", placeholder="//fumaris_cache/")
         labels.label(text="Prefix")
-        fields.prop(props, "output_prefix", text="")
+        fields.prop(props, "output_prefix", text="", placeholder="fumaris_")
         labels.label(text="VDB")
-        vdb = fields.row(align=True)
+        if _TIGHT:
+            # Side by side they read "Active... | Half (16...".
+            labels.label(text="")
+        vdb = fields.column(align=True) if _TIGHT else fields.row(align=True)
         vdb.prop(props, "vdb_compression", text="")
         vdb.prop(props, "vdb_precision", text="")
         labels.label(text="Material")
@@ -1318,11 +1354,20 @@ def _draw_domain(layout, scene, props):
         output.separator()
         # Each grid: write it, and at which resolution.
         channels = output.column(align=True)
+        # The generated material reads density and temperature, so they are
+        # written whatever their checkboxes say: shown ticked and greyed.
+        needed = {"density", "temperature"} if props.volume_material is None else set()
         for name in ("density", "temperature", "fuel", "burn", "velocity"):
             row = channels.split(factor=0.6, align=True)
-            row.prop(props, f"export_{name}_vdb", text=name.title())
+            written = name in needed or getattr(props, f"export_{name}_vdb")
+            if name in needed:
+                forced = row.row(align=True)
+                forced.enabled = False
+                forced.label(text=name.title(), icon="CHECKBOX_HLT")
+            else:
+                row.prop(props, f"export_{name}_vdb", text=name.title())
             resolution = row.row(align=True)
-            resolution.active = getattr(props, f"export_{name}_vdb")
+            resolution.active = written
             resolution.prop(props, f"export_{name}_resolution", text="")
         row = channels.split(factor=0.6, align=True)
         row.prop(props, "export_glow_vdb", text="Glow")
@@ -1331,11 +1376,8 @@ def _draw_domain(layout, scene, props):
         resolution.prop(props, "export_glow_resolution", text="")
         if props.export_glow_vdb:
             output.prop(props, "glow_radius")
-        if props.volume_material is None:
-            output.label(
-                text="Density + temperature always written",
-                icon="INFO",
-            )
+        if needed:
+            _wrapped(output, "The material needs Density, Temperature", "INFO")
 
     compare_box = layout.box()
     if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
@@ -1344,7 +1386,7 @@ def _draw_domain(layout, scene, props):
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking
-    if _foldout(advanced_box, props, "show_panel_advanced", "Advanced"):
+    if _section(advanced_box, props, "show_panel_advanced", "Advanced", "PREFERENCES"):
         # Rarely touched. What a shot is tuned with lives above.
         advanced = advanced_box.column(align=True)
         detail = _pair(advanced)
@@ -1428,9 +1470,11 @@ class FUMARIS_PT_main(Panel):
         if props.smoke_object_type == "domain":
             _draw_domain(layout, context.scene, props)
         else:
-            from .playback import draw_controls, scene_domains
+            from .playback import draw_controls, own_domain, scene_domains
             if active_job() or scene_domains(context):
-                draw_controls(layout.box(), context)
+                # Play and Bake here run this object's own domain, whichever
+                # the sidebar has chosen.
+                draw_controls(layout.box(), context, domain=own_domain(context, obj))
             content = layout.column()
             content.enabled = active_mode() != "baking"
             if props.smoke_object_type == "emitter":

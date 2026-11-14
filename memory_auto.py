@@ -123,6 +123,14 @@ def draw_budget_summary(layout, props, state=None):
             column.label(text=f"Auto: {AUTO_FRACTION:.0%} of free GPU memory at start", icon="MEMORY")
         else:
             column.label(text=f"Auto: {budget / (1 << 30):.1f} GB ({when})", icon="MEMORY")
+    elif budget is not None:
+        # A set amount above what the GPU has spills into system memory.
+        reading = selected_reading(_gpu_uuid())
+        total = reading.get("device_local_bytes") if reading else None
+        if total and budget > total:
+            row = column.row()
+            row.alert = True
+            row.label(text=f"More than this GPU's {total / (1 << 30):.0f} GB: it will run slowly", icon="ERROR")
     if budget is not None:
         column.separator()
 

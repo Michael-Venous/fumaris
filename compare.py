@@ -1065,8 +1065,8 @@ class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
 class FUMARIS_OT_entry_sync_material(_DomainOperator, Operator):
     bl_idname = "fumaris.entry_sync_material"
     bl_label = "Sync Material"
-    bl_description = ("On: this version uses Fumaris's material, kept in step with Appearance (bakes start "
-                      "on). Off: it gets its own copy, which Appearance no longer changes (saves start off)")
+    bl_description = ("On: this version uses Fumaris's material, kept in step with the domain's Look (bakes start "
+                      "on). Off: it gets its own copy, which the Look no longer changes (saves start off)")
 
     key: StringProperty()
 

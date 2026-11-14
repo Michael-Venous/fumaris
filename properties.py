@@ -590,7 +590,7 @@ class FumarisSettings(PropertyGroup):
         name="Show",
         description="What the live preview shows",
         items=[
-            ("look", "Look", "Smoke and fire as the Appearance settings render them"),
+            ("look", "Smoke & Fire", "Smoke and fire as the domain's Look settings render them"),
             ("speed", "Speed", "How fast the air moves, drawn as fire: still air is dark, about 10 m/s dim red, 20 m/s red, 50 m/s and faster orange (never white)"),
             ("expansion", "Expansion", "Where burning gas expands (Gas Expansion), drawn as fire: about 4 per second glows at Full Glow"),
             ("fuel", "Fuel", "Unburnt fuel, drawn as fire on a log scale: 1 glows at Full Glow, 0.1 dimly, 8 brightly. Shows where fuel waits for heat or air"),
@@ -937,7 +937,7 @@ class FumarisSettings(PropertyGroup):
 
     managed_material: PointerProperty(
         name="Synced Material",
-        description="The material Fumaris keeps in step with Appearance, shared by the versions with Sync Material on",
+        description="The material Fumaris keeps in step with the domain's Look, shared by the versions with Sync Material on",
         type=bpy.types.Material,
     )
 
@@ -1977,11 +1977,11 @@ class FumarisSettings(PropertyGroup):
     )
 
     shader_color: EnumProperty(
-        name="Colour",
+        name="Color",
         description="Temperature look: how fire is coloured",
         items=(
-            ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold over 0.45-1 x Full Glow, as Houdini's Pyro shading (Colour Spread does not apply)", 0),
-            ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature (Blackbody Scale and Colour Spread shift it)", 1),
+            ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold over 0.45-1 x Full Glow, as Houdini's Pyro shading (Color Spread does not apply)", 0),
+            ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature (Blackbody Scale and Color Spread shift it)", 1),
         ),
         default="BLACKBODY",
         update=_appearance_updated,
@@ -1989,7 +1989,7 @@ class FumarisSettings(PropertyGroup):
 
     # Pyro look: its own flame controls, separate from the Temperature look's.
     pyro_color: EnumProperty(
-        name="Colour",
+        name="Color",
         description="Pyro look: how fire is coloured",
         items=(
             ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold, as Houdini's Pyro shading", 0),
@@ -2097,7 +2097,7 @@ class FumarisSettings(PropertyGroup):
     )
 
     shader_color_spread: FloatProperty(
-        name="Colour Spread",
+        name="Color Spread",
         description="How far fire colour moves with temperature around Full Glow. 1 is physical blackbody colour; lower values keep hot and cool gas closer to the Full Glow colour (a camera's compressed fire palette: orange body, no white-hot or deep-red extremes); higher values exaggerate the range",
         default=1.0,
         min=0.05,

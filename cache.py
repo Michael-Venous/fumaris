@@ -29,10 +29,15 @@ def set_protected(directory, protected):
             pass
 
 
+class RefusedError(RuntimeError):
+    """An action refused before anything ran (a protected version, nothing to
+    emit): reported to the user, not kept as the domain's last failure."""
+
+
 def require_unprotected(directory, action):
     if is_protected(directory):
         slot = os.path.basename(os.path.normpath(directory))
-        raise RuntimeError(
+        raise RefusedError(
             f"Version '{slot}' is protected. Turn off Protect (the lock under Output) to {action}, "
             "or make a new version with + under Versions"
         )

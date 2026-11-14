@@ -518,6 +518,9 @@ def _recover_crashed(job):
 def _find_domain(job):
     for obj in bpy.data.objects:
         if obj.session_uid == job.uid:
+            # (deleted with Blender's X, it can stay in the file in no scene)
+            if not obj.users_scene:
+                return None
             return obj if getattr(obj, "fumaris", None) and obj.fumaris.smoke_object_type == "domain" else None
     return None
 
@@ -1028,7 +1031,11 @@ class FUMARIS_OT_bake_all(Operator):
         from .compare import bake_target
         domains = self._waiting(context)
         if not domains:
-            self.report({"INFO"}, "Every domain is already baking in the background")
+            if not bake_all_domains(context, self.scope):
+                self.report({"INFO"}, "Select one or more domains to bake" if self.scope == "SELECTED"
+                            else "There is no Fumaris domain in this scene")
+            else:
+                self.report({"INFO"}, "Every chosen domain is already baking in the background")
             return {"CANCELLED"}
         errors = []
         ready = []

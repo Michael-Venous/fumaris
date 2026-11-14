@@ -12,7 +12,8 @@ def collection_signature(collection):
 
 def participants(domain_props):
     if domain_props.emitter_collection is None:
-        raise RuntimeError("Assign an emitter collection before baking")
+        from .cache import RefusedError
+        raise RefusedError("Assign an emitter collection (Participants) first")
 
     result = []
     skipped = []

@@ -106,7 +106,8 @@ def build_session(
     sim_start, sim_end = simulation_frame_range(domain)
     participants = _participants(domain.fumaris)
     if not any(item["role"] == "emitter" for item in participants):
-        raise RuntimeError("Assign an emitter collection containing at least one Fumaris emitter")
+        from .cache import RefusedError
+        raise RefusedError("Assign an emitter collection containing at least one Fumaris emitter")
 
     if log_participants:
         _log_participants(domain, participants)
@@ -241,7 +242,19 @@ def session_structure_signature(domain):
     )
 
 
-def build_frame(
+def build_frame(*args, **kwargs):
+    global _BURN_DOMAIN, _RESOLUTION_SCALE
+    try:
+        return _build_frame(*args, **kwargs)
+    finally:
+        # Held only while this frame is built: a removed domain's settings
+        # read later through a stale pointer crash Blender (SIGSEGV,
+        # 2026-11-14).
+        _BURN_DOMAIN = None
+        _RESOLUTION_SCALE = 1.0
+
+
+def _build_frame(
     context,
     frame,
     participants,

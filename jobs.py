@@ -1,11 +1,12 @@
 import os
+import re
 import tempfile
 import time
 
 import bpy
 
 from .bridge import BridgeWorker, process_memory_bytes
-from .cache import cache_lock, require_unprotected
+from .cache import RefusedError, cache_lock, require_unprotected
 from .diagnostics import console_log
 from . import diagnostics
 from .exporters import bridge_executable, build_frame, build_session
@@ -38,6 +39,43 @@ class FrameRangeJob:
     # sends one frame ahead (_pipeline_depth 2), so the bridge overlaps the
     # next frame's CPU work with the frame on the GPU; bakes send one at a time.
     _in_flight = 0
+
+    # The domain, by name, found again after a rename: the job keeps the
+    # object's session_uid beside its name. (A renamed domain stopped its
+    # preview or bake with "The active Fumaris domain was deleted" and left
+    # it marked baking, 2026-11-14 UX test.) A name another object now has
+    # resolves to "" so nothing acts on the wrong object.
+    _domain_name_value = ""
+    _domain_uid = None
+
+    @property
+    def _domain_name(self):
+        name = self._domain_name_value or ""
+        uid = self._domain_uid
+        if uid is None or not name:
+            return name
+        obj = bpy.data.objects.get(name)
+        if obj is None or obj.session_uid != uid:
+            found = next((candidate for candidate in bpy.data.objects if candidate.session_uid == uid), None)
+            if found is not None:
+                self._domain_name_value = name = found.name
+                obj = found
+            elif obj is not None and getattr(obj, "fumaris", None) is not None and obj.fumaris.smoke_object_type == "domain":
+                # the same domain under a new identity (as after an undo)
+                self._domain_uid = int(obj.session_uid)
+            else:
+                return "" if obj is not None else name
+        # Deleted with Blender's X, a domain the scene still points at stays
+        # in the file in no scene: the job must not go on simulating it.
+        if obj is not None and not obj.users_scene:
+            return ""
+        return name
+
+    @_domain_name.setter
+    def _domain_name(self, value):
+        self._domain_name_value = value
+        obj = bpy.data.objects.get(value) if value else None
+        self._domain_uid = int(obj.session_uid) if obj is not None else None
 
     @property
     def _submitted(self):
@@ -157,7 +195,9 @@ class FrameRangeJob:
                 )
             window_manager.modal_handler_add(self)
         except Exception as error:
-            self._record_failure(str(error))
+            # (a refusal is reported, not kept as the domain's last failure)
+            if not isinstance(error, RefusedError):
+                self._record_failure(str(error))
             self.cancel(context)
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
@@ -625,13 +665,29 @@ class FrameRangeJob:
         raise NotImplementedError
 
 
+_GPU_LIST_LINE = re.compile(r"Flow device (\d+ name=|selected )")
+
+
+def stop_message(message, stderr):
+    """A stop's report: the reason, then what the bridge said beyond its
+    routine GPU list (which read as part of every reason, 2026-11-14)."""
+    lines = [line for line in (stderr or "").splitlines()
+             if line.strip() and not _GPU_LIST_LINE.match(line)]
+    return f"{message}: {' '.join(lines)}" if lines else message
+
+
 def recover_removed_job(operator):
     # Bypass bpy.types.Operator.__getattribute__, which resolves invalid RNA
     # even for Python-only fields. Never invoke methods on the removed wrapper.
     try:
-        state = object.__getattribute__(operator, "__dict__")
+        state = dict(object.__getattribute__(operator, "__dict__"))
         job = FrameRangeJob()
+        # A plain attribute, not FrameRangeJob's _domain_name property, on
+        # operators that do not inherit FrameRangeJob.
+        name = state.pop("_domain_name", None)
         job.__dict__.update(state)
+        if name is not None and "_domain_name_value" not in state:
+            job._domain_name_value = name
         job._restore_frame = False
         job.cancel(bpy.context)
         console_log("Fumaris recovered a removed simulation operator")

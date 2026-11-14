@@ -71,18 +71,53 @@ def scene_domains(context):
     return domains
 
 
+_ROLE_COLLECTIONS = ('emitter_collection', 'collider_collection', 'effector_collection', 'outflow_collection')
+
+
+def participant_domains(obj, domains):
+    """The domains whose participant collections hold obj."""
+    found = []
+    for domain in domains:
+        settings = domain.fumaris
+        for attribute in _ROLE_COLLECTIONS:
+            collection = getattr(settings, attribute, None)
+            if collection is not None and obj.name in collection.all_objects:
+                found.append(domain)
+                break
+    return found
+
+
 def resolve_domain(context):
+    """The domain Play, Bake and the sidebar act on: the one previewing; else
+    the one a panel set for its own controls (an emitter's panel: its own
+    domain, 2026-11-14 UX test); else the selected domain; else the chosen
+    domain (selecting a participant keeps it, so Add Objects adds to it);
+    else the domain of the selected participant, or the only one."""
     job = active_job()
     if job and active_mode() == 'previewing':
         return bpy.data.objects.get(getattr(job, '_domain_name', ''))
     domains = scene_domains(context)
+    own = getattr(context, 'fumaris_domain', None)
+    if own in domains:
+        return own
     chosen = getattr(context.scene, 'fumaris_preview_domain', None)
-    if chosen in domains:
-        return chosen
     selected = getattr(context, 'object', None)
     if selected in domains:
         return selected
+    if chosen in domains:
+        return chosen
+    owners = participant_domains(selected, domains) if selected is not None else []
+    if owners:
+        return owners[0]
     return domains[0] if len(domains) == 1 else None
+
+
+def own_domain(context, obj):
+    """A participant's own domain: the chosen one when it is among the
+    domains using obj, else the first of them; None if no domain uses it."""
+    owners = participant_domains(obj, scene_domains(context))
+    chosen = getattr(context.scene, 'fumaris_preview_domain', None)
+    return chosen if chosen in owners else (owners[0] if owners else None)
 
 
 def choose_domain(scene, domain):
@@ -227,8 +262,13 @@ def transport_status(context, domain):
     return ' / '.join(parts)
 
 
-def draw_controls(layout, context, *, compact=False, popover=True, details=True):
-    domain = resolve_domain(context)
+def draw_controls(layout, context, *, compact=False, popover=True, details=True, domain=None):
+    if domain is not None and not active_job():
+        # The buttons below act on it too (resolve_domain reads this). While
+        # a job runs they control that job, so its domain is shown.
+        layout.context_pointer_set('fumaris_domain', domain)
+    else:
+        domain = resolve_domain(context)
     job = active_job()
     running = active_mode() == 'previewing'
     paused = running and bool(getattr(job, '_pause_requested', False))

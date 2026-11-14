@@ -122,9 +122,10 @@ without advancing the simulation. The former diagnostic points preview has
 been removed; point-based emitters remain supported. A hidden domain can keep
 simulating while its viewport overlay is suppressed.
 
-`Show` (Look > Live Preview) switches the live preview from the Look to Speed:
-how fast the air moves, drawn as fire (still air dark, about 5 m/s glowing like
-gas at 1600 K). Use it to see where emitters, effectors and expansion push.
+`Show` (Look > Live Preview) switches the live preview from `Smoke & Fire` (as
+the Look renders it) to Speed:
+how fast the air moves, drawn as fire (still air dark, about 10 m/s dim red,
+20 m/s red, 50 m/s and faster orange). Use it to see where emitters, effectors and expansion push.
 
 The live preview shows in one 3D viewport: the one picked with View > Show
 Fumaris Preview Here (until Blender closes), otherwise the largest in the
@@ -155,8 +156,8 @@ Useful preview controls:
 - `Frame Rate` paces preview playback: `Scene` plays at the scene's frame rate
   (real speed), `Uncapped` as fast as the GPU simulates, `Custom` at your own
   FPS. Bakes are not paced.
-- `View and Look` use Blender's own colour management, like the scene's Color
-  Management panel. View `Scene` follows the scene's view transform, look and
+- `Color Management` (View and Look) uses Blender's own colour management,
+  like the scene's Color Management panel. View `Scene` follows the scene's view transform, look and
   display, so the preview matches the render. Any other View (`Standard`,
   `Khronos PBR Neutral`, `AgX`, `Filmic`, `ACES`) takes the Look beside it, for
   example `AgX` with `Punchy` for more saturated fire. They change only the
@@ -217,7 +218,7 @@ bake.
   that Bake can replace.
 - Play works after a bake: the bake stays in Versions (its eye shows it again)
   and the preview never writes over it.
-- `Delete Bake` (in the menu beside Bake, and the bin icon beside the bake's
+- `Delete Bake` (in the menu beside Bake, and the bin icon below the bake's
   name under Output) asks before removing the bake the domain shows and
   removes only its files. It is unavailable while a job is active. Scripts that
   call the operators directly are not asked, but a protected bake still
@@ -230,15 +231,18 @@ Under `Output`:
   directory (system temporary storage if unavailable). An explicit absolute
   output directory is respected. After saving, project-relative output is
   resolved beside the `.blend`; earlier caches stay at their original location.
-- `Bake` names the bake the domain shows. Beside it: make a lighter copy, add
-  sparks, and the lock (`Protect`): while it is locked, Bake and Delete refuse
-  it and the Simulate box says so. The lock is a small file in the bake's
+- `Version` names the bake the domain shows. Below it: `Lighter` (make a
+  lighter copy), `Sparks`, the lock (`Protect`) and the bin (`Delete`). While
+  it is locked, Bake and Delete refuse it and the Simulate box says so. The lock is a small file in the bake's
   folder, so it also holds if another scene points at the same folder.
 - Assign a material to apply it automatically to the imported volume.
 - Use `Selectable Volume` to control whether the imported object can be
   selected in the viewport.
 - Enable only the VDB channels needed by your material. Each extra grid adds
   GPU readback, conversion time and disk space; velocity also adds GPU memory.
+  Without a material of your own, Density and Temperature are always written
+  (the generated material reads them), shown ticked and greyed. Empty
+  `Directory` and `Prefix` fields show what they fall back to.
 - `VDB Precision` sets how values are stored in the files. **Half** (the
   default) halves file size and write time and is ample for rendering;
   **Full** keeps 32-bit floats for downstream processing that needs them.
@@ -293,7 +297,7 @@ Blender's Temporary Files folder (Preferences > File Paths) until the bake ends.
 
 ### Sparks
 
-`Add Sparks` (beside `Bake` under `Output`) adds an object that makes sparks
+`Sparks` (below `Version` under `Output`) adds an object that makes sparks
 and embers from the bake the domain shows. They start in gas hotter than
 `Spawn Temperature`, are carried by the baked velocity, fall, cool and
 disappear. The object goes into the baked volume's collection, selected, and
@@ -322,7 +326,7 @@ played starts it over there, as in Blender.)
 
 ## Versions
 
-The `Versions` section at the top of the domain panel lists what the domain has
+The `Versions` section (below Output) lists what the domain has
 saved, in one list:
 
 - **VDB versions** (volume icon): bakes, and live previews kept with Save
@@ -386,8 +390,10 @@ lower Simulation Memory and restart.
 simulation starts (at least 0.5 GB), read from the driver; the GB value then
 only applies if no reading is available. Close other GPU work before starting
 for the most space. Drivers without a free-memory reading (some macOS
-versions) use half the GPU memory. New domains start on Auto; saved scenes
-keep their GB value. The panel shows the amount Auto resolved to at the last
+versions) use half the GPU memory. Auto is off for new domains: Quick Setup
+domains start with 2 GB, which holds every preset with room to spare, and a
+new domain made by hand with 1 GB. A set amount larger than the GPU's memory
+is flagged under the field: it would spill into system memory and run slowly. The panel shows the amount Auto resolved to at the last
 start; Diagnostics shows the voxel size (32 scene units divided by Resolution),
 the voxel count and about how much space the budget lets smoke fill. The live
 preview's shadow and flame light volumes are part of the same budget.
@@ -399,13 +405,13 @@ Simulation Memory or Auto Cell Size is limiting.
 Start with the defaults. For energetic or high-resolution effects, raise
 Sub-Steps until motion and combustion stop changing materially. Sub-Steps are
 complete solver steps and may be set from 1 to 40; cost rises roughly linearly.
-`Adaptive` (beside Sub-Steps) makes Sub-Steps the maximum: each frame uses only
-as many as the previous frame's fastest flow needs, all of them while the
-motion is fast. `Cells per Step` (shown when Adaptive is on, default 4) is how
-many voxels the fastest flow may cross per step: lower is more accurate and
-slower; around 8 is fast but changes the result noticeably. With Sub-Steps at 6 the test
-scenes used 3–5 on average and baked 23–34% faster, with the fast phases close
-to always using 6; the result is not identical to a fixed count.
+`Cells per Step` (beside Sub-Steps, default 8; 0 turns it off) makes Sub-Steps
+a maximum (shown as `Max Sub-Steps`): each frame uses only as many steps as the
+previous frame's fastest flow needs to cross at most that many voxels per step.
+Lower is more accurate and slower. It has nothing to do at 1 Sub-Step, where it
+is greyed out. With Sub-Steps at 6 the test scenes used 3–5 on average and baked
+23–34% faster, with the fast phases close to always using 6; the result is not
+identical to a fixed count.
 
 ### Air Margin
 
@@ -626,7 +632,7 @@ that expands a lot before burning (a growing fireball) needs more, about
   Margin) holds the air still only that many velocity cells out from closed
   colliders, so fire resting on them rises freely.
 - `Solver Internals` (folded; its title counts the settings changed from
-  their defaults): `Trace Steps`, `Sparse Block Lifetime`, the two allocation
+  their defaults): `Trace Steps`, `Block Minimum Lifetime`, the two allocation
   thresholds and `Convex Collision`. The defaults suit almost every scene.
 
 The smoke's total is kept through transport in every simulation: the solver's
@@ -937,7 +943,7 @@ the Scatter Glow settings), so switching looks does not change the other's
 values. `Temperature` glows by each voxel's temperature and density.
 `Pyro` follows Houdini's Pyro shading with the same brightness law, so equal
 values give equal exposure; Blackbody Scale shifts its golden ramp (above 1
-toward pale gold) and Blue Core works as in Temperature. `Colour` picks the
+toward pale gold) and Blue Core works as in Temperature. `Color` picks the
 golden ramp or real blackbody colour (as Temperature, with Pyro's soft glow,
 Thin Gas and dark soot): fire takes a golden colour, glows from the hotter of the gas and its
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
@@ -955,7 +961,7 @@ domain's Look settings; changing them does not require a rebake.
   default, like real smoke).
 - Fire glows by its temperature like soot on a camera exposed for the hottest
   gas: gas at `Full Glow` glows at full `Brightness`, hotter gas brighter,
-  cooler gas falls off by `Contrast` (lower = wider, fuller flames). `Colour
+  cooler gas falls off by `Contrast` (lower = wider, fuller flames). `Color
   Spread` below 1 compresses the colour range (an orange body without
   white-hot or deep-red extremes); `Blackbody Scale` multiplies the temperature
   before the Blackbody colour; `Flame Tint` multiplies the flame colour.
@@ -1190,12 +1196,12 @@ for that run because freeing blocks later does not recover missing smoke. A new
 run or Delete clears it. Diagnostics sits below Advanced on the panel's darker background;
 its exact appearance follows your Blender theme.
 
-Current defaults are Dissipation **0.5**, emitter Fuel **1**, Temperature Per Burn
-**1**, and preview Step Size **1** cell. Explicitly stored settings retain their
-values; older unset properties inherit the new defaults. The Rising Smoke setup
-explicitly uses zero fuel. All Quick Effects use dissipation 1 and emitter
-Expansion 0.2; Rising Smoke and Steady Fire use Normal Velocity 0.25, Explosion
-2. New emitters start at Expansion 0.2.
+Current defaults are Dissipation **0.2**, Smoke Decay **0.1**, emitter Fuel
+**1** and preview Step Size **1** cell. Explicitly stored settings retain their
+values; older unset properties inherit the new defaults. Quick Setup keeps the
+domain's fade defaults and sets Resolution 512 and 2 GB; the Rising Smoke
+setup uses zero fuel. New emitters start at Expansion 0.2; Rising Smoke and
+Steady Fire use Normal Velocity 0.25, Explosion 2.
 
 
 ### Choosing the simulation GPU

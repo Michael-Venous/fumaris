@@ -25,6 +25,7 @@ MATERIAL_NAME = "Fumaris Spark"
 VERSION = 2
 VERSION_KEY = "fumaris_sparks_version"
 DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
+GLOW_LIMIT = 700.0   # Kelvin: a cooler spark no longer glows and is removed
 
 
 def _link(tree, a, b):
@@ -70,6 +71,35 @@ def _socket(tree, name, kind, default=None, minimum=None):
     return item
 
 
+def _direction(tree, vector, transform, location=(0, 0)):
+    node = tree.nodes.new("FunctionNodeTransformDirection")
+    node.location = location
+    _link(tree, vector, node.inputs["Direction"])
+    _link(tree, transform, node.inputs["Transform"])
+    return node.outputs["Direction"]
+
+
+def _attribute(tree, name, data_type, location):
+    node = tree.nodes.new("GeometryNodeInputNamedAttribute")
+    node.data_type = data_type
+    node.inputs["Name"].default_value = name
+    node.location = location
+    return node.outputs["Attribute"]
+
+
+def _store(tree, geometry, name, data_type, value, location):
+    node = tree.nodes.new("GeometryNodeStoreNamedAttribute")
+    node.data_type = data_type
+    node.inputs["Name"].default_value = name
+    node.location = location
+    _link(tree, geometry, node.inputs["Geometry"])
+    if isinstance(value, float):
+        node.inputs["Value"].default_value = value
+    else:
+        _link(tree, value, node.inputs["Value"])
+    return node.outputs["Geometry"]
+
+
 def build_group():
     """The shared Sparks node group (built once per file)."""
     tree = next((group for group in bpy.data.node_groups
@@ -87,13 +117,14 @@ def build_group():
     _socket(tree, "Cooling Time", "NodeSocketFloat", 0.6, 0.01)
     _socket(tree, "Spread", "NodeSocketFloat", 0.1, 0.0)
     _socket(tree, "Radius", "NodeSocketFloat", 0.02, 0.0)
+    _socket(tree, "Simulation Speed", "NodeSocketFloat", 1.0, 0.0)
     _socket(tree, "Seed", "NodeSocketInt", 0)
 
     nodes = tree.nodes
     group_in = nodes.new("NodeGroupInput")
     group_in.location = (-1600, 0)
     group_out = nodes.new("NodeGroupOutput")
-    group_out.location = (1600, 0)
+    group_out.location = (1900, 0)
 
     info = nodes.new("GeometryNodeObjectInfo")
     info.transform_space = "RELATIVE"
@@ -109,90 +140,80 @@ def build_group():
     vel_grid.inputs["Name"].default_value = "velocity"
     vel_grid.location = (-1200, 0)
     _link(tree, info.outputs["Geometry"], vel_grid.inputs["Volume"])
+    # World down in this object's own space, so a turned sparks object still
+    # drops its sparks straight down.
+    own = nodes.new("GeometryNodeSelfObject")
+    own.location = (-1400, -1150)
+    own_info = nodes.new("GeometryNodeObjectInfo")
+    own_info.transform_space = "ORIGINAL"
+    own_info.location = (-1200, -1150)
+    _link(tree, own.outputs[0], own_info.inputs["Object"])
+    to_own = nodes.new("FunctionNodeInvertMatrix")
+    to_own.location = (-1000, -1150)
+    _link(tree, own_info.outputs["Transform"], to_own.inputs[0])
 
     sim_in = nodes.new("GeometryNodeSimulationInput")
     sim_out = nodes.new("GeometryNodeSimulationOutput")
     sim_in.pair_with_output(sim_out)
     sim_in.location = (-900, -200)
-    sim_out.location = (1300, 0)
-    dt = sim_in.outputs["Delta Time"]
+    sim_out.location = (1500, 0)
+    dt = _math(tree, "MULTIPLY", sim_in.outputs["Delta Time"], group_in.outputs["Simulation Speed"], (-700, -350))
+
+    def gas_velocity(location):
+        # Grid values are the gas velocity in the volume object's space
+        # (scene space for a bake left where it was imported).
+        position = nodes.new("GeometryNodeInputPosition")
+        position.location = (location[0] - 200, location[1])
+        sample = nodes.new("GeometryNodeSampleGrid")
+        sample.data_type = "VECTOR"
+        sample.location = location
+        _link(tree, vel_grid.outputs["Grid"], sample.inputs["Grid"])
+        _link(tree, position.outputs["Position"], sample.inputs["Position"])
+        return _direction(tree, sample.outputs["Value"], info.outputs["Transform"], (location[0] + 200, location[1]))
 
     # --- move existing sparks -------------------------------------------
-    position = nodes.new("GeometryNodeInputPosition")
-    position.location = (-700, -500)
-    get_v = nodes.new("GeometryNodeInputNamedAttribute")
-    get_v.data_type = "FLOAT_VECTOR"
-    get_v.inputs["Name"].default_value = "spark_velocity"
-    get_v.location = (-700, -650)
-    get_t = nodes.new("GeometryNodeInputNamedAttribute")
-    get_t.data_type = "FLOAT"
-    get_t.inputs["Name"].default_value = "spark_temperature"
-    get_t.location = (-700, -800)
-    get_age = nodes.new("GeometryNodeInputNamedAttribute")
-    get_age.data_type = "FLOAT"
-    get_age.inputs["Name"].default_value = "age"
-    get_age.location = (-700, -950)
-    get_life = nodes.new("GeometryNodeInputNamedAttribute")
-    get_life.data_type = "FLOAT"
-    get_life.inputs["Name"].default_value = "life"
-    get_life.location = (-700, -1100)
-
-    sample_v = nodes.new("GeometryNodeSampleGrid")
-    sample_v.data_type = "VECTOR"
-    sample_v.location = (-450, -500)
-    _link(tree, vel_grid.outputs["Grid"], sample_v.inputs["Grid"])
-    _link(tree, position.outputs["Position"], sample_v.inputs["Position"])
-    sample_t = nodes.new("GeometryNodeSampleGrid")
-    sample_t.data_type = "FLOAT"
-    sample_t.location = (-450, -750)
-    _link(tree, temp_grid.outputs["Grid"], sample_t.inputs["Grid"])
-    _link(tree, position.outputs["Position"], sample_t.inputs["Position"])
+    get_v = _attribute(tree, "spark_velocity", "FLOAT_VECTOR", (-700, -650))
+    get_t = _attribute(tree, "spark_temperature", "FLOAT", (-700, -800))
+    get_age = _attribute(tree, "age", "FLOAT", (-700, -950))
+    get_life = _attribute(tree, "life", "FLOAT", (-700, -1100))
 
     # v += (v_gas - v) * (1 - exp(-drag dt)) + g dt
     follow = _math(tree, "SUBTRACT", 1.0, _math(tree, "EXPONENT", _math(tree, "MULTIPLY",
         _math(tree, "MULTIPLY", group_in.outputs["Drag"], -1.0, (-450, -950)), dt, (-300, -950)), None, (-150, -950)), (0, -950))
-    delta_v = _vmath(tree, "SUBTRACT", sample_v.outputs["Value"], get_v.outputs["Attribute"], (-200, -500))
-    pulled = _vmath(tree, "SCALE", delta_v, follow, (0, -500))
-    gravity = nodes.new("ShaderNodeCombineXYZ")
-    gravity.location = (-200, -650)
-    _link(tree, _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", group_in.outputs["Gravity"], -1.0, (-450, -1150)), dt, (-300, -1150)), gravity.inputs["Z"])
-    new_v = _vmath(tree, "ADD", _vmath(tree, "ADD", get_v.outputs["Attribute"], pulled, (150, -500)), gravity.outputs["Vector"], (300, -500))
-    step = _vmath(tree, "SCALE", new_v, dt, (450, -500))
+    delta_v = _vmath(tree, "SUBTRACT", gas_velocity((-450, -500)), get_v, (-50, -500))
+    pulled = _vmath(tree, "SCALE", delta_v, follow, (100, -500))
+    down = nodes.new("ShaderNodeCombineXYZ")
+    down.location = (-600, -1250)
+    _link(tree, _math(tree, "MULTIPLY", group_in.outputs["Gravity"], -1.0, (-800, -1250)), down.inputs["Z"])
+    gravity = _vmath(tree, "SCALE", _direction(tree, down.outputs["Vector"], to_own.outputs[0], (-400, -1250)), dt, (-200, -1250))
+    new_v = _vmath(tree, "ADD", _vmath(tree, "ADD", get_v, pulled, (250, -500)), gravity, (400, -500))
     set_pos = nodes.new("GeometryNodeSetPosition")
     set_pos.location = (600, -300)
     _link(tree, sim_in.outputs["Geometry"], set_pos.inputs["Geometry"])
-    _link(tree, step, set_pos.inputs["Offset"])
-    store_v = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_v.data_type = "FLOAT_VECTOR"
-    store_v.inputs["Name"].default_value = "spark_velocity"
-    store_v.location = (750, -300)
-    _link(tree, set_pos.outputs["Geometry"], store_v.inputs["Geometry"])
-    _link(tree, new_v, store_v.inputs["Value"])
+    _link(tree, _vmath(tree, "SCALE", new_v, dt, (450, -500)), set_pos.inputs["Offset"])
+    moved = _store(tree, set_pos.outputs["Geometry"], "spark_velocity", "FLOAT_VECTOR", new_v, (750, -300))
     # temperature: max(T exp(-dt/cool), gas T)
-    cooled = _math(tree, "MULTIPLY", get_t.outputs["Attribute"], _math(tree, "EXPONENT",
+    position = nodes.new("GeometryNodeInputPosition")
+    position.location = (-700, -1400)
+    sample_t = nodes.new("GeometryNodeSampleGrid")
+    sample_t.data_type = "FLOAT"
+    sample_t.location = (-450, -1400)
+    _link(tree, temp_grid.outputs["Grid"], sample_t.inputs["Grid"])
+    _link(tree, position.outputs["Position"], sample_t.inputs["Position"])
+    cooled = _math(tree, "MULTIPLY", get_t, _math(tree, "EXPONENT",
         _math(tree, "DIVIDE", _math(tree, "MULTIPLY", dt, -1.0, (-200, -1300)), group_in.outputs["Cooling Time"], (-50, -1300)), None, (100, -1300)), (250, -1300))
     hot = _math(tree, "MAXIMUM", cooled, sample_t.outputs["Value"], (400, -1300))
-    store_t = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_t.data_type = "FLOAT"
-    store_t.inputs["Name"].default_value = "spark_temperature"
-    store_t.location = (900, -300)
-    _link(tree, store_v.outputs["Geometry"], store_t.inputs["Geometry"])
-    _link(tree, hot, store_t.inputs["Value"])
-    age = _math(tree, "ADD", get_age.outputs["Attribute"], dt, (400, -1500))
-    store_age = nodes.new("GeometryNodeStoreNamedAttribute")
-    store_age.data_type = "FLOAT"
-    store_age.inputs["Name"].default_value = "age"
-    store_age.location = (1050, -300)
-    _link(tree, store_t.outputs["Geometry"], store_age.inputs["Geometry"])
-    _link(tree, age, store_age.inputs["Value"])
+    moved = _store(tree, moved, "spark_temperature", "FLOAT", hot, (900, -300))
+    moved = _store(tree, moved, "age", "FLOAT", _math(tree, "ADD", get_age, dt, (400, -1500)), (1050, -300))
+    # The attributes read here are the ones just stored.
     dead = nodes.new("FunctionNodeBooleanMath")
     dead.operation = "OR"
     dead.location = (900, -1500)
-    _link(tree, _math(tree, "GREATER_THAN", age, get_life.outputs["Attribute"], (600, -1500)), dead.inputs[0])
-    _link(tree, _math(tree, "LESS_THAN", hot, 700.0, (600, -1650)), dead.inputs[1])
+    _link(tree, _math(tree, "GREATER_THAN", get_age, get_life, (600, -1500)), dead.inputs[0])
+    _link(tree, _math(tree, "LESS_THAN", get_t, GLOW_LIMIT, (600, -1650)), dead.inputs[1])
     cull = nodes.new("GeometryNodeDeleteGeometry")
-    cull.location = (1150, -300)
-    _link(tree, store_age.outputs["Geometry"], cull.inputs["Geometry"])
+    cull.location = (1200, -300)
+    _link(tree, moved, cull.inputs["Geometry"])
     _link(tree, dead.outputs[0], cull.inputs["Selection"])
 
     # --- spawn new sparks in hot voxels ----------------------------------
@@ -229,23 +250,24 @@ def build_group():
     invert.location = (350, 550)
     _link(tree, keep.outputs[0], invert.inputs[0])
     _link(tree, invert.outputs[0], born.inputs["Selection"])
+    # Anywhere in its voxel (points sit at voxel centres: without this, sparks
+    # of a coarse bake start in rows), plus Spread.
     jitter = nodes.new("FunctionNodeRandomValue")
     jitter.data_type = "FLOAT_VECTOR"
-    jitter.location = (450, 200)
-    _link(tree, _math(tree, "MULTIPLY", group_in.outputs["Spread"], -1.0, (250, 150)), jitter.inputs["Min"])
-    _link(tree, group_in.outputs["Spread"], jitter.inputs["Max"])
+    jitter.location = (250, 200)
+    jitter.inputs["Min"].default_value = (-0.5, -0.5, -0.5)
+    jitter.inputs["Max"].default_value = (0.5, 0.5, 0.5)
     _link(tree, seed, jitter.inputs["Seed"])
+    grid_info = nodes.new("GeometryNodeGridInfo")
+    grid_info.data_type = "FLOAT"
+    grid_info.location = (250, 0)
+    _link(tree, temp_grid.outputs["Grid"], grid_info.inputs["Grid"])
+    in_voxel = _direction(tree, jitter.outputs[0], grid_info.outputs["Transform"], (450, 200))
+    beyond = _vmath(tree, "SCALE", jitter.outputs[0], _math(tree, "MULTIPLY", group_in.outputs["Spread"], 2.0, (250, 100)), (450, 100))
     spawn_pos = nodes.new("GeometryNodeSetPosition")
-    spawn_pos.location = (650, 400)
+    spawn_pos.location = (800, 400)
     _link(tree, born.outputs["Geometry"], spawn_pos.inputs["Geometry"])
-    _link(tree, jitter.outputs[0], spawn_pos.inputs["Offset"])
-    position2 = nodes.new("GeometryNodeInputPosition")
-    position2.location = (450, 50)
-    sample_v2 = nodes.new("GeometryNodeSampleGrid")
-    sample_v2.data_type = "VECTOR"
-    sample_v2.location = (650, 100)
-    _link(tree, vel_grid.outputs["Grid"], sample_v2.inputs["Grid"])
-    _link(tree, position2.outputs["Position"], sample_v2.inputs["Position"])
+    _link(tree, _vmath(tree, "ADD", in_voxel, beyond, (650, 200)), spawn_pos.inputs["Offset"])
     life_random = nodes.new("FunctionNodeRandomValue")
     life_random.data_type = "FLOAT"
     life_random.location = (650, -50)
@@ -254,34 +276,25 @@ def build_group():
     _link(tree, seed, life_random.inputs["Seed"])
     life = _math(tree, "MULTIPLY", life_random.outputs[0], group_in.outputs["Lifetime"], (850, -50))
     geometry = spawn_pos.outputs["Geometry"]
-    for name, data_type, value in (
-        ("spark_velocity", "FLOAT_VECTOR", sample_v2.outputs["Value"]),
+    for index, (name, data_type, value) in enumerate((
+        ("spark_velocity", "FLOAT_VECTOR", gas_velocity((650, 50))),
         ("spark_temperature", "FLOAT", to_points.outputs["Value"]),
         ("age", "FLOAT", 0.0),
         ("life", "FLOAT", life),
-    ):
-        store = nodes.new("GeometryNodeStoreNamedAttribute")
-        store.data_type = data_type
-        store.inputs["Name"].default_value = name
-        store.location = (900 + 150 * len(name) % 450, 400)
-        _link(tree, geometry, store.inputs["Geometry"])
-        if isinstance(value, float):
-            store.inputs["Value"].default_value = value
-        else:
-            _link(tree, value, store.inputs["Value"])
-        geometry = store.outputs["Geometry"]
+    )):
+        geometry = _store(tree, geometry, name, data_type, value, (950 + 150 * index, 400))
     join = nodes.new("GeometryNodeJoinGeometry")
-    join.location = (1250, 100)
+    join.location = (1350, 100)
     _link(tree, geometry, join.inputs[0])
     _link(tree, cull.outputs["Geometry"], join.inputs[0])
     _link(tree, join.outputs[0], sim_out.inputs["Geometry"])
 
     radius = nodes.new("GeometryNodeSetPointRadius")
-    radius.location = (1450, 0)
+    radius.location = (1650, 0)
     _link(tree, sim_out.outputs["Geometry"], radius.inputs["Points"])
     _link(tree, group_in.outputs["Radius"], radius.inputs["Radius"])
     material = nodes.new("GeometryNodeSetMaterial")
-    material.location = (1550, 0)
+    material.location = (1750, 0)
     material.inputs["Material"].default_value = build_material()
     _link(tree, radius.outputs["Points"], material.inputs["Geometry"])
     _link(tree, material.outputs["Geometry"], group_out.inputs["Geometry"])
@@ -372,5 +385,11 @@ def add_sparks(context, domain, volume, name="Fumaris Sparks"):
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree
     obj[DOMAIN_MARKER] = domain
+    props = domain.fumaris
     _input(modifier, "Volume").value = volume
+    # The fire's own measures: its hottest quarter, its gravity in scene
+    # units (as the solver scales it) and its time.
+    _input(modifier, "Spawn Temperature").value = 0.75 * props.flame_temperature
+    _input(modifier, "Gravity").value = -props.gravity[2] / props.simulation_scale
+    _input(modifier, "Simulation Speed").value = props.simulation_speed
     return obj

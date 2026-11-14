@@ -1578,7 +1578,14 @@ class FUMARIS_OT_cache_make_lighter(Operator):
             return {"CANCELLED"}
         finally:
             wm.progress_end()
+        # The domain shows the copy, imported like a finished bake.
         props.cache_slot = slot
+        try:
+            _import_cache(context, domain, target, prefix)
+        except Exception as error:
+            self.report({"ERROR"}, f"Version '{slot}' was written but not imported: {error}")
+            return {"CANCELLED"}
+        mark_bake_complete(domain)
         self.report({"INFO"}, f"Version '{slot}': {len(files)} frames, {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB")
         return {"FINISHED"}
 

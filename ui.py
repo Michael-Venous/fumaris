@@ -957,7 +957,7 @@ def _draw_domain(layout, scene, props):
             if missing_for_sparks:
                 # This bake lacks a grid the domain's sparks need (sparks.follow_bakes).
                 labels.label(text="Sparks")
-                fields.label(text=f"No {missing_for_sparks} in this bake: bake again", icon="ERROR")
+                fields.label(text=f"No {missing_for_sparks}: bake again", icon="ERROR")
             labels.label(text="Directory")
             fields.prop(props, "output_dir", text="")
             labels.label(text="Prefix")

@@ -5,12 +5,19 @@ voxels hotter than Spawn Temperature, moves every spark through the baked
 velocity (drag toward the gas velocity, gravity), keeps it hot while it sits in
 hot gas and lets it cool otherwise, and removes it after its lifetime or once
 it has cooled. A blackbody emission material colours sparks by temperature.
-Needs a bake with the velocity and temperature grids (Output > VDB Velocity).
+Needs a bake with the velocity and temperature grids (Output > Velocity).
+
+One node group and one material serve every sparks object; each object keeps
+its own values on its modifier, the baked volume among them.
 """
 import bpy
 
 GROUP_NAME = "Fumaris Sparks"
 MATERIAL_NAME = "Fumaris Spark"
+# Bump when the node group or the material changes: sparks already in a file
+# keep the group they were made with, new ones get the new group.
+VERSION = 2
+VERSION_KEY = "fumaris_sparks_version"
 
 
 def _link(tree, a, b):
@@ -56,15 +63,15 @@ def _socket(tree, name, kind, default=None, minimum=None):
     return item
 
 
-def build_group(volume_object=None):
-    """Create (or rebuild) the Sparks node group for one volume object."""
-    name = f"{GROUP_NAME} ({volume_object.name})" if volume_object else GROUP_NAME
-    tree = bpy.data.node_groups.get(name)
-    if tree is None:
-        tree = bpy.data.node_groups.new(name, "GeometryNodeTree")
-    tree.nodes.clear()
-    tree.interface.clear()
+def build_group():
+    """The shared Sparks node group (built once per file)."""
+    tree = next((group for group in bpy.data.node_groups
+                 if group.bl_idname == "GeometryNodeTree" and group.get(VERSION_KEY) == VERSION), None)
+    if tree is not None:
+        return tree
+    tree = bpy.data.node_groups.new(GROUP_NAME, "GeometryNodeTree")
     tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    _socket(tree, "Volume", "NodeSocketObject")
     _socket(tree, "Spawn Temperature", "NodeSocketFloat", 1500.0, 0.0)
     _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0)
     _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0)
@@ -84,7 +91,7 @@ def build_group(volume_object=None):
     info = nodes.new("GeometryNodeObjectInfo")
     info.transform_space = "RELATIVE"
     info.location = (-1400, 200)
-    info.inputs["Object"].default_value = volume_object
+    _link(tree, group_in.outputs["Volume"], info.inputs["Object"])
     temp_grid = nodes.new("GeometryNodeGetNamedGrid")
     temp_grid.data_type = "FLOAT"
     temp_grid.inputs["Name"].default_value = "temperature"
@@ -271,13 +278,16 @@ def build_group(volume_object=None):
     material.inputs["Material"].default_value = build_material()
     _link(tree, radius.outputs["Points"], material.inputs["Geometry"])
     _link(tree, material.outputs["Geometry"], group_out.inputs["Geometry"])
+    tree[VERSION_KEY] = VERSION
     return tree
 
 
 def build_material():
-    material = bpy.data.materials.get(MATERIAL_NAME)
-    if material is None:
-        material = bpy.data.materials.new(MATERIAL_NAME)
+    """The shared spark material (built once per file)."""
+    material = next((item for item in bpy.data.materials if item.get(VERSION_KEY) == VERSION), None)
+    if material is not None:
+        return material
+    material = bpy.data.materials.new(MATERIAL_NAME)
     material.use_nodes = True
     tree = material.node_tree
     tree.nodes.clear()
@@ -294,15 +304,24 @@ def build_material():
     tree.links.new(attribute.outputs["Fac"], strength.inputs[0])
     tree.links.new(strength.outputs[0], emission.inputs["Strength"])
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
+    material[VERSION_KEY] = VERSION
     return material
 
 
-def add_sparks(context, volume_object, name="Fumaris Sparks"):
-    """Point-cloud object running the Sparks group on volume_object."""
-    tree = build_group(volume_object)
+def _input(modifier, name):
+    """A value of the Sparks group on one object's modifier, by its name."""
+    item = next((item for item in modifier.node_group.interface.items_tree
+                 if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == name), None)
+    return getattr(modifier.properties.inputs, item.identifier, None) if item else None
+
+
+def add_sparks(context, volume, name="Fumaris Sparks"):
+    """Point-cloud object running the Sparks group on a baked volume object."""
+    tree = build_group()
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
     context.scene.collection.objects.link(obj)
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree
+    _input(modifier, "Volume").value = volume
     return obj

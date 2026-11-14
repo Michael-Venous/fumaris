@@ -15,6 +15,12 @@ All notable customer-facing changes are recorded here.
 - A long list of separate mesh or sphere emitters shows a hint: one Collection
   Mesh or Collection Points emitter simulates several times faster.
 - Trace Steps sits under Simulation Scale in Advanced.
+- **The live preview's sun shadows match Cycles.** Sun-lit smoke previewed
+  1.3-1.7x brighter than it rendered: the preview's shadows reached only 12
+  voxels into the smoke. They now reach across the whole simulation, at the
+  same cost (preview within about 7% of Cycles on a sun-lit plume). With
+  Cycles' Volume bounces above 0 the preview was 2-3x too bright for dark
+  smoke; the bounces now follow the smoke's colour.
 - **The result no longer changes with VRAM (GB) or Auto**: the same scene
   simulates to the same frames whatever memory the simulation is given (as
   long as it fits). Bakes without Preview While Baking get about 4% more

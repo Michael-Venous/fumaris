@@ -1548,7 +1548,7 @@ class FumarisSettings(PropertyGroup):
         description="How smoke and heat are carried between cells each step",
         items=[
             ("standard", "Standard", "Linear interpolation: fastest, softest fine detail"),
-            ("sharp", "Sharp", "Cubic interpolation: keeps billows about twice as fine, so lobes nest down to a few voxels instead of fading out near eight; about 1.7x the simulation time. Pair with Edge Sharpness about 0.45 to avoid stair-stepped edges in close-ups"),
+            ("sharp", "Sharp", "Cubic interpolation: keeps billows about twice as fine, so lobes nest down to a few voxels instead of fading out near eight; about 1.25x the simulation time. Pair with Edge Sharpness about 0.45 to avoid stair-stepped edges in close-ups"),
         ],
         default="standard",
     )

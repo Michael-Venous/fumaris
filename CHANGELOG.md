@@ -19,7 +19,7 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 - **Faster simulation and preview**: Explosion at Resolution 1024 simulates
   in 28.7 ms a frame instead of 38.4 (40.6 instead of 56.0 with the live
   preview); the comparison explosion previews at 15.8 frames a second
-  instead of 11.4. Smoke Detail Sharp costs about 1.7x Standard instead of
+  instead of 11.4. Smoke Detail Sharp costs about 1.25x Standard instead of
   2.4x.
 - **More simulation per GB**: air around the smoke no longer stores smoke
   fields and the simulated space hugs the smoke: 9% more blocks in the same
@@ -131,11 +131,15 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   Preview Shortcuts, Runtime.
 - A long list of separate mesh or sphere emitters shows a hint: one Collection
   Mesh or Collection Points emitter simulates several times faster.
-- **Smoke Detail Sharp takes 30% less time**: its cubic smoke transport looked up
-  every one of its 64 cells in the sparse grid; it now finds them through the
-  block, as Standard does (Explosion at Resolution 1024: 52 to 37 ms a frame
-  on an RTX 3090 Ti, about 1.7x Standard instead of 2.4x). The results are
-  the same, byte for byte.
+- **Smoke Detail Sharp takes about half the time**: its cubic smoke
+  transport read 64 cells per voxel, each looked up in the sparse grid. It now
+  takes seven filtered samples (the cubic correction along each axis), found
+  through the block as Standard's are, and shares its overshoot check with
+  the correction step (Explosion at Resolution 1024: 52 to 28 ms a frame on
+  an RTX 3090 Ti, about 1.25x Standard instead of 2.4x; in a live preview
+  Sharp now costs roughly 3 to 14% of the frame rate). Sharp's result changes
+  slightly: it keeps about 95% of the fine detail it had, still far above
+  Standard. Standard is unchanged, byte for byte.
 - **The domain panel is reorganised** in the order a shot is usually set up:
   Simulate, Look (Appearance and the live preview's settings, which were
   folded inside Simulate), Smoke Behavior, Participants, Output, Versions,

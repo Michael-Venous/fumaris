@@ -25,7 +25,9 @@ _SOURCE_NAMES = {"velocity", "mesh_velocity_attribute"}
 _NEVER = {"smoke_object_type", "participant_type", "particle_system_name", "gn_subtype",
           "cache_slot", "cache_id", "output_dir", "output_prefix", "simulation_state",
           "baked_frames", "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb",
-          "sim_start_frame", "sim_end_frame", "use_scene_frame_range"}
+          "sim_start_frame", "sim_end_frame", "use_scene_frame_range",
+          # Full-Resolution Channels' old name (full_resolution_channels holds it)
+          "full_resolution_velocity"}
 # Compare section state (which presets and slots are being compared).
 _NEVER_PREFIXES = ("compare_",)
 
@@ -109,7 +111,10 @@ def apply_preset(props, name):
 
 def apply_data(props, data):
     role = preset_role(props)
-    saved = data.get("settings", {})
+    saved = dict(data.get("settings", {}))
+    # Presets from before Full-Resolution Velocity became Full-Resolution Channels
+    if "full_resolution_velocity" in saved and "full_resolution_channels" not in saved:
+        saved["full_resolution_channels"] = saved["full_resolution_velocity"]
     settings = dict(saved)
     for key in _rna_values(props):
         if _belongs(key, role) and key not in settings:
@@ -124,7 +129,7 @@ def apply_data(props, data):
         else:
             retry.append((key, value))
     # Choices that depend on another setting (Velocity Resolution offers Full
-    # only with Full-Resolution Velocity) are accepted once it is applied.
+    # only with Full-Resolution Channels) are accepted once it is applied.
     for key, value in retry:
         if _set(props, key, value):
             applied += 1

@@ -67,7 +67,7 @@ _EXPORT_DOWNSAMPLE = {"FULL": 1, "HALF": 2, "QUARTER": 4}
 
 def _velocity_downsample(props):
     """Factor on the stored velocity grid, which is at half resolution unless
-    Full-Resolution Velocity is on; Half and Quarter are relative to density."""
+    Full-Resolution Channels is on; Half and Quarter are relative to density."""
     target = _EXPORT_DOWNSAMPLE.get(getattr(props, "export_velocity_resolution", "HALF") or "HALF", 2)
     native = 1 if getattr(props, "full_resolution_velocity", False) else 2
     return max(1, target // native)
@@ -155,9 +155,10 @@ def density_channels(domain_props, participants):
     or 3: a fire, with smoke and temperature at full resolution and fuel and
     burn on the velocity grid (half resolution).
 
-    Full-Resolution Channels, Full-Resolution Velocity, Colour Mixing and
-    fuel or burn output keep a fire's four on the density grid; heat alone
-    needs temperature; otherwise only smoke is kept (more capacity per GB).
+    Full-Resolution Channels, Colour Mixing and fuel or burn output keep a
+    fire's four on the density grid; heat alone needs temperature;
+    otherwise only smoke is kept (more capacity per GB), with or without
+    Full-Resolution Channels.
     """
     if getattr(domain_props, "density_storage", "auto") != "auto":
         return 4
@@ -172,17 +173,18 @@ def density_channels(domain_props, participants):
 
 def full_resolution_forced(domain_props):
     """Options that need all four density channels whatever the scene emits."""
-    # Full-Resolution Velocity shares Flow's density level, where narrow
-    # storage would also narrow velocity (the bridge keeps four channels).
     # Colour Mixing's attribute field shares the density level's layout.
-    return bool(getattr(domain_props, "full_resolution_velocity", False)
-                or getattr(domain_props, "color_mixing", False))
+    # (Full-Resolution Channels no longer does: smoke alone stays one channel,
+    # Flow's velocity level reads the density level without its channel code.)
+    return bool(getattr(domain_props, "color_mixing", False))
 
 
 def fire_at_full_resolution(domain_props):
-    """A fire keeps its fuel and burn on the density grid."""
+    """A fire keeps its fuel and burn on the density grid: with
+    Full-Resolution Channels (motion on that grid too), or fuel or burn
+    output."""
     return any(getattr(domain_props, name, False) for name in (
-        "full_resolution_channels", "export_fuel_vdb", "export_burn_vdb"))
+        "full_resolution_velocity", "full_resolution_channels", "export_fuel_vdb", "export_burn_vdb"))
 
 
 def emitted_fields(participants):
@@ -1214,7 +1216,7 @@ def _point_normal_velocity(props, radii, values):
     domain = _BURN_DOMAIN
     resolution = max(1, int(getattr(domain, "resolution", 256))) if domain else 256
     # The simulated resolution (Preview Resolution scales it); velocity cells
-    # are two density cells unless Full-Resolution Velocity is on.
+    # are two density cells unless Full-Resolution Channels is on.
     resolution = max(1.0, resolution * _RESOLUTION_SCALE)
     velocity_cells = 1.0 if getattr(domain, "full_resolution_velocity", False) else 2.0
     # Flow's spherical footprint stamps at least a sphere of ~1.29 velocity

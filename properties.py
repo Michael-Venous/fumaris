@@ -25,6 +25,17 @@ _EXPORT_RESOLUTION_ITEMS = (
 _VELOCITY_RESOLUTION_ITEMS = _EXPORT_RESOLUTION_ITEMS[1:]
 
 
+def _full_resolution_get(self):
+    return bool(self.full_resolution_channels) or bool(self.get("full_resolution_velocity", False))
+
+
+def _full_resolution_set(self, value):
+    self.full_resolution_channels = bool(value)
+    # the old option's stored value, from a file saved before the two merged
+    if "full_resolution_velocity" in self.keys():
+        del self["full_resolution_velocity"]
+
+
 def _velocity_resolution_items(self, _context):
     # Full only when motion is simulated at full resolution.
     return _EXPORT_RESOLUTION_ITEMS if getattr(self, "full_resolution_velocity", False) else _VELOCITY_RESOLUTION_ITEMS
@@ -792,10 +803,15 @@ class FumarisSettings(PropertyGroup):
         default=True,
     )
 
+    # Full-Resolution Channels' old name, kept for scripts and old files: it
+    # reads and sets Full-Resolution Channels. A file saved with Full-Resolution
+    # Velocity on still has that value stored under this name; it counts as on
+    # until the toggle is next changed.
     full_resolution_velocity: BoolProperty(
-        name="Full-Resolution Velocity",
-        description="Simulate motion at the full Resolution instead of half: rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block (fewer blocks fit in VRAM) and more time per step. Smoke also moves somewhat faster: Vorticity then makes smaller swirls that slow the plume less",
-        default=False,
+        name="Full-Resolution Channels",
+        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature. Rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block and more time per step; smoke also moves somewhat faster (Vorticity makes smaller swirls that slow the plume less). Off, motion runs at half the Resolution and a fire's fuel and burn with it. Either way only the fields the scene uses are stored: smoke alone stays smoke alone",
+        get=_full_resolution_get,
+        set=_full_resolution_set,
     )
 
 
@@ -876,9 +892,11 @@ class FumarisSettings(PropertyGroup):
         update=_output_dir_updated,
     )
 
+    # The stored value of Full-Resolution Channels; the panel shows
+    # full_resolution_velocity, which also counts the old option's value.
     full_resolution_channels: BoolProperty(
         name="Full-Resolution Channels",
-        description="Store a fire's fuel and burn at the full Resolution, like smoke and temperature. Off, they are kept at half of it with the motion: about 1.6 times the blocks fit in the same memory, for 7 to 9% more frame time, and at low Resolution explosions and the Oxygen options burn a little cooler. Scenes without fire are already all at full resolution",
+        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature. Only the fields the scene uses are stored",
         default=False,
     )
 
@@ -1792,7 +1810,7 @@ class FumarisSettings(PropertyGroup):
     )
     export_velocity_resolution: EnumProperty(
         name="Velocity Resolution",
-        description="Resolution velocity is written at, relative to density. Motion is simulated at half resolution unless Full-Resolution Velocity (Advanced) is on, which also offers Full",
+        description="Resolution velocity is written at, relative to density. Motion is simulated at half resolution unless Full-Resolution Channels (Advanced) is on, which also offers Full",
         items=_velocity_resolution_items,
         default=1,
     )

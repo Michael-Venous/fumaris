@@ -48,11 +48,16 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   4.5% for explosions at Resolution 768; at low Resolution explosions run a
   little cooler (Resolution 192: about 5%, 11% with Oxygen Limit) and so
   does a fire with the Oxygen Field (18% at 192, 2% at 384). Automatic;
-  fuel and burn go back to full resolution while the new Full-Resolution
-  Channels (Advanced: for a low-resolution preview that must match the
-  final bake), the Fuel or Burn output, Per-Emitter Color or
-  Full-Resolution Velocity is on. Frames of fire scenes differ slightly
-  from before.
+  fuel and burn go back to full resolution while Full-Resolution Channels,
+  the Fuel or Burn output or Per-Emitter Color is on. Frames of fire scenes
+  differ slightly from before.
+- **Full-Resolution Channels replaces Full-Resolution Velocity** (Advanced):
+  one switch simulates everything at the full Resolution, motion and a
+  fire's fuel and burn included, and still stores only the fields the scene
+  uses. Smoke with full-resolution motion no longer stores temperature, fuel
+  and burn it never uses: Rising Smoke fits 18% more blocks in the same
+  memory, Fog 37% (same smoke, same rise). Scenes saved with Full-Resolution
+  Velocity on open with Full-Resolution Channels on.
 - **Smoke Detail Sharp no longer slower without fire**: with smoke alone, or
   smoke and heat, Sharp's first pass ran 22% slower than with fire (2.54
   against 2.09 ms at Rising Smoke 1024); it now takes the same. Such scenes

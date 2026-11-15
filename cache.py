@@ -302,7 +302,7 @@ def _apply_values(props, values):
         else:
             changed += result
     # Choices that depend on another setting (Velocity Resolution offers Full
-    # only with Full-Resolution Velocity) are accepted once it is applied.
+    # only with Full-Resolution Channels) are accepted once it is applied.
     for name, value in retry:
         changed += _apply_value(props, name, value) or 0
     return changed

@@ -54,7 +54,7 @@ def _fire_storage(props):
         return "none"
     if not fire:
         return "none"
-    return "full" if props.full_resolution_channels else "half"
+    return "full" if props.full_resolution_velocity else "half"
 
 
 def _wrapped(layout, text, icon="NONE"):
@@ -1421,18 +1421,15 @@ def _draw_domain(layout, scene, props):
         # The on/off switches, two by two.
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
+        # Full-Resolution Channels (the old Full-Resolution Velocity's name
+        # in the file, which also counts that option's stored value)
         grid.prop(props, "full_resolution_velocity")
-        storage = _fire_storage(props)
-        cell = grid.row(align=True)
-        # Greyed where it changes nothing: no fire, or another option already
-        # keeps fuel and burn at full resolution.
-        cell.active = storage != "none"
-        cell.prop(props, "full_resolution_channels")
         grid.prop(props, "auto_cell_size")
-        if storage == "half":
-            _wrapped(advanced, "Fire: fuel and burn at half resolution, 1.6x the blocks", "INFO")
-        elif storage == "full":
-            _wrapped(advanced, "Fire: all at full resolution, about 1.6x the memory per block", "INFO")
+        storage = _fire_storage(props)
+        if props.full_resolution_velocity:
+            _wrapped(advanced, "Motion at full resolution: about 2x the memory per block", "INFO")
+        elif storage == "half":
+            _wrapped(advanced, "Motion, fuel and burn at half resolution: 1.6x the blocks for a fire", "INFO")
         advanced.separator()
         walls = _pair(advanced)
         walls.prop(props, "open_collider_wall")

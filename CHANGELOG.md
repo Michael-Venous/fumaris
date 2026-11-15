@@ -58,6 +58,10 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   and burn it never uses: Rising Smoke fits 18% more blocks in the same
   memory, Fog 37% (same smoke, same rise). Scenes saved with Full-Resolution
   Velocity on open with Full-Resolution Channels on.
+- **Temperature export is optional with the generated material**: it was
+  always written when no custom material was set. Untick it (Output) for
+  smoke that carries heat only to rise: the material then shows smoke only,
+  and a hint says so when the scene has heat. On by default as before.
 - **Smoke Detail Sharp no longer slower without fire**: with smoke alone, or
   smoke and heat, Sharp's first pass ran 22% slower than with fire (2.54
   against 2.09 ms at Rising Smoke 1024); it now takes the same. Such scenes

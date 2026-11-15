@@ -484,7 +484,9 @@ def _domain_state(props, resolution_scale=1.0):
         "cooling_time": props.cooling_time,
         "ignition_temperature_k": props.ignition_temperature_k,
         "smoke_per_burn": props.smoke_per_burn,
-        "export_temperature_vdb": props.export_temperature_vdb or generated_material,
+        # The generated material shades fire from temperature, but smoke
+        # often carries heat only for lift: written when ticked (default on).
+        "export_temperature_vdb": props.export_temperature_vdb,
         "export_fuel_vdb": props.export_fuel_vdb
         or (generated_material and props.shader_flame_enabled
             and float(flame_value(props, "flame_core", 0.0)) > 0.0),

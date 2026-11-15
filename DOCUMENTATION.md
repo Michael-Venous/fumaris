@@ -946,7 +946,7 @@ Density is the standard smoke grid. Additional outputs are:
   Density, Fuel and Burn keep their amount (empty space counts as zero),
   Temperature and Velocity average the gas only. Velocity is simulated at half
   resolution and written at Half by default; Full appears with Full-Resolution
-  Velocity. VDB Precision Half (default) stores 16-bit values.
+  Channels. VDB Precision Half (default) stores 16-bit values.
 - `color` (with Per-Emitter Color): the smoke's color per voxel, as the emitters'
   Smoke Colors mixed by amount; white where no emitted smoke is. The
   generated material multiplies its Colour by it; in your own material, an
@@ -999,7 +999,9 @@ domain's Look settings; changing them does not require a rebake.
 
 The live preview uses the same settings. The material reads only the density,
 temperature and glow grids (and fuel when Blue Core is on); `burn` stays
-available for custom materials and compositing.
+available for custom materials and compositing. Density is always written for
+it; Temperature only when ticked (on by default): without it the material
+shows smoke only, which suits smoke that carries heat just to rise.
 
 When a custom `Volume Material` is assigned, enable the additional grids that
 material needs explicitly. Fumaris does not export a separate derived `flame`

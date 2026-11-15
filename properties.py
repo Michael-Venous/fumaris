@@ -1840,7 +1840,7 @@ class FumarisSettings(PropertyGroup):
 
     export_temperature_vdb: BoolProperty(
         name="Export Temperature VDB",
-        description="Export temperature in Kelvin (0 to 5000) for Blackbody shading. Gas below 500 K, which cannot glow, is not stored and reads as 0 K",
+        description="Export temperature in Kelvin (0 to 5000) for Blackbody shading: the generated material's fire. Off, the material shows smoke only. Gas below 500 K, which cannot glow, is not stored and reads as 0 K",
         default=True,
     )
 

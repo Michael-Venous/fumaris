@@ -40,6 +40,15 @@ TIGHT_WIDTH = 330
 _LINE_CHARS = 60
 
 
+def _scene_heat(props):
+    """Whether the domain's emitters heat or burn."""
+    from .exporters import _participants, emitted_fields
+    try:
+        return emitted_fields(_participants(props)) != "smoke"
+    except Exception:
+        return False
+
+
 def _fire_storage(props):
     """Where the domain's fire keeps its fuel and burn: "half" (fire
     storage), "full" (Full-Resolution Channels) or "none" (no fire, or
@@ -1371,9 +1380,10 @@ def _draw_domain(layout, scene, props):
         output.separator()
         # Each grid: write it, and at which resolution.
         channels = output.column(align=True)
-        # The generated material reads density and temperature, so they are
-        # written whatever their checkboxes say: shown ticked and greyed.
-        needed = {"density", "temperature"} if props.volume_material is None else set()
+        # The generated material reads density, so it is written whatever its
+        # checkbox says: shown ticked and greyed. Temperature (its fire) is up
+        # to the checkbox.
+        needed = {"density"} if props.volume_material is None else set()
         for name in ("density", "temperature", "fuel", "burn", "velocity"):
             row = channels.split(factor=0.6, align=True)
             written = name in needed or getattr(props, f"export_{name}_vdb")
@@ -1394,7 +1404,9 @@ def _draw_domain(layout, scene, props):
         if props.export_glow_vdb:
             output.prop(props, "glow_radius")
         if needed:
-            _wrapped(output, "The material needs Density, Temperature", "INFO")
+            _wrapped(output, "The material needs Density", "INFO")
+            if not props.export_temperature_vdb and _scene_heat(props):
+                _wrapped(output, "Without Temperature the material shows no fire", "INFO")
 
     compare_box = layout.box()
     if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):

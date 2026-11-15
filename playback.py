@@ -204,6 +204,12 @@ class FUMARIS_OT_preview_restart(bpy.types.Operator):
             return {'CANCELLED'}
         name = domain.name
         if active_mode() == 'previewing':
+            # The running bridge starts over in place when it can (a few ms
+            # instead of about 1 s for a new process, 2026-11-14).
+            job = active_job()
+            restart = getattr(job, 'restart_in_place', None)
+            if restart is not None and restart(context):
+                return {'FINISHED'}
             bpy.ops.fumaris.preview_stop()
         result = bpy.ops.fumaris.preview_play(domain_name=name)
         return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}

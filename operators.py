@@ -612,6 +612,36 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         self._live_frame = None
         self._worker.reset_session(session)
 
+    def restart_in_place(self, context):
+        """Restart from the start frame in the running bridge (a session reset,
+        a few ms) instead of a new bridge process (about 1 s: process start,
+        GPU setup, the block pool). False when it cannot: the session's
+        structure or the GPU changed, which need a new session."""
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None or getattr(self, "_worker", None) is None or not getattr(self, "_accepted", False):
+            return False
+        if session_structure_signature(domain) != self._session_signature:
+            return False
+        from .utils import get_addon_preferences
+        if getattr(get_addon_preferences(), "gpu_device_uuid", "") != getattr(self._worker, "_gpu_uuid", ""):
+            return False   # another GPU chosen: only a new bridge process uses it
+        if getattr(self, "_export_pending", None):
+            return False   # saving a version reads the cache this would drop
+        # Frames may be in flight: send no more and reset once they are back
+        # (_ready_to_submit); resetting under them left the job waiting.
+        self._restart_pending = True
+        self._loop_reset_pending = False
+        if getattr(self, "_pause_requested", False):
+            self.set_paused(context, False)
+        self._ready_to_submit(context)
+        return True
+
+    def _restart_now(self, context, domain):
+        self._restart_pending = False
+        self._restart_preview_session(context, domain, keep_cache=False)
+        context.scene.frame_set(self._frame)
+        console_log(f"Fumaris preview restarted for {domain.name}")
+
     def _replayable(self, domain):
         """The cache holds the whole range (at its step) from a pass nothing
         has changed since."""
@@ -775,6 +805,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self._preview_display_deadline = 0.0
         if getattr(self, "_export_pending", None):
             # Writing the cache: no frame or rerender until it is done.
+            return False
+        if getattr(self, "_restart_pending", False):
+            if self._in_flight == 0 and not getattr(self, "_preview_render_submitted", False):
+                domain = bpy.data.objects.get(self._domain_name)
+                if domain is None:
+                    raise RuntimeError("The active Fumaris domain was deleted")
+                self._restart_now(context, domain)
             return False
         if (
             getattr(self, "_loop_reset_pending", False)

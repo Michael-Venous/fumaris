@@ -207,6 +207,12 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 - Temperatures show their unit: Flame Temperature, Ignition Temperature and
   the Look's Full Glow, Start and Full Temperature read "2000 K" (in Celsius
   if the scene's units are set to it).
+- **Restart is about three times faster**: the live preview's Restart
+  starts over in the running simulation instead of launching a new one.
+  The comparison explosion is back at frame 5 0.3 s after the click instead
+  of 0.9 s (RTX 4060 Ti), and Blender no longer freezes for 0.4 s on the
+  click. A different GPU, or a change that needs a new session (VRAM, frame
+  range, sources), still starts a new one.
 - Warnings for an End frame before Start and for VRAM (GB) set above the
   GPU's memory (it ran, slowly, in system memory).
 - Make Lighter Copy also halves the Pyro look's `heat` and `density_soft`

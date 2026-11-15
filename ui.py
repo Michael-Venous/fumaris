@@ -1546,7 +1546,7 @@ class FUMARIS_MT_presets(bpy.types.Menu):
             row.operator("fumaris.preset_delete", text="", icon="X").name = name
 
 
-_SIDEBAR_SECTIONS = ("FUMARIS_sidebar_domains", "FUMARIS_sidebar_objects", "FUMARIS_sidebar_add")
+_SIDEBAR_SECTIONS = ("FUMARIS_sidebar_domains", "FUMARIS_sidebar_add", "FUMARIS_sidebar_objects")
 
 
 def _sidebar_section(layout, idname):
@@ -1625,11 +1625,6 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         if domain is None:
             layout.label(text="Choose a domain", icon="INFO")
             return
-        header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
-        # The domain is named in the controls above: a long name cut this off.
-        header.label(text="Objects", icon="OUTLINER_COLLECTION")
-        if body:
-            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")
         header.label(text="Add Objects", icon="ADD")
         if body:
@@ -1646,6 +1641,13 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             # Add Source acts on context.object: point it at the chosen domain.
             source.context_pointer_set("object", domain)
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
+        # The object list last, at the panel's bottom: users reached for the
+        # bottom section expecting the list and hit Add Objects (Brent, 2026-11-15).
+        header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
+        # The domain is named in the controls above: a long name cut this off.
+        header.label(text="Objects", icon="OUTLINER_COLLECTION")
+        if body:
+            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
 
 
 CLASSES = (FUMARIS_MT_presets, FUMARIS_MT_bake_more, FUMARIS_OT_emitter_color_offer, FUMARIS_OT_color_mixing_enable,

@@ -226,7 +226,9 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   to ... Choose another Output Directory") instead of a raw "[Errno 2]" for
   a cache subfolder.
 - The sidebar's object list is headed "Objects": a long domain name cut the
-  header off (the domain is named in the controls above it).
+  header off (the domain is named in the controls above it). It now sits
+  below Add Objects, at the bottom of the sidebar, where it is quicker to
+  reach.
 - Renaming a domain no longer stops its live preview or its bake (it stopped
   with "The active Fumaris domain was deleted", and Play stayed unavailable
   until the file was reopened). A domain deleted with Blender's X stops its

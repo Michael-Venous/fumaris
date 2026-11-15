@@ -40,6 +40,23 @@ TIGHT_WIDTH = 330
 _LINE_CHARS = 60
 
 
+def _fire_storage(props):
+    """Where the domain's fire keeps its fuel and burn: "half" (fire
+    storage), "full" (Full-Resolution Channels) or "none" (no fire, or
+    another option already keeps all four channels)."""
+    from .exporters import _participants, emitted_fields, full_resolution_forced
+    if (full_resolution_forced(props) or props.density_storage != "auto"
+            or props.export_fuel_vdb or props.export_burn_vdb):
+        return "none"
+    try:
+        fire = emitted_fields(_participants(props)) == "fire"
+    except Exception:
+        return "none"
+    if not fire:
+        return "none"
+    return "full" if props.full_resolution_channels else "half"
+
+
 def _wrapped(layout, text, icon="NONE"):
     """A status label that wraps instead of being cut off in a narrow panel."""
     lines = textwrap.wrap(text, width=max(16, _LINE_CHARS)) or [""]
@@ -1405,7 +1422,17 @@ def _draw_domain(layout, scene, props):
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
         grid.prop(props, "full_resolution_velocity")
+        storage = _fire_storage(props)
+        cell = grid.row(align=True)
+        # Greyed where it changes nothing: no fire, or another option already
+        # keeps fuel and burn at full resolution.
+        cell.active = storage != "none"
+        cell.prop(props, "full_resolution_channels")
         grid.prop(props, "auto_cell_size")
+        if storage == "half":
+            _wrapped(advanced, "Fire: fuel and burn at half resolution, 1.6x the blocks", "INFO")
+        elif storage == "full":
+            _wrapped(advanced, "Fire: all at full resolution, about 1.6x the memory per block", "INFO")
         advanced.separator()
         walls = _pair(advanced)
         walls.prop(props, "open_collider_wall")

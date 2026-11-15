@@ -404,12 +404,14 @@ Not every field is stored at the Resolution you set, and none where the scene
 does not use it. Smoke and temperature are; motion (velocity and pressure) is
 simulated at half of it unless `Full-Resolution Velocity` is on; a fire's fuel
 and burn are kept at half of it too, on the motion's grid: flames keep their
-heat, size and edges, and 1.6 times the blocks fit in the same memory for
-about a tenth more frame time.
+detail, size and edges, and 1.6 times the blocks fit in the same memory for
+7 to 9% more frame time. At low Resolution (around 200) an explosion burns a
+few percent cooler than with full-resolution fuel, more with Oxygen Limit or
+the Oxygen Field; the difference shrinks as Resolution rises.
 Scenes without fire store no fuel or burn, and scenes without heat no
 temperature. This is automatic. Fuel and burn go back to full resolution
-while the Fuel or Burn output, `Per-Emitter Color` or `Full-Resolution
-Velocity` is on.
+while `Full-Resolution Channels` (Advanced), the Fuel or Burn output,
+`Per-Emitter Color` or `Full-Resolution Velocity` is on.
 
 Resolution has no artificial maximum: values above the slider's suggested
 range can be typed directly, but extreme values produce no extra detail when
@@ -637,8 +639,15 @@ that expands a lot before burning (a growing fireball) needs more, about
   the risk of grid-scale noise.
 - `Preserve Turbulence` (see Smoke Behavior), `Full-Resolution Velocity`
   (motion at the full Resolution: rounder, finer billows at about twice the
-  memory per block; changing it restarts the simulation) and `Auto Cell Size`
-  (see Resolution And Simulation Memory).
+  memory per block; changing it restarts the simulation), `Full-Resolution
+  Channels` and `Auto Cell Size` (see Resolution And Simulation Memory).
+- `Full-Resolution Channels` stores a fire's fuel and burn at the full
+  Resolution, like its smoke and temperature: about 1.6 times the memory per
+  block for 7 to 9% less frame time, and at low Resolution the heat of
+  full-resolution fuel (explosions and the Oxygen options burn a little
+  cooler without it). A line under it says where the fire keeps them; it is
+  greyed out without fire or when another option already keeps them at full
+  resolution. Changing it restarts the simulation.
 - `Open Collider Wall` is the minimum thickness, in velocity cells, of the
   wall behind open collider meshes such as planes, so smoke cannot leak through
   when Collider Margin is thin. `Closed Collider Margin` (0 = the full Collider

@@ -876,11 +876,19 @@ class FumarisSettings(PropertyGroup):
         update=_output_dir_updated,
     )
 
+    full_resolution_channels: BoolProperty(
+        name="Full-Resolution Channels",
+        description="Store a fire's fuel and burn at the full Resolution, like smoke and temperature. Off, they are kept at half of it with the motion: about 1.6 times the blocks fit in the same memory, for 7 to 9% more frame time, and at low Resolution explosions and the Oxygen options burn a little cooler. Scenes without fire are already all at full resolution",
+        default=False,
+    )
+
+    # Not in the panel: tests force all four density fields even where the
+    # scene does not use them.
     density_storage: EnumProperty(
         name="Density Storage",
-        description="Which fields the simulation stores at full resolution. Auto keeps only what the scene uses: smoke, temperature when sources heat, and a fire's fuel and burn at half resolution with the motion. Up to about twice the simulated space in the same memory; a fire, about half as much again",
+        description="Which fields the simulation stores. Auto keeps only what the scene uses; All Channels stores temperature, fuel, burn and smoke everywhere",
         items=(
-            ("auto", "Auto", "Smoke only, or smoke and temperature; a fire keeps its fuel and burn at half resolution"),
+            ("auto", "Auto", "Only the fields the scene uses"),
             ("all", "All Channels", "Always store temperature, fuel, burn and smoke at full resolution"),
         ),
         default="auto",

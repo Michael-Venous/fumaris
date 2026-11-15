@@ -155,19 +155,38 @@ def density_channels(domain_props, participants):
     or 3: a fire, with smoke and temperature at full resolution and fuel and
     burn on the velocity grid (half resolution).
 
-    Full-Resolution Velocity, Colour Mixing and fuel or burn output need all
-    four on the density grid; heat alone needs temperature;
-    otherwise only smoke is kept (more capacity per GB).
+    Full-Resolution Channels, Full-Resolution Velocity, Colour Mixing and
+    fuel or burn output keep a fire's four on the density grid; heat alone
+    needs temperature; otherwise only smoke is kept (more capacity per GB).
     """
     if getattr(domain_props, "density_storage", "auto") != "auto":
         return 4
+    if full_resolution_forced(domain_props):
+        return 4
+    kind = emitted_fields(participants)
+    if kind == "fire":
+        # Fuel and burn grids are written from the density grid.
+        return 4 if fire_at_full_resolution(domain_props) else 3
+    return 2 if kind == "heat" else 1
+
+
+def full_resolution_forced(domain_props):
+    """Options that need all four density channels whatever the scene emits."""
     # Full-Resolution Velocity shares Flow's density level, where narrow
     # storage would also narrow velocity (the bridge keeps four channels).
-    if getattr(domain_props, "full_resolution_velocity", False):
-        return 4
     # Colour Mixing's attribute field shares the density level's layout.
-    if getattr(domain_props, "color_mixing", False):
-        return 4
+    return bool(getattr(domain_props, "full_resolution_velocity", False)
+                or getattr(domain_props, "color_mixing", False))
+
+
+def fire_at_full_resolution(domain_props):
+    """A fire keeps its fuel and burn on the density grid."""
+    return any(getattr(domain_props, name, False) for name in (
+        "full_resolution_channels", "export_fuel_vdb", "export_burn_vdb"))
+
+
+def emitted_fields(participants):
+    """"fire" if an emitter can burn, else "heat" if one heats, else "smoke"."""
     heat = False
     for participant in participants:
         if participant.get("role") != "emitter":
@@ -180,13 +199,10 @@ def density_channels(domain_props, participants):
         if (props.emitter_fuel > 0.0 or props.emitter_burn > 0.0
                 or getattr(props, "emitter_burning", False)
                 or animated & {"fumaris.emitter_fuel", "fumaris.emitter_burn", "fumaris.emitter_burning"}):
-            # Fuel and burn grids are written from the density grid.
-            if getattr(domain_props, "export_fuel_vdb", False) or getattr(domain_props, "export_burn_vdb", False):
-                return 4
-            return 3
+            return "fire"
         if props.emitter_temperature != 0.0 or "fumaris.emitter_temperature" in animated:
             heat = True
-    return 2 if heat else 1
+    return "heat" if heat else "smoke"
 
 
 def _animated_paths(obj):

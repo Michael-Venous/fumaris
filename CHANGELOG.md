@@ -39,14 +39,20 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   half resolution, on the motion's grid; smoke and temperature stay at the
   Resolution you set. The same VRAM holds 1.6 times the blocks (15 GB on the
   comparison explosion: 195,128 instead of 122,880; VRAM in use at its peak
-  1.87 instead of 2.95 GB) for about 10% more frame time (Explosion at
-  Resolution 1024: 55 ms a frame instead of 51).
-  Flames keep their heat, size and edges: averaged over frames 20 to 60 of
-  the Explosion and Steady Fire presets the heat stays within 0 to 4% of
-  full-resolution fuel, with and without Oxygen Limit and the Oxygen Field.
-  Automatic; fuel and burn go back to full resolution while the Fuel or
-  Burn output, Per-Emitter Color or Full-Resolution Velocity is on. Frames
-  of fire scenes differ slightly from before.
+  1.87 instead of 2.95 GB) for 7 to 9% more frame time (Explosion at
+  Resolution 1024: 34.8 ms a frame instead of 32.6, with Smoke Detail Sharp
+  43.8 instead of 40.2).
+  Flames keep their detail, size and edges: over 100 frames of a steady
+  fire at Resolution 1024 the hot gas, its edges and its fine detail stay
+  within 3% of full-resolution fuel. Heat stays within 2% for fires and 3 to
+  4.5% for explosions at Resolution 768; at low Resolution explosions run a
+  little cooler (Resolution 192: about 5%, 11% with Oxygen Limit) and so
+  does a fire with the Oxygen Field (18% at 192, 2% at 384). Automatic;
+  fuel and burn go back to full resolution while the new Full-Resolution
+  Channels (Advanced: for a low-resolution preview that must match the
+  final bake), the Fuel or Burn output, Per-Emitter Color or
+  Full-Resolution Velocity is on. Frames of fire scenes differ slightly
+  from before.
 - **Smoke Detail Sharp no longer slower without fire**: with smoke alone, or
   smoke and heat, Sharp's first pass ran 22% slower than with fire (2.54
   against 2.09 ms at Rising Smoke 1024); it now takes the same. Such scenes

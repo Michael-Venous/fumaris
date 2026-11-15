@@ -148,10 +148,13 @@ def build_session(
 
 
 def density_channels(domain_props, participants):
-    """Density channels the bake stores: 1 smoke, 2 smoke + temperature, 4 all.
+    """Density channels the bake stores: 1 smoke, 2 smoke + temperature, 4 all,
+    or 3: a fire, with smoke and temperature at full resolution and fuel and
+    burn on the velocity grid (half resolution).
 
-    Fuel, burning emitters or Full-Resolution Velocity need all four; heat
-    alone needs temperature; otherwise only smoke is kept (more capacity per GB).
+    Full-Resolution Velocity, Colour Mixing, the Oxygen Field and fuel or burn
+    output need all four on the density grid; heat alone needs temperature;
+    otherwise only smoke is kept (more capacity per GB).
     """
     if getattr(domain_props, "density_storage", "auto") != "auto":
         return 4
@@ -174,7 +177,12 @@ def density_channels(domain_props, participants):
         if (props.emitter_fuel > 0.0 or props.emitter_burn > 0.0
                 or getattr(props, "emitter_burning", False)
                 or animated & {"fumaris.emitter_fuel", "fumaris.emitter_burn", "fumaris.emitter_burning"}):
-            return 4
+            # The Oxygen Field keeps its deficit where the velocity grid's fuel
+            # would go; fuel and burn grids are written from the density grid.
+            if (getattr(domain_props, "oxygen_field", False) or getattr(domain_props, "export_fuel_vdb", False)
+                    or getattr(domain_props, "export_burn_vdb", False)):
+                return 4
+            return 3
         if props.emitter_temperature != 0.0 or "fumaris.emitter_temperature" in animated:
             heat = True
     return 2 if heat else 1

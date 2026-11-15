@@ -878,10 +878,10 @@ class FumarisSettings(PropertyGroup):
 
     density_storage: EnumProperty(
         name="Density Storage",
-        description="Which density channels the simulation stores. Auto keeps only smoke (and temperature when sources heat) when nothing burns, for up to about twice the simulated space in the same memory",
+        description="Which fields the simulation stores at full resolution. Auto keeps only what the scene uses: smoke, temperature when sources heat, and a fire's fuel and burn at half resolution with the motion. Up to about twice the simulated space in the same memory; a fire, about half as much again",
         items=(
-            ("auto", "Auto", "Smoke only, or smoke and temperature, when no source emits fuel or burns"),
-            ("all", "All Channels", "Always store temperature, fuel, burn and smoke"),
+            ("auto", "Auto", "Smoke only, or smoke and temperature; a fire keeps its fuel and burn at half resolution"),
+            ("all", "All Channels", "Always store temperature, fuel, burn and smoke at full resolution"),
         ),
         default="auto",
     )

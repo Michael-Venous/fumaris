@@ -23,7 +23,8 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   2.4x.
 - **More simulation per GB**: air around the smoke no longer stores smoke
   fields and the simulated space hugs the smoke: 9% more blocks in the same
-  VRAM, 42% fewer smoke cells on the same shot.
+  VRAM, 42% fewer smoke cells on the same shot. A fire fits half as many
+  blocks again: its fuel and burn are stored at half resolution.
 - **Bake in Background, Bake All and Bake Selected**: several domains bake at
   once in their own Blender processes, on one or more GPUs, while you work.
 - **Per-Emitter Color**: emitters with their own smoke color that mixes where
@@ -34,6 +35,22 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Fire costs a third less memory**: a fire's fuel and burn are stored at
+  half resolution, on the motion's grid; smoke and temperature stay at the
+  Resolution you set. The same VRAM holds 1.5 times the blocks (15 GB on the
+  comparison explosion: 185,193 instead of 122,880) at the same frame time
+  (Explosion at Resolution 1024: 37.4 ms of GPU time a frame before and
+  after). Flames keep their size and their edges; their finest flicker is
+  about a tenth softer: in back-to-back bakes of a fire and an explosion the
+  hot gas volume stays within 2 to 4%, smoke within 4%, and the temperature's
+  detail under 4 voxels is 1 to 23% lower. Automatic; fuel and burn go back
+  to full resolution while the Oxygen Field, the Fuel or Burn output,
+  Per-Emitter Color or Full-Resolution Velocity is on. Frames of fire scenes
+  differ slightly from before.
+- **Smoke Detail Sharp no longer slower without fire**: with smoke alone, or
+  smoke and heat, Sharp's first pass ran 22% slower than with fire (2.54
+  against 2.09 ms at Rising Smoke 1024); it now takes the same. Such scenes
+  bake slightly different frames with Sharp.
 - **Air costs less**: blocks that hold only air around the smoke keep the
   velocity field and no longer the smoke fields (density, temperature, fuel,
   burn), which are about four fifths of a block's memory. The same VRAM holds

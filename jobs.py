@@ -104,6 +104,7 @@ class FrameRangeJob:
         completed_frames=None,
         keep_alive=False,
         output_directory=None,
+        require_emitter=True,
     ):
         runtime_error = runtime_validation_error()
         if runtime_error:
@@ -148,6 +149,7 @@ class FrameRangeJob:
             preview_enabled=preview_enabled,
             resolution_scale=resolution_scale,
             log_participants=True,
+            require_emitter=require_emitter,
         )
         session["output_directory"] = self._directory
 
@@ -159,7 +161,16 @@ class FrameRangeJob:
 
         if clear_cache:
             require_unprotected(self._directory, "bake over it")
-        os.makedirs(self._directory, exist_ok=True)
+        try:
+            os.makedirs(self._directory, exist_ok=True)
+        except OSError as error:
+            # The OS message ("[Errno 2] No such file or directory: ...") names
+            # the cache subfolder, not the folder the user chose.
+            from .cache import RefusedError
+            chosen = getattr(domain.fumaris, "output_dir", "") or "the output folder"
+            raise RefusedError(
+                f"Can't write to {chosen} ({error.strerror or error}). "
+                "Choose another Output Directory (Output panel)") from error
         if write_vdb:
             self._cache_lock = cache_lock(self._directory).acquire()
         try:

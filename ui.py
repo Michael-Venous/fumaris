@@ -1590,7 +1590,8 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             layout.label(text="Choose a domain", icon="INFO")
             return
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
-        header.label(text=f"{domain.name} Objects", icon="OUTLINER_COLLECTION")
+        # The domain is named in the controls above: a long name cut this off.
+        header.label(text="Objects", icon="OUTLINER_COLLECTION")
         if body:
             draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")

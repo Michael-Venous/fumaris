@@ -23,8 +23,8 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   2.4x.
 - **More simulation per GB**: air around the smoke no longer stores smoke
   fields and the simulated space hugs the smoke: 9% more blocks in the same
-  VRAM, 42% fewer smoke cells on the same shot. A fire fits half as many
-  blocks again: its fuel and burn are stored at half resolution.
+  VRAM, 42% fewer smoke cells on the same shot. A fire fits 1.6 times the
+  blocks: its fuel and burn are stored at half resolution.
 - **Bake in Background, Bake All and Bake Selected**: several domains bake at
   once in their own Blender processes, on one or more GPUs, while you work.
 - **Per-Emitter Color**: emitters with their own smoke color that mixes where
@@ -37,16 +37,16 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 - **Fire costs a third less memory**: a fire's fuel and burn are stored at
   half resolution, on the motion's grid; smoke and temperature stay at the
-  Resolution you set. The same VRAM holds 1.5 times the blocks (15 GB on the
-  comparison explosion: 185,193 instead of 122,880) at the same frame time
-  (Explosion at Resolution 1024: 37.4 ms of GPU time a frame before and
-  after). Flames keep their size and their edges; their finest flicker is
-  about a tenth softer: in back-to-back bakes of a fire and an explosion the
-  hot gas volume stays within 2 to 4%, smoke within 4%, and the temperature's
-  detail under 4 voxels is 1 to 23% lower. Automatic; fuel and burn go back
-  to full resolution while the Oxygen Field, the Fuel or Burn output,
-  Per-Emitter Color or Full-Resolution Velocity is on. Frames of fire scenes
-  differ slightly from before.
+  Resolution you set. The same VRAM holds 1.6 times the blocks (15 GB on the
+  comparison explosion: 195,128 instead of 122,880; VRAM in use at its peak
+  1.87 instead of 2.95 GB) for about 10% more frame time (Explosion at
+  Resolution 1024: 55 ms a frame instead of 51).
+  Flames keep their heat, size and edges: averaged over frames 20 to 60 of
+  the Explosion and Steady Fire presets the heat stays within 0 to 4% of
+  full-resolution fuel, with and without Oxygen Limit and the Oxygen Field.
+  Automatic; fuel and burn go back to full resolution while the Fuel or
+  Burn output, Per-Emitter Color or Full-Resolution Velocity is on. Frames
+  of fire scenes differ slightly from before.
 - **Smoke Detail Sharp no longer slower without fire**: with smoke alone, or
   smoke and heat, Sharp's first pass ran 22% slower than with fire (2.54
   against 2.09 ms at Rising Smoke 1024); it now takes the same. Such scenes
@@ -205,6 +205,13 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 - Importing a bake with velocity no longer logs "Could not find grid with name
   velocity"; the volume's Velocity Grid is set, so Cycles' motion blur follows
   the baked velocity.
+- Deleting a preview's only emitter no longer stops the preview: nothing
+  emits until Undo brings the emitter back, into the running preview.
+- An output folder that can't be written is reported by name ("Can't write
+  to ... Choose another Output Directory") instead of a raw "[Errno 2]" for
+  a cache subfolder.
+- The sidebar's object list is headed "Objects": a long domain name cut the
+  header off (the domain is named in the controls above it).
 - Renaming a domain no longer stops its live preview or its bake (it stopped
   with "The active Fumaris domain was deleted", and Play stayed unavailable
   until the file was reopened). A domain deleted with Blender's X stops its

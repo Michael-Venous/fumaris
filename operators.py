@@ -489,7 +489,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         console_log(f"Fumaris preview started for {domain.name} frame {self._frame}")
         return self._start_modal(context)
 
-    def _start_preview_session(self, context, domain, *, clear_preview_image=False):
+    def _start_preview_session(self, context, domain, *, clear_preview_image=False, require_emitter=True):
         signature = session_structure_signature(domain)
         if clear_preview_image:
             clear_preview(domain)
@@ -522,6 +522,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             resolution_scale=_preview_resolution_scale(domain),
             show_progress=False,
             keep_alive=True,
+            require_emitter=require_emitter,
         )
         self._hide_imported_volumes()
         self._session_signature = signature
@@ -588,6 +589,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             preview_enabled=True,
             resolution_scale=self._resolution_scale,
             log_participants=False,
+            require_emitter=False,
         )
         self._prefix = session["output_prefix"]
         self._session_signature = signature
@@ -931,7 +933,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self._accepted = False
             self._stop_requested = False
             self._ending_session = False
-            self._start_preview_session(context, domain, clear_preview_image=True)
+            self._start_preview_session(context, domain, clear_preview_image=True, require_emitter=False)
             return
         if getattr(self, "_replaying", False):
             self._submit_replay_frame(context, domain)

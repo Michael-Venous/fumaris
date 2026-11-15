@@ -100,12 +100,15 @@ def build_session(
     preview_enabled=True,
     resolution_scale=1.0,
     log_participants=False,
+    require_emitter=True,
 ):
     scene = context.scene
     domain = domain or context.object
     sim_start, sim_end = simulation_frame_range(domain)
     participants = _participants(domain.fumaris)
-    if not any(item["role"] == "emitter" for item in participants):
+    # A running preview whose last emitter was deleted keeps going (nothing
+    # emits), so Undo brings the emitter back into it; starting one needs one.
+    if require_emitter and not any(item["role"] == "emitter" for item in participants):
         from .cache import RefusedError
         raise RefusedError("Assign an emitter collection containing at least one Fumaris emitter")
 
@@ -152,8 +155,8 @@ def density_channels(domain_props, participants):
     or 3: a fire, with smoke and temperature at full resolution and fuel and
     burn on the velocity grid (half resolution).
 
-    Full-Resolution Velocity, Colour Mixing, the Oxygen Field and fuel or burn
-    output need all four on the density grid; heat alone needs temperature;
+    Full-Resolution Velocity, Colour Mixing and fuel or burn output need all
+    four on the density grid; heat alone needs temperature;
     otherwise only smoke is kept (more capacity per GB).
     """
     if getattr(domain_props, "density_storage", "auto") != "auto":
@@ -177,10 +180,8 @@ def density_channels(domain_props, participants):
         if (props.emitter_fuel > 0.0 or props.emitter_burn > 0.0
                 or getattr(props, "emitter_burning", False)
                 or animated & {"fumaris.emitter_fuel", "fumaris.emitter_burn", "fumaris.emitter_burning"}):
-            # The Oxygen Field keeps its deficit where the velocity grid's fuel
-            # would go; fuel and burn grids are written from the density grid.
-            if (getattr(domain_props, "oxygen_field", False) or getattr(domain_props, "export_fuel_vdb", False)
-                    or getattr(domain_props, "export_burn_vdb", False)):
+            # Fuel and burn grids are written from the density grid.
+            if getattr(domain_props, "export_fuel_vdb", False) or getattr(domain_props, "export_burn_vdb", False):
                 return 4
             return 3
         if props.emitter_temperature != 0.0 or "fumaris.emitter_temperature" in animated:

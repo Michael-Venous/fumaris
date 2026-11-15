@@ -404,12 +404,12 @@ Not every field is stored at the Resolution you set, and none where the scene
 does not use it. Smoke and temperature are; motion (velocity and pressure) is
 simulated at half of it unless `Full-Resolution Velocity` is on; a fire's fuel
 and burn are kept at half of it too, on the motion's grid: flames keep their
-size and edges (their finest flicker is slightly softer) and half as many
-blocks again fit in the same memory.
+heat, size and edges, and 1.6 times the blocks fit in the same memory for
+about a tenth more frame time.
 Scenes without fire store no fuel or burn, and scenes without heat no
 temperature. This is automatic. Fuel and burn go back to full resolution
-while the `Oxygen Field`, the Fuel or Burn output, `Per-Emitter Color` or
-`Full-Resolution Velocity` is on.
+while the Fuel or Burn output, `Per-Emitter Color` or `Full-Resolution
+Velocity` is on.
 
 Resolution has no artificial maximum: values above the slider's suggested
 range can be typed directly, but extreme values produce no extra detail when

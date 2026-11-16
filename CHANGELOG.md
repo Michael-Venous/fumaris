@@ -35,6 +35,13 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **OpenVDB emitters**: Expansion now works on volume emitters (it was shown
+  but did nothing), shaped by the file's density so a burst's core pushes
+  hardest. Volume emitters also emit their dense cores: voxels with density
+  above 1, common in Houdini and other tools' caches, emitted nothing before,
+  while empty parts of the file's box slowed the flow and pulled heat toward
+  zero. Scenes with such files simulate differently (now as their files
+  describe).
 - **Fire costs a third less memory**: a fire's fuel and burn are stored at
   half resolution, on the motion's grid; smoke and temperature stay at the
   Resolution you set. The same VRAM holds 1.6 times the blocks (15 GB on the

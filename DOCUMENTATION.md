@@ -751,9 +751,19 @@ enable `Sequence`, and keep the original cache untouched while it is in use.
 
 `Emit Velocity Grid` drives the simulation with the file's velocity at the
 Velocity coupling rate. It is off by default, so a stationary volume does not
-slow or push the fluid. Volume emitters start in `Blend`, which also pulls
-smoke inside the file's bounding box down toward the file's density; choose
-`Maximum` or `Add` for Smoke when the source should only contribute.
+slow or push the fluid. A file with a density grid emits only where that grid
+has density (any amount, including the dense cores of other tools' caches,
+which often exceed 1); a file without one emits throughout its bounding box.
+Volume emitters start in `Blend`, which pulls smoke inside the emitting
+region toward the file's density; choose `Maximum` or `Add` for Smoke when the
+source should only contribute.
+
+`Expansion` on a volume emitter is shaped by its density grid: each voxel
+expands at density × Expansion per second, like a pressure (divergence) source
+in other solvers, so a burst's dense core pushes hardest. Without a density
+grid the whole region expands at Expansion. A burst file of other tools'
+densities (peaks of 10 and more) needs far smaller values than a mesh: about
+10–40 for a fireball's punch.
 
 Mesh `Surface` emission follows the evaluated surface and Emission Distance.
 `Volume` fills a closed mesh inward from its surface up to Emission Distance;

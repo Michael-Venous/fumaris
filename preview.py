@@ -98,7 +98,7 @@ def capture_volume_preview(context, domain, target=None):
         "pyro_blackbody": str(getattr(props, "pyro_color", "GOLDEN")) == "BLACKBODY",
         "temperature_golden": str(getattr(props, "shader_color", "BLACKBODY")) == "GOLDEN",
         "block_line_width": float(getattr(props, "preview_block_line_width", 0.7)),
-        "thin_gas": float(getattr(props, "shader_thin_gas", 1.0)),
+        "thin_gas": float(getattr(props, "shader_thin_gas", 3.0)),
         "flame_tint": [float(value) for value in flame_value(props, "flame_tint", (1.0, 1.0, 1.0))],
         "gas_expansion": float(props.gas_expansion),
         "scatter_glow": float(flame_value(props, "scatter_glow", 0.0)),
@@ -266,7 +266,7 @@ def volume_preview_signature(preview):
         bool(preview.get("pyro_blackbody", False)),
         bool(preview.get("temperature_golden", False)),
         round(float(preview.get("block_line_width", 0.7)), 4),
-        round(float(preview.get("thin_gas", 1.0)), 7),
+        round(float(preview.get("thin_gas", 3.0)), 7),
         # the Expansion view is scaled by Gas Expansion
         round(float(preview.get("gas_expansion", 0.0)), 7),
         preview.get("depth_serial"),

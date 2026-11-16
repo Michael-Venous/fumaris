@@ -2007,7 +2007,7 @@ class FumarisSettings(PropertyGroup):
         description="How fire is shaded in the generated material",
         items=(
             ("TEMPERATURE", "Temperature", "Gas glows by its own temperature and density (blackbody), with Scatter Glow from nearby fire"),
-            ("PYRO", "Pyro", "Houdini Pyro-style: golden fire with soft glowing cells and dark soot in dense smoke; thin gas glows brighter, dense smoke darker (Thin Gas). Same Brightness, Full Glow and Contrast as Temperature. Needs a bake from Fumaris 2.0 (heat and soft density grids)"),
+            ("PYRO", "Pyro", "Houdini Pyro-style: golden fire glowing in the gaps between dark soot billows; gas thinner than Thin Gas glows, denser smoke shows as soot. Same Brightness, Full Glow and Contrast as Temperature. Needs a bake from Fumaris 2.0 (the heat grid)"),
         ),
         default="TEMPERATURE",
         update=_appearance_updated,
@@ -2116,10 +2116,10 @@ class FumarisSettings(PropertyGroup):
 
     shader_thin_gas: FloatProperty(
         name="Thin Gas",
-        description="Pyro look: smoke density at which fire glows as in the Temperature look. Thinner gas glows up to twice as bright, denser smoke turns to dark soot over the fire. Raise it for dense, smoky fire so more of it glows",
-        default=1.0,
+        description="Pyro look: smoke density at which fire glows as in the Temperature look. Gas thinner than this glows (up to twice as bright); denser smoke fades to dark soot over the fire (none above 1.5 x), so dense billow tops read as soot and the fire shows in the gaps between them. Raise it for dense, smoky fire so more of it glows",
+        default=3.0,
         min=0.001,
-        soft_max=2.0,
+        soft_max=20.0,
         update=_appearance_updated,
     )
 

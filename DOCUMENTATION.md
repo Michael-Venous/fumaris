@@ -983,8 +983,15 @@ Thin Gas and dark soot): fire takes a golden colour, glows from the hotter of th
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
 smoke picks up their light, and hot soot turns dark. `Thin Gas` is the smoke
 density at which Pyro glows as brightly as Temperature; thinner gas glows up to
-twice as bright, denser smoke shows as dark soot over the fire. It holds at any
-scene size, and Full Glow changes need no re-bake. Pyro needs a bake from
+twice as bright, and denser smoke fades to dark soot (none of it glows above
+1.5 x Thin Gas). The fade is per voxel, so the dense tops of billows read as
+soot and the fire shows in the thinner gas between them: the cauliflower look
+of Houdini and Axiom explosions, which needs enough Resolution (cells about
+ten voxels or more across) and a Grain layer to form the cells. Raise Thin Gas
+for dense, sooty sims (a smoke median of about 5 wants about 12); lower it for
+more soot. It holds at any scene size, and Full Glow changes need no re-bake.
+Scatter Glow lights thin gas around the cloud too; turn it down for crisp
+edges. Pyro needs a bake from
 Fumaris 2.0 or later (heat and soft density grids, written with the glow
 grids).
 

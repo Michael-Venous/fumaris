@@ -35,6 +35,11 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Colour Ramp for fire**: the Golden colour option is now **Ramp**, a colour
+  ramp you edit right in the panel (like Houdini's Pyro fire colour ramp; it
+  starts as the old golden ramp). It colours the fire and the light it casts on
+  the smoke (Scatter Glow), in the render and the live preview alike.
+- **Sidebar**: the Objects list now comes before Add Objects.
 - **Better-looking fire out of the box**: Oxygen Limit now defaults to 1, so
   fire burns where it mixes with air, temperatures vary and fireballs smoulder
   on in glowing pockets. The Explosion quick setup adds Clumps (two dozen fuel

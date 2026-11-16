@@ -2046,7 +2046,7 @@ class FumarisSettings(PropertyGroup):
         name="Color",
         description="Temperature look: how fire is coloured",
         items=(
-            ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold over 0.45-1 x Full Glow, as Houdini's Pyro shading (Color Spread does not apply)", 0),
+            ("GOLDEN", "Ramp", "Colour from a ramp you edit, over 0.45-1 x Full Glow (as Houdini's Pyro fire colour ramp; starts deep red to pale gold). Color Spread does not apply; brightness still follows the temperature", 0),
             ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature (Blackbody Scale and Color Spread shift it)", 1),
         ),
         default="BLACKBODY",
@@ -2058,7 +2058,7 @@ class FumarisSettings(PropertyGroup):
         name="Color",
         description="Pyro look: how fire is coloured",
         items=(
-            ("GOLDEN", "Golden", "A golden ramp from deep red to pale gold, as Houdini's Pyro shading", 0),
+            ("GOLDEN", "Ramp", "Colour from a ramp you edit, over 0.45-1 x Full Glow (as Houdini's Pyro fire colour ramp; starts deep red to pale gold). Brightness still follows the heat", 0),
             ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature, as the Temperature look (Blackbody Scale shifts it)", 1),
         ),
         default="GOLDEN",

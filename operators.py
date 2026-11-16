@@ -6,7 +6,7 @@ import time
 
 import bpy
 from bpy.app.handlers import persistent
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, StringProperty
 from .gn_sources import SOURCES as GN_SOURCES
 from bpy.types import Operator
 
@@ -1957,6 +1957,24 @@ def _active_domain(context):
     return None
 
 
+class FUMARIS_OT_edit_flame_ramp(Operator):
+    bl_idname = "fumaris.edit_flame_ramp"
+    bl_label = "Edit Ramp"
+    bl_description = "Create the domain's Fumaris material now so its Colour Ramp can be edited before a bake"
+    bl_options = {"REGISTER", "UNDO"}
+
+    domain_name: StringProperty(options={"HIDDEN"})
+
+    def execute(self, context):
+        from .importers import synced_material
+        domain = bpy.data.objects.get(self.domain_name) if self.domain_name else _active_domain(context)
+        if domain is None:
+            self.report({"WARNING"}, "Select a Fumaris domain")
+            return {"CANCELLED"}
+        synced_material(domain, create=True)
+        return {"FINISHED"}
+
+
 class FUMARIS_OT_copy_diagnostics(Operator):
     bl_idname = "fumaris.copy_diagnostics"
     bl_label = "Copy Diagnostics"
@@ -1973,6 +1991,7 @@ class FUMARIS_OT_copy_diagnostics(Operator):
 
 
 CLASSES = (
+    FUMARIS_OT_edit_flame_ramp,
     FUMARIS_OT_copy_diagnostics,
     FUMARIS_OT_bake,
     FUMARIS_OT_bake_choose,

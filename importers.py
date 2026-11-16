@@ -41,6 +41,12 @@ NODE_TEMPERATURE_FIRE = "Fumaris Temperature Fire"
 # and less in denser smoke, which then shows dark soot over the fire.
 NODE_PYRO_FIRE = "Fumaris Pyro Fire"
 NODE_LOOK_MIX = "Fumaris Look"
+# Colour Ramp (Color: Ramp in either look): the material's own ramp, which the
+# panel draws; both looks read it through "Ramp Colour". Its position is the
+# gas temperature over 0.45-1 x Full Glow (NODE_RAMP_RANGE).
+NODE_RAMP = "Fumaris Flame Ramp"
+NODE_RAMP_RANGE = "Fumaris Flame Ramp Range"
+
 # Scatter glow: the bridge's glow grid is the blurred density x Wien radiance
 # at GLOW_REFERENCE_K (src/vdb_frame_writer.cpp); coloured by the gas at Full
 # Glow, filtered by the smoke colour.
@@ -55,8 +61,8 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 4: Density Remap. 5-6: Pyro look. 7: Pyro Blue Core. 8: Pyro Colour.
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 13
-SHADER_GROUP_VERSION = 6
+GRAPH_VERSION = 16
+SHADER_GROUP_VERSION = 8
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
 PYRO_SOOT_MASK = (0.5, 1.5)
@@ -261,8 +267,6 @@ def apply_generated_material_settings(material, settings):
         "Colour Scale": PHYSICAL_COLOR_SHIFT * look["multiplier"] * spread,
         "Colour Offset": PHYSICAL_COLOR_SHIFT * look["multiplier"] * look["reference"] * (1.0 - spread),
         "Golden": 1.0 if golden else 0.0,
-        "Golden From": PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"],
-        "Golden To": PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"],
     })
 
     # Pyro look: the same brightness law on the baked heat, Thin Gas, colour
@@ -280,12 +284,17 @@ def apply_generated_material_settings(material, settings):
         "Local Offset": 293.15 * (1.0 - PYRO_LOCAL_HEAT),
         "Cap": float(os.environ.get("FUMARIS_EXP_PYRO_CAP", "0")),
         "Cap Gain": 1.0 + float(os.environ.get("FUMARIS_EXP_PYRO_CAP", "0")),
-        "Golden From": PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"],
-        "Golden To": PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"],
         "Blackbody": 1.0 if blackbody else 0.0,
         "Blackbody Scale": PHYSICAL_COLOR_SHIFT * look["multiplier"],
     })
     nodes[NODE_LOOK_MIX].inputs["Factor"].default_value = 1.0 if pyro_look else 0.0
+    # Colour Ramp: positioned by the gas temperature over 0.45-1 x Full Glow /
+    # Blackbody Scale of the active look.
+    if nodes.get(NODE_RAMP_RANGE) is not None:
+        look = active
+        ramp_range = nodes[NODE_RAMP_RANGE]
+        ramp_range.inputs["From Min"].default_value = PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"]
+        ramp_range.inputs["From Max"].default_value = PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"]
     set_inputs(NODE_SMOKE_COLOR, {"Smoke Colour": smoke_color, "Hot Soot": 1.0 if pyro_look else 0.0})
 
     # Scatter Glow (the active look's values), on the flame's radiance scale at Contrast 1.
@@ -297,6 +306,8 @@ def apply_generated_material_settings(material, settings):
         if enabled else 0.0,
         "Own Source": 0.0 if heat_source else 1.0,
         "Light Temperature": look["reference"] * PHYSICAL_COLOR_SHIFT * look["multiplier"],
+        "Use Ramp": 1.0 if str(_appearance_value(settings, "pyro_color" if pyro_look else "shader_color",
+                                                 "BLACKBODY")) == "GOLDEN" else 0.0,
         "Glow Spread": look["glow_spread"],
         "Glow Shadowing": -look["glow_shadowing"],
         "Smoke Colour": smoke_color,
@@ -484,8 +495,6 @@ _FLAME_INPUTS = (
     ("Brightness", "NodeSocketFloat", 1.0),
     ("Tint", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
     ("Blue Core", "NodeSocketFloat", 0.0),
-    ("Golden From", "NodeSocketFloat", 720.0),
-    ("Golden To", "NodeSocketFloat", 1600.0),
 )
 
 
@@ -515,17 +524,11 @@ def _temperature_fire_group():
         colour = graph.frame("Colour", (-660, -60), (0.30, 0.20, 0.14))
         shift = graph.math("MULTIPLY_ADD", (-660, -100), "Camera Colour Shift", colour)
         blackbody = _blackbody(graph, shift.outputs[0], (-480, -100), colour)
-        golden_range = graph.node("ShaderNodeMapRange", (-660, -320), "Golden Range", colour)
-        ramp = _ramp(graph, (-480, -320), "Golden Ramp", colour)
-        golden = _unit_luminance(graph, ramp.outputs["Color"], (-240, -320), colour)
-        choice = graph.mix("RGBA", (180, -100), "Blackbody / Golden", colour)
+        golden = _unit_luminance(graph, i["Ramp Colour"], (-240, -320), colour)
+        choice = graph.mix("RGBA", (180, -100), "Blackbody / Ramp", colour)
         graph.link(i["Temperature"], shift.inputs[0])
         graph.link(i["Colour Scale"], shift.inputs[1])
         graph.link(i["Colour Offset"], shift.inputs[2])
-        graph.link(floor.outputs[0], golden_range.inputs["Value"])
-        graph.link(i["Golden From"], golden_range.inputs["From Min"])
-        graph.link(i["Golden To"], golden_range.inputs["From Max"])
-        graph.link(_socket(golden_range.outputs, "Result"), ramp.inputs["Fac"])
         graph.link(i["Golden"], choice.inputs["Factor"])
         graph.link(blackbody, _rgba(choice.inputs)[0])
         graph.link(golden, _rgba(choice.inputs)[1])
@@ -539,7 +542,8 @@ def _temperature_fire_group():
         (("Temperature", "NodeSocketFloat", 300.0), *_FLAME_INPUTS,
          ("Colour Scale", "NodeSocketFloat", PHYSICAL_COLOR_SHIFT),
          ("Colour Offset", "NodeSocketFloat", 0.0),
-         ("Golden", "NodeSocketFloat", 0.0)),
+         ("Golden", "NodeSocketFloat", 0.0),
+         ("Ramp Colour", "NodeSocketColor", (1.0, 0.32, 0.02, 1.0))),
         (("Emission", "NodeSocketColor"),),
         build)
 
@@ -615,16 +619,10 @@ def _pyro_fire_group():
         graph.link(i["Brightness"], strength.inputs[1])
 
         colour = graph.frame("Colour", (-660, -200), (0.30, 0.20, 0.14))
-        golden_range = graph.node("ShaderNodeMapRange", (-660, -240), "Golden Range", colour)
-        ramp = _ramp(graph, (-480, -240), "Golden Ramp", colour)
-        golden = _unit_luminance(graph, ramp.outputs["Color"], (-240, -240), colour)
+        golden = _unit_luminance(graph, i["Ramp Colour"], (-240, -240), colour)
         scale = graph.math("MULTIPLY", (-660, -560), "Colour Temperature", colour)
         blackbody = _blackbody(graph, scale.outputs[0], (-480, -560), colour)
-        choice = graph.mix("RGBA", (180, -240), "Golden / Blackbody", colour)
-        graph.link(hotter.outputs[0], golden_range.inputs["Value"])
-        graph.link(i["Golden From"], golden_range.inputs["From Min"])
-        graph.link(i["Golden To"], golden_range.inputs["From Max"])
-        graph.link(_socket(golden_range.outputs, "Result"), ramp.inputs["Fac"])
+        choice = graph.mix("RGBA", (180, -240), "Ramp / Blackbody", colour)
         graph.link(hotter.outputs[0], scale.inputs[0])
         graph.link(i["Blackbody Scale"], scale.inputs[1])
         graph.link(i["Blackbody"], choice.inputs["Factor"])
@@ -644,7 +642,8 @@ def _pyro_fire_group():
          ("Local Heat", "NodeSocketFloat", 1.0), ("Local Offset", "NodeSocketFloat", 0.0),
          ("Cap", "NodeSocketFloat", 0.0), ("Cap Gain", "NodeSocketFloat", 1.0),
          ("Blackbody", "NodeSocketFloat", 0.0),
-         ("Blackbody Scale", "NodeSocketFloat", PHYSICAL_COLOR_SHIFT)),
+         ("Blackbody Scale", "NodeSocketFloat", PHYSICAL_COLOR_SHIFT),
+         ("Ramp Colour", "NodeSocketColor", (1.0, 0.32, 0.02, 1.0))),
         (("Emission", "NodeSocketColor"),),
         build)
 
@@ -700,9 +699,16 @@ def _scatter_glow_group():
 
         colour = graph.frame("Colour", (-660, -300), (0.30, 0.24, 0.12))
         blackbody = _blackbody(graph, i["Light Temperature"], (-480, -340), colour, "Fire Light Colour")
+        # Color: Ramp: the fire light takes the ramp's colour at this voxel's
+        # temperature (as Houdini's scatter colour ramp), at unit luminance.
+        ramp = _unit_luminance(graph, i["Ramp Colour"], (-480, -560), colour)
+        light_colour = graph.mix("RGBA", (-300, -340), "Blackbody / Ramp", colour)
+        graph.link(i["Use Ramp"], light_colour.inputs["Factor"])
+        graph.link(blackbody, _rgba(light_colour.inputs)[0])
+        graph.link(ramp, _rgba(light_colour.inputs)[1])
         albedo = graph.mix("RGBA", (-120, -340), "x Smoke Colour", colour, blend="MULTIPLY", factor=1.0)
         emission = graph.node("ShaderNodeVectorMath", (420, 100), "Colour x Brightness", None, operation="SCALE")
-        graph.link(blackbody, _rgba(albedo.inputs)[0])
+        graph.link(_rgba(light_colour.outputs)[0], _rgba(albedo.inputs)[0])
         graph.link(i["Smoke Colour"], _rgba(albedo.inputs)[1])
         graph.link(_rgba(albedo.outputs)[0], emission.inputs[0])
         graph.link(strength.outputs[0], emission.inputs["Scale"])
@@ -716,6 +722,7 @@ def _scatter_glow_group():
          ("Glow Shadowing", "NodeSocketFloat", 0.0), ("Brightness", "NodeSocketFloat", 0.0),
          ("Own Source", "NodeSocketFloat", 1.0),
          ("Light Temperature", "NodeSocketFloat", GLOW_REFERENCE_K * PHYSICAL_COLOR_SHIFT),
+         ("Use Ramp", "NodeSocketFloat", 0.0), ("Ramp Colour", "NodeSocketColor", (1.0, 0.32, 0.02, 1.0)),
          ("Smoke Colour", "NodeSocketColor", (0.6, 0.6, 0.6, 1.0))),
         (("Emission", "NodeSocketColor"),),
         build)
@@ -776,6 +783,12 @@ def _build_generated_material(material, blue_core=False):
     (right). One emission closure for Eevee. Appearance settings are the group
     nodes' inputs, which apply_generated_material_settings writes."""
     tree = material.node_tree
+    # A rebuild keeps the user's Colour Ramp.
+    kept_ramp = None
+    old_ramp = tree.nodes.get(NODE_RAMP)
+    if old_ramp is not None and old_ramp.type == "VALTORGB":
+        kept_ramp = (old_ramp.color_ramp.interpolation, old_ramp.color_ramp.color_mode,
+                     [(e.position, tuple(e.color)) for e in old_ramp.color_ramp.elements])
     tree.nodes.clear()
     graph = _Graph(tree)
     grids = graph.frame("Grids", (-1000, 420), (0.20, 0.24, 0.30))
@@ -817,6 +830,30 @@ def _build_generated_material(material, blue_core=False):
         graph.link(temperature, fresh.inputs["Temperature"])
         for node in (temperature_fire, pyro_fire):
             graph.link(fresh.outputs["Fresh Fuel"], node.inputs["Fresh Fuel"])
+    # Colour Ramp, shared by both looks (Color: Ramp).
+    ramp_frame = graph.frame("Colour Ramp", (-1000, -1300), (0.30, 0.20, 0.14))
+    # By the gas temperature in both looks (as Houdini's fire colour ramp, and
+    # as the live preview can follow; Pyro brightness keeps the baked heat).
+    floor_t = graph.math("MAXIMUM", (-760, -1340), "Temperature Floor", ramp_frame, ((1, 300.0),))
+    ramp_range = graph.node("ShaderNodeMapRange", (-220, -1380), "Ramp Range", ramp_frame, NODE_RAMP_RANGE)
+    ramp_range.inputs["From Min"].default_value = 720.0
+    ramp_range.inputs["From Max"].default_value = 1600.0
+    flame_ramp = _ramp(graph, (-40, -1380), "Flame Ramp", ramp_frame)
+    flame_ramp.name = NODE_RAMP
+    if kept_ramp is not None:
+        interpolation, color_mode, elements = kept_ramp
+        cr = flame_ramp.color_ramp
+        cr.interpolation, cr.color_mode = interpolation, color_mode
+        while len(cr.elements) > 1:
+            cr.elements.remove(cr.elements[-1])
+        cr.elements[0].position, cr.elements[0].color = elements[0]
+        for position, color in elements[1:]:
+            cr.elements.new(position).color = color
+    graph.link(temperature, floor_t.inputs[0])
+    graph.link(floor_t.outputs[0], ramp_range.inputs["Value"])
+    graph.link(_socket(ramp_range.outputs, "Result"), flame_ramp.inputs["Fac"])
+    for node in (temperature_fire, pyro_fire):
+        graph.link(flame_ramp.outputs["Color"], node.inputs["Ramp Colour"])
     look = graph.mix("RGBA", (-40, 260), "Look: Temperature / Pyro", fire, factor=0.0, name=NODE_LOOK_MIX)
     graph.link(temperature_fire.outputs["Emission"], _rgba(look.inputs)[0])
     graph.link(pyro_fire.outputs["Emission"], _rgba(look.inputs)[1])
@@ -825,6 +862,7 @@ def _build_generated_material(material, blue_core=False):
     graph.link(temperature, scatter.inputs["Temperature"])
     graph.link(density.outputs[0], scatter.inputs["Density"])
     graph.link(glow, scatter.inputs["Glow"])
+    graph.link(flame_ramp.outputs["Color"], scatter.inputs["Ramp Colour"])
     graph.link(glow_wide, scatter.inputs["Glow Wide"])
     graph.link(glow_depth, scatter.inputs["Glow Depth"])
     # Pyro: the fire's light shows only in gas thinner than Thin Gas (the Soot
@@ -864,6 +902,17 @@ def _build_generated_material(material, blue_core=False):
     output = graph.node("ShaderNodeOutputMaterial", (940, 360), "", smoke)
     graph.link(shader.outputs["Volume"], output.inputs["Volume"])
     material[GRAPH_VERSION_KEY] = GRAPH_VERSION
+
+
+def flame_ramp_samples(domain, count=32):
+    """The Colour Ramp of the domain's synced material, sampled evenly over 0..1
+    (for the live preview), or None when there is none."""
+    material = synced_material(domain, create=False) if domain is not None else None
+    node = material.node_tree.nodes.get(NODE_RAMP) if material is not None and material.node_tree else None
+    if node is None or node.type != "VALTORGB":
+        return None
+    ramp = node.color_ramp
+    return [tuple(round(float(c), 5) for c in ramp.evaluate(index / (count - 1))[:3]) for index in range(count)]
 
 
 def synced_material(domain, create=True):

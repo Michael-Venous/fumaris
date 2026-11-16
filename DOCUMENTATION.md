@@ -984,10 +984,16 @@ Changing it needs a re-bake; the live preview follows it straight away.
 the Scatter Glow settings), so switching looks does not change the other's
 values. `Temperature` glows by each voxel's temperature and density.
 `Pyro` follows Houdini's Pyro shading with the same brightness law, so equal
-values give equal exposure; Blackbody Scale shifts its golden ramp (above 1
-toward pale gold) and Blue Core works as in Temperature. `Color` picks the
-golden ramp or real blackbody colour (as Temperature, with Pyro's soft glow,
-Thin Gas and dark soot): fire takes a golden colour, glows from the hotter of the gas and its
+values give equal exposure; Blackbody Scale shifts its colour range (above 1
+toward the ramp's hot end) and Blue Core works as in Temperature. `Color` picks
+**Ramp** or real **Blackbody** colour (as Temperature, with Pyro's soft glow,
+Thin Gas and dark soot). Ramp is a colour ramp you edit in the panel (as
+Houdini's Pyro fire colour ramp; it starts deep red to pale gold): the gas
+temperature picks its colour from left (0.45 x Full Glow) to right (Full Glow),
+for the fire and the light it casts on the smoke (Scatter Glow); brightness
+still follows the temperature. The ramp belongs to the domain's Fumaris material
+(**Edit Ramp** creates it before a bake) and the live preview follows it. Both
+looks offer Ramp. Fire glows from the hotter of the gas and its
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
 smoke picks up their light, and hot soot turns dark. Pyro glows by the fire's
 light: the baked, blurred `heat` (and part of each voxel's own heat), so gas

@@ -97,6 +97,8 @@ def capture_volume_preview(context, domain, target=None):
         "pyro_look": pyro_look,
         "pyro_blackbody": str(getattr(props, "pyro_color", "GOLDEN")) == "BLACKBODY",
         "temperature_golden": str(getattr(props, "shader_color", "BLACKBODY")) == "GOLDEN",
+        # Colour Ramp (Color: Ramp): the material's ramp, sampled (None: the default ramp).
+        **({"flame_ramp": ramp} if (ramp := _flame_ramp(domain, props, pyro_look)) else {}),
         "block_line_width": float(getattr(props, "preview_block_line_width", 0.7)),
         "thin_gas": float(getattr(props, "shader_thin_gas", 3.0)),
         "flame_tint": [float(value) for value in flame_value(props, "flame_tint", (1.0, 1.0, 1.0))],
@@ -127,6 +129,14 @@ _TONE_MAPPING_VIEWS = {"agx": "AgX", "filmic": "Filmic", "none": "Standard",
 _LOOK_NAMES = {"punchy": "Punchy", "greyscale": "Greyscale", "very_high": "Very High Contrast",
                "high": "High Contrast", "medium_high": "Medium High Contrast", "base": "Base Contrast",
                "medium_low": "Medium Low Contrast", "low": "Low Contrast", "very_low": "Very Low Contrast"}
+
+
+def _flame_ramp(domain, props, pyro_look):
+    colour = str(getattr(props, "pyro_color" if pyro_look else "shader_color", "BLACKBODY"))
+    if colour != "GOLDEN":
+        return None
+    from .importers import flame_ramp_samples
+    return flame_ramp_samples(domain)
 
 
 def preview_look_name(props):
@@ -272,6 +282,7 @@ def volume_preview_signature(preview):
         bool(preview.get("pyro_look", False)),
         bool(preview.get("pyro_blackbody", False)),
         bool(preview.get("temperature_golden", False)),
+        tuple(tuple(color) for color in preview.get("flame_ramp", ())),
         round(float(preview.get("block_line_width", 0.7)), 4),
         round(float(preview.get("thin_gas", 3.0)), 7),
         # the Expansion view is scaled by Gas Expansion

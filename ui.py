@@ -696,11 +696,29 @@ def _draw_capacity_warning(layout, domain):
         box.label(text="Last run", icon="INFO")
 
 
+def _draw_flame_ramp(layout, props):
+    """Color: Ramp. The ramp is a node of the domain's generated material (both
+    looks read it); colour left to right over 0.45-1 x Full Glow."""
+    from . import importers
+    domain = props.id_data
+    material = importers.synced_material(domain, create=False) if domain is not None else None
+    node = material.node_tree.nodes.get(importers.NODE_RAMP) if material is not None and material.node_tree else None
+    if node is None:
+        if material is None:
+            layout.operator("fumaris.edit_flame_ramp", icon="COLOR").domain_name = domain.name
+        else:
+            _wrapped(layout, "This domain's own Volume Material has no Fumaris ramp", "INFO")
+        return
+    layout.template_color_ramp(node, "color_ramp", expand=True)
+
+
 def _draw_fire_look(fire, props):
     """The chosen Look's own controls: Temperature and Pyro keep separate values."""
     pyro = props.shader_look == "PYRO"
     key = {name: keys[1 if pyro else 0] for name, keys in FLAME_VALUE_KEYS.items()}
     fire.row(align=True).prop(props, "pyro_color" if pyro else "shader_color", expand=True)
+    if (props.pyro_color if pyro else props.shader_color) == "GOLDEN":
+        _draw_flame_ramp(fire, props)
     exposure = _pair(fire)
     exposure.prop(props, key["brightness"])
     exposure.prop(props, key["glow_temperature"])
@@ -1630,6 +1648,13 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         if domain is None:
             layout.label(text="Choose a domain", icon="INFO")
             return
+        # The object list first, Add Objects under it (user, 2026-11-16; was the
+        # reverse since 2026-11-15).
+        header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
+        # The domain is named in the controls above: a long name cut this off.
+        header.label(text="Objects", icon="OUTLINER_COLLECTION")
+        if body:
+            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")
         header.label(text="Add Objects", icon="ADD")
         if body:
@@ -1646,13 +1671,6 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             # Add Source acts on context.object: point it at the chosen domain.
             source.context_pointer_set("object", domain)
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
-        # The object list last, at the panel's bottom: users reached for the
-        # bottom section expecting the list and hit Add Objects (Brent, 2026-11-15).
-        header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
-        # The domain is named in the controls above: a long name cut this off.
-        header.label(text="Objects", icon="OUTLINER_COLLECTION")
-        if body:
-            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
 
 
 CLASSES = (FUMARIS_MT_presets, FUMARIS_MT_bake_more, FUMARIS_OT_emitter_color_offer, FUMARIS_OT_color_mixing_enable,

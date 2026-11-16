@@ -2083,6 +2083,46 @@ def _preview_resolution_scale(domain):
     return max(0.0, percent) / 100.0
 
 
+# Imported volumes hidden for timeline playback carry this mark until shown
+# again (also after a crash or a save mid-playback: shown on load).
+PLAYBACK_HIDDEN_MARKER = "fumaris_hidden_for_playback"
+
+
+def _hide_volumes_enabled():
+    from .utils import get_addon_preferences
+    prefs = get_addon_preferences()
+    return bool(getattr(prefs, "hide_volumes_during_playback", True)) if prefs is not None else True
+
+
+def _show_playback_hidden_volumes():
+    for obj in bpy.data.objects:
+        if obj.get(PLAYBACK_HIDDEN_MARKER):
+            del obj[PLAYBACK_HIDDEN_MARKER]
+            obj.hide_viewport = False
+
+
+@persistent
+def _hide_volumes_for_playback(_scene=None, _depsgraph=None):
+    """Playing the timeline loads each imported VDB frame: hide imported
+    volumes in the viewport while it plays (Hide Volumes While Playing)."""
+    if not _hide_volumes_enabled():
+        return
+    for obj in bpy.data.objects:
+        if obj.type == "VOLUME" and _is_imported_volume(obj) and not obj.hide_viewport:
+            obj[PLAYBACK_HIDDEN_MARKER] = True
+            obj.hide_viewport = True
+
+
+@persistent
+def _show_volumes_after_playback(_scene=None, _depsgraph=None):
+    _show_playback_hidden_volumes()
+
+
+@persistent
+def _show_playback_hidden_volumes_after_load(_dummy=None):
+    _show_playback_hidden_volumes()
+
+
 @persistent
 def _cancel_preview_before_native_playback(_scene=None, _depsgraph=None):
     if active_mode() != "previewing":
@@ -2115,6 +2155,13 @@ def register():
     _remove_handler_named(bpy.app.handlers.animation_playback_pre, "_cancel_preview_before_native_playback")
     if _cancel_preview_before_native_playback not in bpy.app.handlers.animation_playback_pre:
         bpy.app.handlers.animation_playback_pre.append(_cancel_preview_before_native_playback)
+    for handlers, handler in (
+        (bpy.app.handlers.animation_playback_pre, _hide_volumes_for_playback),
+        (bpy.app.handlers.animation_playback_post, _show_volumes_after_playback),
+        (bpy.app.handlers.load_post, _show_playback_hidden_volumes_after_load),
+    ):
+        _remove_handler_named(handlers, handler.__name__)
+        handlers.append(handler)
 
 
 def unregister():
@@ -2125,6 +2172,13 @@ def unregister():
     _remove_handler_named(bpy.app.handlers.load_post, "_recover_orphaned_bakes_after_load")
     _remove_handler_named(bpy.app.handlers.depsgraph_update_post, "_track_geometry_updates")
     _remove_handler_named(bpy.app.handlers.animation_playback_pre, "_cancel_preview_before_native_playback")
+    _remove_handler_named(bpy.app.handlers.animation_playback_pre, "_hide_volumes_for_playback")
+    _remove_handler_named(bpy.app.handlers.animation_playback_post, "_show_volumes_after_playback")
+    _remove_handler_named(bpy.app.handlers.load_post, "_show_playback_hidden_volumes_after_load")
+    try:
+        _show_playback_hidden_volumes()
+    except (AttributeError, RuntimeError):  # restricted context while Blender quits
+        pass
     bpy.types.VIEW3D_MT_view.remove(_draw_view_menu)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

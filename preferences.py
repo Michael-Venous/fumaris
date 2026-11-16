@@ -132,6 +132,12 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         default=0.0, min=0.0, soft_max=64.0, step=100, precision=1, unit="NONE",
     )
 
+    hide_volumes_during_playback: BoolProperty(
+        name="Hide Volumes While Playing",
+        description="Hide imported Fumaris volumes in the viewport while the timeline plays (Blender loads every VDB frame as it plays, which is slow), and show them again when it stops. Renders are not affected",
+        default=True,
+    )
+
     def draw(self, context):
         layout = self.layout
         layout.use_property_split = True
@@ -175,6 +181,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         box.label(text="Cache", icon='FILE_FOLDER')
         box.prop(self, "default_output_dir")
         box.prop(self, "preview_cache_memory_gb", text="Preview Cache RAM (0 = Auto)")
+        box.prop(self, "hide_volumes_during_playback")
 
         from .playback import draw_keymaps
         box = layout.box()

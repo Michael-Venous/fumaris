@@ -35,6 +35,9 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Smooth timeline playback over a bake**: imported Fumaris volumes are hidden
+  in the viewport while the timeline plays and shown again when it stops
+  (Preferences > Hide Volumes While Playing, on by default).
 - **Glow Source (Output)**: Scatter Glow can be lit by all warm gas
   (**Warm Gas**, as Houdini's pyro scatter: gas ramps in from Glow Heat From
   to To and is fully lit above) instead of only by fire brightness. Auto,

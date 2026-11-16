@@ -1239,6 +1239,11 @@ the cache also drops its oldest frames when the system runs short of free
 memory, leaving 2 GB or an eighth of the RAM (whichever is more) for Blender and
 other programs; the status line then says System RAM is low.
 
+Preferences > Hide Volumes While Playing (on by default) hides imported Fumaris
+volumes in the viewport while the timeline plays, since Blender loads every VDB
+frame as it plays, and shows them again when playback stops. Volumes you hid
+yourself stay hidden; renders are not affected.
+
 ### Capacity warning and defaults
 
 A capacity warning appears beside the simulation controls even when Diagnostics

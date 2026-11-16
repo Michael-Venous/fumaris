@@ -35,13 +35,15 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
-- **Pyro look shows the cells**: Pyro now fades the fire out of smoke denser
-  than Thin Gas, voxel by voxel, so dense billow tops read as soot and the fire
-  glows in the thinner gas between them, as in Houdini and Axiom explosions
-  (before, dense hot smoke glowed as evenly as the gaps and fine billows
-  rendered as smooth blobs). The preview matches. Thin Gas now defaults to 3
-  (was 1): scenes using Pyro render differently; raise Thin Gas for dense,
-  sooty sims.
+- **Pyro look shows the cells**: Pyro now glows by the fire's light (the baked
+  heat, blurred, plus part of each voxel's own heat) through the volume of
+  thin gas, and fades the fire out of smoke denser than Thin Gas, voxel by
+  voxel. Dense billow tops read as soot and round, popcorn-like cells glow
+  between them, as in Houdini and Axiom explosions; before, dense hot smoke
+  glowed as evenly as the gaps and fine billows rendered as smooth blobs. The
+  preview matches. Thin Gas now defaults to 3 (was 1). Scenes using Pyro
+  render differently: cooling smoke glows less than before (no more glowing
+  cracks late in an explosion's smoke); raise Thin Gas for dense, sooty sims.
 - **OpenVDB emitters**: Expansion now works on volume emitters (it was shown
   but did nothing), shaped by the file's density so a burst's core pushes
   hardest. Volume emitters also emit their dense cores: voxels with density

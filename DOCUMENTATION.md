@@ -981,17 +981,20 @@ toward pale gold) and Blue Core works as in Temperature. `Color` picks the
 golden ramp or real blackbody colour (as Temperature, with Pyro's soft glow,
 Thin Gas and dark soot): fire takes a golden colour, glows from the hotter of the gas and its
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
-smoke picks up their light, and hot soot turns dark. `Thin Gas` is the smoke
-density at which Pyro glows as brightly as Temperature; thinner gas glows up to
-twice as bright, and denser smoke fades to dark soot (none of it glows above
-1.5 x Thin Gas). The fade is per voxel, so the dense tops of billows read as
-soot and the fire shows in the thinner gas between them: the cauliflower look
-of Houdini and Axiom explosions, which needs enough Resolution (cells about
-ten voxels or more across) and a Grain layer to form the cells. Raise Thin Gas
-for dense, sooty sims (a smoke median of about 5 wants about 12); lower it for
-more soot. It holds at any scene size, and Full Glow changes need no re-bake.
-Scatter Glow lights thin gas around the cloud too; turn it down for crisp
-edges. Pyro needs a bake from
+smoke picks up their light, and hot soot turns dark. Pyro glows by the fire's
+light: the baked, blurred `heat` (and part of each voxel's own heat), so gas
+near fire glows too and billows read round and soft. Gas glows by volume, so a
+billow is brightest through its middle, and smoke denser than `Thin Gas` fades
+to dark soot (none of it glows above 1.5 x Thin Gas): the dense tops of billows
+read as soot and the fire shows in the thinner gas between them. This is the
+cauliflower look of Houdini and Axiom explosions; it needs enough Resolution
+(cells about ten voxels across or more) and a Grain layer to form the cells.
+Raise Thin Gas for dense, sooty sims (a smoke median of about 5 wants about
+12), lower it for more soot. For a fireball close to Houdini's pyro shading:
+Color Blackbody with Blackbody Scale about 1.3, Full Glow about 1100 K,
+Contrast about 0.3, Scatter Glow 0 (it lights thin gas around the cloud, which
+softens the edges). It holds at any scene size, and Full Glow changes need no
+re-bake. Pyro needs a bake from
 Fumaris 2.0 or later (heat and soft density grids, written with the glow
 grids).
 

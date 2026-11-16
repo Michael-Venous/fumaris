@@ -55,10 +55,17 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
 GRAPH_VERSION = 12
-SHADER_GROUP_VERSION = 2
+SHADER_GROUP_VERSION = 4
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
 PYRO_SOOT_MASK = (0.5, 1.5)
+# Pyro: the gas's own temperature counts at this share against the baked,
+# blurred heat (full weight drew a crackle of flat patches; the blurred heat
+# alone gives round, popcorn-like cells; some local heat keeps bakes without
+# a heat grid glowing).
+PYRO_LOCAL_HEAT = 0.6
+# Pyro presence: glow ramps in from no smoke to this x Thin Gas (clear air stays dark).
+PYRO_PRESENCE = 0.2
 PHYSICAL_COLOR_SHIFT = 1.3
 PYRO_RAMP = ((0.0, (1.0, 0.1, 0.0)), (0.35, (1.0, 0.32, 0.02)), (0.65, (1.0, 0.58, 0.14)),
              (1.0, (1.0, 0.86, 0.52)))
@@ -258,9 +265,12 @@ def apply_generated_material_settings(material, settings):
     blackbody = str(_appearance_value(settings, "pyro_color", "GOLDEN")) == "BLACKBODY"
     set_inputs(NODE_PYRO_FIRE, {
         **wien(look),
-        "1 / Thin Gas": 1.0 / thin_gas,
+        "Thin Gas": thin_gas,
+        "Presence To": PYRO_PRESENCE * thin_gas,
         "Soot From": PYRO_SOOT_MASK[0] * thin_gas,
         "Soot To": PYRO_SOOT_MASK[1] * thin_gas,
+        "Local Heat": PYRO_LOCAL_HEAT,
+        "Local Offset": 293.15 * (1.0 - PYRO_LOCAL_HEAT),
         "Golden From": PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"],
         "Golden To": PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"],
         "Blackbody": 1.0 if blackbody else 0.0,
@@ -505,13 +515,14 @@ def _temperature_fire_group():
 
 
 def _pyro_fire_group():
-    """Pyro look: the same brightness law on the hotter of the gas and its
-    baked, blurred heat (fire light reaches the cooler gas around it); emits
-    like the Temperature look at Thin Gas density (2 density / (1 + density /
-    Thin Gas)) and fades out in smoke denser than Thin Gas (Soot Mask: full
-    below 0.5 x, none above 1.5 x Thin Gas, per voxel), so dense cell tops read
-    as soot and the fire shows in the thinner gas between them, as Houdini's
-    pyro emission mask; golden ramp or blackbody."""
+    """Pyro look: Wien's brightness law on the fire light, the hotter of the
+    baked, blurred heat and part of the gas's own heat (Local Heat), so gas
+    near fire glows and billows glow round and soft instead of in flat
+    patches. Gas glows by volume (Thin Gas x presence), not by density, so each
+    billow is brightest through its middle; the Soot Mask fades it out of smoke
+    denser than Thin Gas (none above 1.5 x), so dense billow tops read as soot
+    and the fire shows between them: the cauliflower look of Houdini's pyro
+    shading. Golden ramp or blackbody."""
     def build(graph, i, out):
         law = graph.frame("Brightness: Wien's law on the baked heat", (-660, 360), (0.36, 0.18, 0.10))
         kelvin = graph.math("ADD", (-660, 300), "Heat (K)", law, ((1, 293.15),))
@@ -520,8 +531,13 @@ def _pyro_fire_group():
         wien = graph.math("MULTIPLY_ADD", (-120, 300), "x Contrast + Full Glow", law)
         radiance = graph.math("EXPONENT", (60, 300), "Radiance", law)
         graph.link(i["Heat"], kelvin.inputs[0])
+        # The gas's own heat above ambient counts at Local Heat: 293 K + w (T - 293 K).
+        local = graph.math("MULTIPLY_ADD", (-660, 200), "Local Heat", law)
         graph.link(kelvin.outputs[0], hotter.inputs[0])
-        graph.link(i["Temperature"], hotter.inputs[1])
+        graph.link(i["Temperature"], local.inputs[0])
+        graph.link(i["Local Heat"], local.inputs[1])
+        graph.link(i["Local Offset"], local.inputs[2])
+        graph.link(local.outputs[0], hotter.inputs[1])
         graph.link(hotter.outputs[0], term.inputs[1])
         graph.link(term.outputs[0], wien.inputs[0])
         graph.link(i["Contrast"], wien.inputs[1])
@@ -529,29 +545,30 @@ def _pyro_fire_group():
         graph.link(wien.outputs[0], radiance.inputs[0])
 
         thin = graph.frame("Thin Gas", (-660, 120), (0.30, 0.24, 0.16))
-        soft = graph.math("MAXIMUM", (-660, 60), "Density", thin, ((1, 0.0),))
-        denominator = graph.math("MULTIPLY_ADD", (-480, 60), "1 + Density / Thin Gas", thin, ((2, 1.0),))
-        glowing = graph.math("DIVIDE", (-300, 60), "Glowing Density", thin)
-        double = graph.math("MULTIPLY", (-120, 60), "x 2", thin, ((1, 2.0),))
-        source = graph.math("MULTIPLY", (60, 60), "Radiance x Glowing", thin)
-        strength = graph.math("MULTIPLY", (240, 60), "x Brightness", thin)
-        graph.link(i["Density"], soft.inputs[0])
-        graph.link(soft.outputs[0], denominator.inputs[0])
-        graph.link(i["1 / Thin Gas"], denominator.inputs[1])
-        graph.link(soft.outputs[0], glowing.inputs[0])
-        graph.link(denominator.outputs[0], glowing.inputs[1])
-        graph.link(glowing.outputs[0], double.inputs[0])
-        graph.link(radiance.outputs[0], source.inputs[0])
-        mask = graph.node("ShaderNodeMapRange", (-120, -60), "Soot Mask", thin, interpolation_type="SMOOTHSTEP")
+        dens = graph.math("MAXIMUM", (-660, 60), "Density", thin, ((1, 0.0),))
+        # Gas glows by volume, not by its density: each billow glows brightest
+        # through its middle, as fire seen through hot gas does. Presence keeps
+        # clear air dark; the Soot Mask turns dense smoke to soot.
+        presence = graph.node("ShaderNodeMapRange", (-480, 60), "Presence", thin, interpolation_type="SMOOTHSTEP")
+        mask = graph.node("ShaderNodeMapRange", (-480, -120), "Soot Mask", thin, interpolation_type="SMOOTHSTEP")
         mask.inputs["To Min"].default_value = 1.0
         mask.inputs["To Max"].default_value = 0.0
-        masked = graph.math("MULTIPLY", (60, -60), "x Soot Mask", thin)
-        graph.link(soft.outputs[0], mask.inputs["Value"])
+        glowing = graph.math("MULTIPLY", (-300, 60), "Glowing", thin)
+        amount = graph.math("MULTIPLY", (-120, 60), "x Thin Gas", thin)
+        source = graph.math("MULTIPLY", (60, 60), "Radiance x Glowing", thin)
+        strength = graph.math("MULTIPLY", (240, 60), "x Brightness", thin)
+        graph.link(i["Density"], dens.inputs[0])
+        graph.link(dens.outputs[0], presence.inputs["Value"])
+        graph.link(i["Presence To"], presence.inputs["From Max"])
+        graph.link(dens.outputs[0], mask.inputs["Value"])
         graph.link(i["Soot From"], mask.inputs["From Min"])
         graph.link(i["Soot To"], mask.inputs["From Max"])
-        graph.link(double.outputs[0], masked.inputs[0])
-        graph.link(_socket(mask.outputs, "Result"), masked.inputs[1])
-        graph.link(masked.outputs[0], source.inputs[1])
+        graph.link(_socket(presence.outputs, "Result"), glowing.inputs[0])
+        graph.link(_socket(mask.outputs, "Result"), glowing.inputs[1])
+        graph.link(glowing.outputs[0], amount.inputs[0])
+        graph.link(i["Thin Gas"], amount.inputs[1])
+        graph.link(radiance.outputs[0], source.inputs[0])
+        graph.link(amount.outputs[0], source.inputs[1])
         graph.link(source.outputs[0], strength.inputs[0])
         graph.link(i["Brightness"], strength.inputs[1])
 
@@ -580,8 +597,9 @@ def _pyro_fire_group():
         "Fumaris Pyro Fire",
         (("Heat", "NodeSocketFloat", 0.0), ("Temperature", "NodeSocketFloat", 300.0),
          ("Density", "NodeSocketFloat", 0.0), *_FLAME_INPUTS[1:],
-         ("1 / Thin Gas", "NodeSocketFloat", 1.0),
-         ("Soot From", "NodeSocketFloat", 0.5), ("Soot To", "NodeSocketFloat", 1.5),
+         ("Thin Gas", "NodeSocketFloat", 3.0), ("Presence To", "NodeSocketFloat", 0.6),
+         ("Soot From", "NodeSocketFloat", 1.5), ("Soot To", "NodeSocketFloat", 4.5),
+         ("Local Heat", "NodeSocketFloat", 1.0), ("Local Offset", "NodeSocketFloat", 0.0),
          ("Blackbody", "NodeSocketFloat", 0.0),
          ("Blackbody Scale", "NodeSocketFloat", PHYSICAL_COLOR_SHIFT)),
         (("Emission", "NodeSocketColor"),),

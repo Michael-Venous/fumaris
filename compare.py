@@ -640,9 +640,9 @@ def _preview_image(domain, view_id=None):
         if item.get("pixels") is not None:
             pixels = np.frombuffer(item["pixels"], dtype=np.uint8).astype(np.float32) / 255.0
         elif item.get("texture") is not None:
-            pixels = np.asarray(item["texture"].read(), dtype=np.float32)
-            if pixels.max() > 1.5:
-                pixels = pixels / 255.0
+            # RGBA8 packed into R32F texels (preview._volume_texture).
+            packed = np.asarray(item["texture"].read(), dtype=np.float32).tobytes()
+            pixels = np.frombuffer(packed, dtype=np.uint8).astype(np.float32) / 255.0
         else:
             continue
         # The preview image is top row first.

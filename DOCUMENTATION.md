@@ -1259,6 +1259,18 @@ the cache also drops its oldest frames when the system runs short of free
 memory, leaving 2 GB or an eighth of the RAM (whichever is more) for Blender and
 other programs; the status line then says System RAM is low.
 
+**Save Playblast** (the menu beside Bake) simulates the whole range as fast as
+the GPU allows (not in real time) and saves what the largest 3D viewport shows,
+with the smoke and without overlays, as `playblast/<domain>/<domain>.mp4` and its
+PNG frames next to the .blend (a temporary folder for an unsaved file). Objects
+hide the smoke behind them when Scene Occlusion is on. It keeps no preview cache,
+so it suits shots longer than the cache's RAM; Esc stops it.
+
+Each domain in the sidebar's Domains list has an eye: off hides the domain, its
+live preview and the volumes imported from its bakes in the viewport (renders are
+unchanged), so several effects can be set up one after another and switched
+between; on shows them again.
+
 Preferences > Hide Volumes While Playing (on by default) hides imported Fumaris
 volumes in the viewport while the timeline plays, since Blender loads every VDB
 frame as it plays, and shows them again when playback stops. Volumes you hid

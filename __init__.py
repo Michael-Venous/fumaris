@@ -19,6 +19,7 @@ from . import detail_stack
 from . import compare
 from . import timeline
 from . import background
+from . import playblast
 
 
 def register():
@@ -33,9 +34,11 @@ def register():
     compare.register()
     timeline.register()
     background.register()
+    playblast.register()
 
 
 def unregister():
+    playblast.unregister()
     background.unregister()
     timeline.unregister()
     compare.unregister()

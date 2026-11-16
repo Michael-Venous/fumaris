@@ -35,6 +35,17 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Save Playblast** (Bake menu ▾): simulates the range as fast as it can and
+  saves the viewport with the live smoke (overlays off, smoke hidden behind
+  objects) as an MP4 plus its PNG frames, in a playblast folder next to the
+  .blend. Nothing is kept in the preview cache, so long or high-resolution
+  shots work on any RAM. Esc stops it.
+- **Eye toggle on each domain** (sidebar Domains list): hides the domain, its
+  live preview and every volume imported from its bakes in the viewport, and
+  shows them again; its bakes stay linked and editable. Renders are not affected.
+- **Clearer when the preview cache runs out of RAM**: a red box names the frames
+  that were dropped, says what Save Sequence will keep and how to keep more;
+  Save Sequence warns when it can only save part of the range.
 - **Pyro looks right at any scale (Thin Gas Auto)**: Thin Gas now follows each
   frame's own smoke (0.12 x its typical density, in the render and the live
   preview), so the glowing cells look alike whatever the Smoke Amount, scene

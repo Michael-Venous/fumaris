@@ -449,6 +449,23 @@ def _draw_volume_previews():
         gpu.state.blend_set("NONE")
 
 
+def sample_scene_depth(depth, width, height, perspective=True):
+    """A viewport depth buffer (bottom row first, any size) as the bridge's
+    scene depth: width x height, top row first, far = 1."""
+    region_height, region_width = depth.shape
+    rows = ((np.arange(height) + 0.5) * (region_height / height)).astype(np.intp)
+    columns = ((np.arange(width) + 0.5) * (region_width / width)).astype(np.intp)
+    # Blender's rows run bottom to top; the preview image is top row first.
+    sampled = np.ascontiguousarray(depth[::-1][rows[:, None], columns[None, :]])
+    if sampled.max() < 0.5 and perspective:
+        # Standard depth keeps even nearby geometry close to 1. A buffer that
+        # never gets there is reversed (far = 0); the bridge expects far = 1.
+        # Orthographic depth is linear (about 0.5 at the view's centre), so an
+        # object filling the view can sit below 0.5 there: never flipped.
+        sampled = 1.0 - sampled
+    return sampled
+
+
 def _capture_scene_depth(view_id, width, height, key=None):
     """Store the viewport's depth so the bridge can hide smoke behind objects."""
     global _SCENE_DEPTH_SERIAL, _SCENE_DEPTH_FAILED, _SCENE_DEPTH_CAPTURE_SECONDS
@@ -466,17 +483,8 @@ def _capture_scene_depth(view_id, width, height, key=None):
         _SCENE_DEPTH_FAILED = True
         print(f"Fumaris scene occlusion is unavailable: {error}")
         return
-    rows = ((np.arange(height) + 0.5) * (region_height / height)).astype(np.intp)
-    columns = ((np.arange(width) + 0.5) * (region_width / width)).astype(np.intp)
-    # Blender's rows run bottom to top; the preview image is top row first.
-    sampled = np.ascontiguousarray(depth[::-1][rows[:, None], columns[None, :]])
     region_3d = getattr(bpy.context, "region_data", None)
-    if sampled.max() < 0.5 and getattr(region_3d, "is_perspective", True):
-        # Standard depth keeps even nearby geometry close to 1. A buffer that
-        # never gets there is reversed (far = 0); the bridge expects far = 1.
-        # Orthographic depth is linear (about 0.5 at the view's centre), so an
-        # object filling the view can sit below 0.5 there: never flipped.
-        sampled = 1.0 - sampled
+    sampled = sample_scene_depth(depth, width, height, getattr(region_3d, "is_perspective", True))
     _SCENE_DEPTH_CAPTURE_SECONDS = time.perf_counter() - started
     previous = _SCENE_DEPTHS.get(view_id)
     same_size = previous is not None and previous["size"] == (width, height)

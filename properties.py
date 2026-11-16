@@ -83,6 +83,13 @@ def _cache_slot_updated(self, _context):
     sync_cache_slot(self.id_data)
 
 
+def _viewport_visible_updated(self, _context):
+    from .importers import set_domain_viewport_visible
+    domain = self.id_data
+    if isinstance(domain, bpy.types.Object) and self.smoke_object_type == "domain":
+        set_domain_viewport_visible(domain, self.viewport_visible)
+
+
 def _appearance_updated(self, _context):
     from .importers import update_generated_materials
     from .preview import refresh_preview_display
@@ -950,6 +957,13 @@ class FumarisSettings(PropertyGroup):
         name="What Changed",
         description="List the settings that differ between the two versions shown",
         default=True,
+    )
+
+    viewport_visible: BoolProperty(
+        name="Show in Viewport",
+        description="Show this domain, its live preview and every volume imported from its bakes in the viewport. Off hides them all (renders are not affected); its bakes stay linked and editable",
+        default=True,
+        update=_viewport_visible_updated,
     )
 
     cache_id: StringProperty(

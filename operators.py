@@ -1454,6 +1454,12 @@ def _import_cache(context, domain, directory, prefix, *, frame_start=None, frame
             frame_end=frame_end,
         )
         apply_material_sync(domain, directory, default=True)
+        if volume is not None and not props.viewport_visible:
+            # A hidden domain's new bake starts hidden too (Show in Viewport).
+            from .importers import HIDDEN_WITH_DOMAIN_MARKER
+            if not volume.hide_viewport:
+                volume[HIDDEN_WITH_DOMAIN_MARKER] = True
+                volume.hide_viewport = True
     finally:
         _restore_selection(context, domain, selected, active)
     return volume

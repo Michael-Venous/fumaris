@@ -94,6 +94,38 @@ GLOW_HEAT_SCALE = 100.0
 PHYSICAL_SATURATION = 1.8
 
 
+# Volumes hidden by their domain's eye (Show in Viewport), shown again with it.
+HIDDEN_WITH_DOMAIN_MARKER = "fumaris_hidden_with_domain"
+
+
+def domain_volumes(domain):
+    """The volumes imported from this domain's bakes (any version or slot)."""
+    from .utils import peek_output_directory_for_object
+    directory = peek_output_directory_for_object(domain)
+    if not directory:
+        return []
+    root = os.path.normpath(os.path.dirname(directory))
+    found = []
+    for obj in bpy.data.objects:
+        marker = obj.get(VOLUME_MARKER)
+        if marker and os.path.normpath(marker).startswith(root):
+            found.append(obj)
+    return found
+
+
+def set_domain_viewport_visible(domain, visible):
+    """Show in Viewport: hide (or show again) the domain and its imported volumes.
+    Showing again only unhides what the eye hid; renders are untouched."""
+    for obj in [domain, *domain_volumes(domain)]:
+        if not visible:
+            if not obj.hide_viewport:
+                obj[HIDDEN_WITH_DOMAIN_MARKER] = True
+                obj.hide_viewport = True
+        elif obj.get(HIDDEN_WITH_DOMAIN_MARKER):
+            del obj[HIDDEN_WITH_DOMAIN_MARKER]
+            obj.hide_viewport = False
+
+
 def hide_generated_volumes(directory, prefix=PREFIX, *, hide_render=False):
     """Hide this cache's imported volume and return enough state to restore it."""
     normalized = os.path.normpath(directory)

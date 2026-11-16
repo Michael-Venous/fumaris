@@ -46,7 +46,7 @@ from .importers import (
     import_sequence,
 )
 from .runtime import active_job, active_mode
-from .utils import cache_slot_directory, output_directory_for_object, peek_output_directory_for_object
+from .utils import cache_slot_directory, output_directory_for_object, peek_output_directory_for_object, simulation_frame_range
 
 # On the volume showing slot B: the name of the domain it is compared for.
 COMPARE_MARKER = "fumaris_compare_b"
@@ -1464,6 +1464,12 @@ class FUMARIS_OT_version_save(_DomainOperator, Operator):
                 return {"CANCELLED"}
             self.report({"INFO"}, f"Saving frame {frame} as '{slot}'")
         else:
+            start = simulation_frame_range(domain)[0]
+            if cache.get("frames") and cache["first"] > start:
+                # Out of cache RAM: the oldest frames are gone; say so plainly.
+                gone = f"frame {start}" if cache["first"] - 1 == start else f"frames {start}–{cache['first'] - 1}"
+                self.report({"WARNING"}, f"Saving only {cache['first']}–{cache['last']}: {gone} were dropped "
+                                         "from the cache (out of RAM). Bake to keep the whole range")
             try:
                 slot = start_cache_export(context, domain, "preview")
             except (RuntimeError, OSError) as error:

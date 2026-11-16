@@ -784,12 +784,27 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     every = "" if frames >= last - first + 1 else f" ({frames} frames)"
     _wrapped(layout, f"Cache {first}–{last}{every} · {size_text(cache.get('bytes', 0))} of "
                      f"{size_text(cache.get('budget', 0))}", "DISK_DRIVE")
-    if cache.get("low_memory"):
-        row = layout.column(align=True)
-        row.alert = True
-        _wrapped(row, "System RAM is low: the cache keeps fewer frames", "ERROR")
-    elif cache.get("dropped"):
-        _wrapped(layout, "Cache full: older frames dropped (Preferences > Preview Cache RAM)", "INFO")
+    # Out of cache RAM: say which frames are gone and what Save Sequence keeps.
+    start = None
+    domain = bpy.data.objects.get(getattr(job, "_domain_name", "") or "")
+    if domain is not None:
+        from .utils import simulation_frame_range
+        start = simulation_frame_range(domain)[0]
+    lost = start is not None and first > start
+    if cache.get("low_memory") or cache.get("dropped") or lost:
+        box = layout.box().column(align=True)
+        box.alert = True
+        if cache.get("low_memory"):
+            _wrapped(box, "Out of RAM: system memory is low (other programs use it), so the cache holds fewer frames",
+                     "ERROR")
+        else:
+            _wrapped(box, f"Cache full: it holds {size_text(cache.get('budget', 0))}", "ERROR")
+        if lost:
+            gone = f"frame {start}" if first - 1 == start else f"frames {start}–{first - 1}"
+            _wrapped(box, f"Lost {gone}; Save Sequence keeps only {first}–{last}", "BLANK1")
+        box.alert = False
+        _wrapped(box, "Keep more: Preferences > Preview Cache RAM, Cache Every 2+, lower Resolution, "
+                      "or Bake (to disk, any length)", "INFO")
 
 
 def _changed_count(props, names):
@@ -888,6 +903,7 @@ class FUMARIS_MT_bake_more(bpy.types.Menu):
         row = layout.row()
         row.enabled = not protected
         row.operator("fumaris.bake_background", text="Bake in Background", icon="RENDERLAYERS")
+        layout.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE")
         layout.separator()
         row = layout.row()
         row.enabled = not protected
@@ -1627,6 +1643,9 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
                 choose.enabled = not active_job()
                 _highlight_row(choose, "fumaris.domain_choose", obj.name,
                                "RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF", obj == domain)
+                # Show in Viewport: the domain, its preview and its imported volumes.
+                row.prop(obj.fumaris, "viewport_visible", text="", emboss=False,
+                         icon="HIDE_OFF" if obj.fumaris.viewport_visible else "HIDE_ON")
                 # Its background bake: Stop on its row, progress under it.
                 job = background_job(obj)
                 if job is not None:

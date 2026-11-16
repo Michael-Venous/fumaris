@@ -6,7 +6,7 @@ import gpu
 from mathutils import Matrix
 from . import diagnostics, display_lut, scene_lighting
 from .protocol import DISPLAY_LUT_KEY, SCENE_DEPTH_KEY
-from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, is_pyro_look
+from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, glow_source_heat, is_pyro_look
 
 try:
     import numpy as np
@@ -105,6 +105,10 @@ def capture_volume_preview(context, domain, target=None):
         "glow_radius": max(0.0, float(props.glow_radius)),
         "glow_spread": float(flame_value(props, "glow_spread", 0.0)),
         "glow_shadowing": float(flame_value(props, "glow_shadowing", 0.0)),
+        # Glow Source as the bake (exporters): Warm Gas lights from all warm gas.
+        "glow_source": "HEAT" if glow_source_heat(props) else "WIEN",
+        "glow_heat_from": float(props.glow_heat_from),
+        "glow_heat_to": max(float(props.glow_heat_from) + 1.0, float(props.glow_heat_to)),
         "shadows": bool(props.preview_shadows),
         "flame_light": float(props.preview_fire_lighting),
         # exp2 is evaluated as float in the bridge; keep its exponent finite.
@@ -257,6 +261,9 @@ def volume_preview_signature(preview):
         round(float(preview.get("glow_radius", 0.0)), 7),
         round(float(preview.get("glow_spread", 0.0)), 7),
         round(float(preview.get("glow_shadowing", 0.0)), 7),
+        preview.get("glow_source", "WIEN"),
+        round(float(preview.get("glow_heat_from", 1000.0)), 7),
+        round(float(preview.get("glow_heat_to", 1700.0)), 7),
         rounded(preview.get("sun_radiance", (0.0, 0.0, 0.0))),
         rounded(preview.get("ambient_radiance", (0.0, 0.0, 0.0))),
         round(float(preview.get("phase_g", 0.0)), 7),

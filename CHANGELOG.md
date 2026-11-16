@@ -40,7 +40,9 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   to To and is fully lit above) instead of only by fire brightness. Auto,
   the default, uses Warm Gas for the Pyro look, so the cooler cap of a
   rising fireball glows in the gaps between its billows instead of turning
-  to grey smoke. Needs a re-bake.
+  to grey smoke. Needs a re-bake. The live preview follows it, and its Pyro
+  look no longer speckles at low Thin Gas (the soot masks are averaged along
+  each ray step, as Cycles averages its samples).
 - **Pyro look shows the cells**: Pyro now glows by the fire's light (the baked
   heat, blurred, plus part of each voxel's own heat) through the volume of
   thin gas, and fades the fire out of smoke denser than Thin Gas, voxel by

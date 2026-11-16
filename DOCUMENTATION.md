@@ -975,7 +975,7 @@ so the hottest core outshines everything), `Warm Gas` lights from all smoke
 warmer than `Glow Heat From`, fully at `Glow Heat To` and above (Houdini
 pyro's scatter source), so a cooling cap still glows from within. `Auto`
 (default) uses Warm Gas for the Pyro look and Fire Brightness otherwise.
-Changing it needs a re-bake.
+Changing it needs a re-bake; the live preview follows it straight away.
 
 `Look` chooses the fire shading, and each look keeps its own flame controls
 (Brightness, Full Glow, Contrast, Blackbody Scale, Blue Core, Flame Tint and

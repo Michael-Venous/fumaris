@@ -2067,7 +2067,7 @@ class FumarisSettings(PropertyGroup):
     pyro_brightness: FloatProperty(
         name="Brightness",
         description="Pyro look: emission strength of the fire",
-        default=2.0,
+        default=1.5,
         min=0.0,
         soft_max=100.0,
         update=_appearance_updated,
@@ -2140,6 +2140,22 @@ class FumarisSettings(PropertyGroup):
         default=0.5,
         min=0.0,
         soft_max=10.0,
+        update=_appearance_updated,
+    )
+
+    shader_thin_gas_auto: BoolProperty(
+        name="Auto",
+        description="Pyro look: set Thin Gas from each frame's smoke (Thin Gas Ratio x its typical density), so the glowing cells look the same at any Smoke Amount, scene scale or time in the effect. Off: Thin Gas is the density below",
+        default=True,
+        update=_appearance_updated,
+    )
+
+    shader_thin_gas_ratio: FloatProperty(
+        name="Thin Gas",
+        description="Pyro look, Thin Gas Auto: Thin Gas as a share of the frame's typical (density-weighted mean) smoke density. Lower: only the thinnest skins of each billow glow, darker and more cellular; higher: more of the smoke glows",
+        default=0.12,
+        min=0.005,
+        soft_max=0.5,
         update=_appearance_updated,
     )
 

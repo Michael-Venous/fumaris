@@ -726,7 +726,12 @@ def _draw_fire_look(fire, props):
     shape.prop(props, key["contrast"])
     spread = shape.row(align=True)
     spread.active = pyro or props.shader_color == "BLACKBODY"
-    spread.prop(props, "shader_thin_gas" if pyro else "shader_color_spread")
+    if pyro:
+        thin = spread.row(align=True)
+        thin.prop(props, "shader_thin_gas_ratio" if props.shader_thin_gas_auto else "shader_thin_gas")
+        thin.prop(props, "shader_thin_gas_auto", text="", icon="AUTO")
+    else:
+        spread.prop(props, "shader_color_spread")
     color = _pair(fire)
     color.prop(props, key["temperature_multiplier"])
     color.prop(props, key["flame_core"], text="Blue Core")

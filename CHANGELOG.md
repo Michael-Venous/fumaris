@@ -35,6 +35,12 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Pyro looks right at any scale (Thin Gas Auto)**: Thin Gas now follows each
+  frame's own smoke (0.12 x its typical density, in the render and the live
+  preview), so the glowing cells look alike whatever the Smoke Amount, scene
+  size or time in the effect. Before, a fixed Thin Gas of 3 made thin scenes
+  glow everywhere (blown-out white). Turn Auto off for a fixed Thin Gas. Pyro
+  Brightness defaults to 1.5, close to the Temperature look's exposure.
 - **Colour Ramp for fire**: the Golden colour option is now **Ramp**, a colour
   ramp you edit right in the panel (like Houdini's Pyro fire colour ramp; it
   starts as the old golden ramp). It colours the fire and the light it casts on

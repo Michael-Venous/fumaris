@@ -101,6 +101,8 @@ def capture_volume_preview(context, domain, target=None):
         **({"flame_ramp": ramp} if (ramp := _flame_ramp(domain, props, pyro_look)) else {}),
         "block_line_width": float(getattr(props, "preview_block_line_width", 0.7)),
         "thin_gas": float(getattr(props, "shader_thin_gas", 3.0)),
+        "thin_gas_auto": bool(getattr(props, "shader_thin_gas_auto", True)),
+        "thin_gas_ratio": float(getattr(props, "shader_thin_gas_ratio", 0.12)),
         "flame_tint": [float(value) for value in flame_value(props, "flame_tint", (1.0, 1.0, 1.0))],
         "gas_expansion": float(props.gas_expansion),
         "scatter_glow": float(flame_value(props, "scatter_glow", 0.0)),
@@ -285,6 +287,8 @@ def volume_preview_signature(preview):
         tuple(tuple(color) for color in preview.get("flame_ramp", ())),
         round(float(preview.get("block_line_width", 0.7)), 4),
         round(float(preview.get("thin_gas", 3.0)), 7),
+        bool(preview.get("thin_gas_auto", False)),
+        round(float(preview.get("thin_gas_ratio", 0.12)), 7),
         # the Expansion view is scaled by Gas Expansion
         round(float(preview.get("gas_expansion", 0.0)), 7),
         preview.get("depth_serial"),

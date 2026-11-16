@@ -993,7 +993,12 @@ temperature picks its colour from left (0.45 x Full Glow) to right (Full Glow),
 for the fire and the light it casts on the smoke (Scatter Glow); brightness
 still follows the temperature. The ramp belongs to the domain's Fumaris material
 (**Edit Ramp** creates it before a bake) and the live preview follows it. Both
-looks offer Ramp. Fire glows from the hotter of the gas and its
+looks offer Ramp. **Thin Gas** (Pyro) sets which smoke counts as thin
+enough to glow; with **Auto** (default) it is Thin Gas Ratio (0.12) x each
+frame's typical smoke density (its density-weighted mean, baked per frame as the
+`density_ref` grid and measured live in the preview), so the look holds at any
+Smoke Amount, scale or time; lower the ratio for darker, more cellular smoke.
+Off, Thin Gas is a fixed density. Fire glows from the hotter of the gas and its
 blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
 smoke picks up their light, and hot soot turns dark. Pyro glows by the fire's
 light: the baked, blurred `heat` (and part of each voxel's own heat), so gas

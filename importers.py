@@ -45,6 +45,11 @@ NODE_LOOK_MIX = "Fumaris Look"
 # panel draws; both looks read it through "Ramp Colour". Its position is the
 # gas temperature over 0.45-1 x Full Glow (NODE_RAMP_RANGE).
 NODE_RAMP = "Fumaris Flame Ramp"
+# Thin Gas (Pyro): the fixed value, or Auto, the ratio x the bake's per-frame
+# density reference ("density_ref", 0 in older bakes: then the fixed value).
+NODE_THIN_GAS = "Fumaris Thin Gas"
+NODE_THIN_GAS_RATIO = "Fumaris Thin Gas Ratio"
+NODE_THIN_GAS_AUTO = "Fumaris Thin Gas Auto"
 NODE_RAMP_RANGE = "Fumaris Flame Ramp Range"
 
 # Scatter glow: the bridge's glow grid is the blurred density x Wien radiance
@@ -61,7 +66,7 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 4: Density Remap. 5-6: Pyro look. 7: Pyro Blue Core. 8: Pyro Colour.
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 16
+GRAPH_VERSION = 17
 SHADER_GROUP_VERSION = 8
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
@@ -276,10 +281,6 @@ def apply_generated_material_settings(material, settings):
     blackbody = str(_appearance_value(settings, "pyro_color", "GOLDEN")) == "BLACKBODY"
     set_inputs(NODE_PYRO_FIRE, {
         **wien(look),
-        "Thin Gas": thin_gas,
-        "Presence To": PYRO_PRESENCE * thin_gas,
-        "Soot From": PYRO_SOOT_MASK[0] * thin_gas,
-        "Soot To": PYRO_SOOT_MASK[1] * thin_gas,
         "Local Heat": PYRO_LOCAL_HEAT,
         "Local Offset": 293.15 * (1.0 - PYRO_LOCAL_HEAT),
         "Cap": float(os.environ.get("FUMARIS_EXP_PYRO_CAP", "0")),
@@ -288,6 +289,13 @@ def apply_generated_material_settings(material, settings):
         "Blackbody Scale": PHYSICAL_COLOR_SHIFT * look["multiplier"],
     })
     nodes[NODE_LOOK_MIX].inputs["Factor"].default_value = 1.0 if pyro_look else 0.0
+    if nodes.get(NODE_THIN_GAS) is not None:
+        thin_float = [socket for socket in nodes[NODE_THIN_GAS].inputs if socket.type == "VALUE" and socket.name != "Factor"]
+        thin_float[0].default_value = thin_gas
+        nodes[NODE_THIN_GAS_RATIO].inputs[1].default_value = max(
+            1e-4, float(_appearance_value(settings, "shader_thin_gas_ratio", 0.12)))
+        nodes[NODE_THIN_GAS_AUTO].inputs[1].default_value = (
+            1.0 if bool(_appearance_value(settings, "shader_thin_gas_auto", True)) else 0.0)
     # Colour Ramp: positioned by the gas temperature over 0.45-1 x Full Glow /
     # Blackbody Scale of the active look.
     if nodes.get(NODE_RAMP_RANGE) is not None:
@@ -315,9 +323,6 @@ def apply_generated_material_settings(material, settings):
 
     mask = nodes.get(NODE_SCATTER_MASK)
     if mask is not None:
-        thin_gas = max(1e-4, float(_appearance_value(settings, "shader_thin_gas", 3.0)))
-        mask.inputs["From Min"].default_value = PYRO_SOOT_MASK[0] * thin_gas
-        mask.inputs["From Max"].default_value = PYRO_SOOT_MASK[1] * thin_gas
         mask.inputs["To Max"].default_value = 0.0 if pyro_look else 1.0
 
     if nodes.get(NODE_FRESH_FUEL) is not None:
@@ -873,6 +878,30 @@ def _build_generated_material(material, blue_core=False):
     scatter_mask.inputs["To Min"].default_value = 1.0
     scatter_mask.inputs["To Max"].default_value = 1.0
     graph.link(density.outputs[0], scatter_mask.inputs["Value"])
+    # Thin Gas: fixed, or Auto (ratio x the frame's density reference).
+    thin_frame = graph.frame("Thin Gas (Pyro)", (-1000, -1700), (0.30, 0.24, 0.16))
+    reference = attribute("density_ref", "Density reference (baked)", -1740)
+    ratio = graph.math("MULTIPLY", (-760, -1740), "x Thin Gas Ratio", thin_frame, ((1, 0.12),), name=NODE_THIN_GAS_RATIO)
+    has_reference = graph.math("GREATER_THAN", (-760, -1820), "Baked Reference?", thin_frame, ((1, 0.0),))
+    use_auto = graph.math("MULTIPLY", (-580, -1820), "x Auto", thin_frame, ((1, 1.0),), name=NODE_THIN_GAS_AUTO)
+    thin = graph.mix("FLOAT", (-400, -1760), "Fixed / Auto", thin_frame, name=NODE_THIN_GAS)
+    thin_float = [socket for socket in thin.inputs if socket.type == "VALUE" and socket.name != "Factor"]
+    thin_float[0].default_value = 3.0
+    graph.link(reference, ratio.inputs[0])
+    graph.link(reference, has_reference.inputs[0])
+    graph.link(has_reference.outputs[0], use_auto.inputs[0])
+    graph.link(use_auto.outputs[0], thin.inputs["Factor"])
+    graph.link(ratio.outputs[0], thin_float[1])
+    thin_out = _float_out(thin)
+    graph.link(thin_out, pyro_fire.inputs["Thin Gas"])
+    for target, scale in ((pyro_fire.inputs["Presence To"], PYRO_PRESENCE),
+                          (pyro_fire.inputs["Soot From"], PYRO_SOOT_MASK[0]),
+                          (pyro_fire.inputs["Soot To"], PYRO_SOOT_MASK[1]),
+                          (scatter_mask.inputs["From Min"], PYRO_SOOT_MASK[0]),
+                          (scatter_mask.inputs["From Max"], PYRO_SOOT_MASK[1])):
+        scaled = graph.math("MULTIPLY", (-220, -1760), "x %.2f" % scale, thin_frame, ((1, scale),))
+        graph.link(thin_out, scaled.inputs[0])
+        graph.link(scaled.outputs[0], target)
     masked_glow = graph.node("ShaderNodeVectorMath", (120, -620), "Scatter x Soot Mask", glow_frame, operation="SCALE")
     graph.link(scatter.outputs["Emission"], masked_glow.inputs[0])
     graph.link(_socket(scatter_mask.outputs, "Result"), masked_glow.inputs["Scale"])

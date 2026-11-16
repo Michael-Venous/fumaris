@@ -54,6 +54,13 @@ def is_pyro_look(settings):
     return settings is not None and str(getattr(settings, "shader_look", "TEMPERATURE")) == "PYRO"
 
 
+def glow_source_heat(settings):
+    """Glow Source resolved: True = Warm Gas (Houdini pyro's scatter source),
+    False = Fire Brightness. Auto follows the Look: Warm Gas for Pyro."""
+    source = str(getattr(settings, "glow_source", "AUTO")) if settings is not None else "AUTO"
+    return source == "HEAT" or (source == "AUTO" and is_pyro_look(settings))
+
+
 def flame_value(settings, key, default, pyro=None):
     """A flame control of the active Look (or of the given one: pyro True/False)."""
     if settings is None:

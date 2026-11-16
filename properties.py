@@ -1853,6 +1853,35 @@ class FumarisSettings(PropertyGroup):
         subtype="DISTANCE",
     )
 
+    glow_source: EnumProperty(
+        name="Glow Source",
+        description="What lights the smoke in the baked glow grid (Scatter Glow). Changing it needs a re-bake",
+        items=(
+            ("AUTO", "Auto", "Warm Gas for the Pyro look, Fire Brightness otherwise"),
+            ("WIEN", "Fire Brightness", "Light from each voxel's fire brightness (density x Wien's law): the hot core lights the smoke"),
+            ("HEAT", "Warm Gas",
+             "Light from all warm gas, ramping in from Glow Heat From to To and level above (Houdini pyro's scatter "
+             "source): warm caps glow along with the core"),
+        ),
+        default="AUTO",
+    )
+
+    glow_heat_from: FloatProperty(
+        name="Glow Heat From",
+        description="Warm Gas glow source: gas starts to light the smoke at this temperature (K)",
+        default=1000.0,
+        min=300.0,
+        soft_max=3000.0,
+    )
+
+    glow_heat_to: FloatProperty(
+        name="Glow Heat To",
+        description="Warm Gas glow source: gas lights the smoke fully at and above this temperature (K)",
+        default=1700.0,
+        min=301.0,
+        soft_max=4000.0,
+    )
+
     export_fuel_vdb: BoolProperty(
         name="Export Fuel VDB",
         description="Write the fuel grid (unburnt fuel), for custom shading. Blue Core adds it automatically",

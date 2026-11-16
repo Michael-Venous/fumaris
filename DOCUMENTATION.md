@@ -969,7 +969,13 @@ With fire, bakes also write a coarse `glow` grid (fire light blurred into the
 smoke around it, for Scatter Glow), `glow_wide` (the same light spread four
 times farther, for Glow Spread) and `glow_depth` (the least smoke between a
 cell and the fire, for Glow Shadowing). `Glow Radius` (Output) sets how far the
-light reaches; 0 follows the size of the fire.
+light reaches; 0 follows the size of the fire. `Glow Source` sets what lights
+it: `Fire Brightness` weights each voxel by its fire's brightness (Wien's law,
+so the hottest core outshines everything), `Warm Gas` lights from all smoke
+warmer than `Glow Heat From`, fully at `Glow Heat To` and above (Houdini
+pyro's scatter source), so a cooling cap still glows from within. `Auto`
+(default) uses Warm Gas for the Pyro look and Fire Brightness otherwise.
+Changing it needs a re-bake.
 
 `Look` chooses the fire shading, and each look keeps its own flame controls
 (Brightness, Full Glow, Contrast, Blackbody Scale, Blue Core, Flame Tint and

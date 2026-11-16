@@ -11,7 +11,7 @@ except ImportError:
     openvdb = None
 
 from .diagnostics import console_log
-from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, is_pyro_look
+from .utils import WIEN_KELVIN, flame_temperature_range, flame_value, glow_source_heat, is_pyro_look
 
 PREFIX = "fumaris_"
 _FRAME_DIGITS = re.compile(r"-?[0-9]+")
@@ -56,7 +56,7 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
 GRAPH_VERSION = 13
-SHADER_GROUP_VERSION = 5
+SHADER_GROUP_VERSION = 6
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
 PYRO_SOOT_MASK = (0.5, 1.5)
@@ -77,6 +77,9 @@ GLOW_REFERENCE_K = 1500.0
 SCATTER_DEFAULT_CONTRAST = 0.5
 SCATTER_DEFAULT_FULL_GLOW = 2000.0
 SCATTER_GLOW_SCALE = 1.0
+# Glow Source Warm Gas: the glow grid is a 0..1 ramp (not Wien radiance at
+# 1500 K); this brings it to the flame's brightness scale.
+GLOW_HEAT_SCALE = 100.0
 PHYSICAL_SATURATION = 1.8
 
 
@@ -287,10 +290,12 @@ def apply_generated_material_settings(material, settings):
 
     # Scatter Glow (the active look's values), on the flame's radiance scale at Contrast 1.
     look = active
-    to_full_glow = scatter_glow_scale(look["reference"], look["contrast"])
+    heat_source = glow_source_heat(settings)
+    to_full_glow = GLOW_HEAT_SCALE if heat_source else scatter_glow_scale(look["reference"], look["contrast"])
     set_inputs(NODE_SCATTER_GLOW, {
         "Brightness": (SCATTER_GLOW_SCALE * look["scatter"] * look["brightness"] * density * to_full_glow)
         if enabled else 0.0,
+        "Own Source": 0.0 if heat_source else 1.0,
         "Light Temperature": look["reference"] * PHYSICAL_COLOR_SHIFT * look["multiplier"],
         "Glow Spread": look["glow_spread"],
         "Glow Shadowing": -look["glow_shadowing"],
@@ -662,6 +667,8 @@ def _scatter_glow_group():
                               ((1, -1.0), (2, WIEN_KELVIN / GLOW_REFERENCE_K)))
         local = graph.math("EXPONENT", (60, -120), "Local Radiance", light)
         own = graph.math("MULTIPLY", (240, -120), "Own Source", light)
+        # Warm Gas glow source: the glow is not on the Wien scale, nothing to subtract.
+        own_weight = graph.math("MULTIPLY", (240, -220), "x Own Source Weight", light)
         excess = graph.math("SUBTRACT", (-300, 300), "Minus Own Source", light)
         positive = graph.math("MAXIMUM", (-120, 300), "Positive", light, ((1, 0.0),))
         scattered = graph.math("MULTIPLY", (60, 300), "x Density", light)
@@ -682,7 +689,9 @@ def _scatter_glow_group():
         graph.link(local.outputs[0], own.inputs[0])
         graph.link(i["Density"], own.inputs[1])
         graph.link(shadowed.outputs[0], excess.inputs[0])
-        graph.link(own.outputs[0], excess.inputs[1])
+        graph.link(own.outputs[0], own_weight.inputs[0])
+        graph.link(i["Own Source"], own_weight.inputs[1])
+        graph.link(own_weight.outputs[0], excess.inputs[1])
         graph.link(excess.outputs[0], positive.inputs[0])
         graph.link(positive.outputs[0], scattered.inputs[0])
         graph.link(i["Density"], scattered.inputs[1])
@@ -705,6 +714,7 @@ def _scatter_glow_group():
          ("Glow", "NodeSocketFloat", 0.0), ("Glow Wide", "NodeSocketFloat", 0.0),
          ("Glow Depth", "NodeSocketFloat", 0.0), ("Glow Spread", "NodeSocketFloat", 0.0),
          ("Glow Shadowing", "NodeSocketFloat", 0.0), ("Brightness", "NodeSocketFloat", 0.0),
+         ("Own Source", "NodeSocketFloat", 1.0),
          ("Light Temperature", "NodeSocketFloat", GLOW_REFERENCE_K * PHYSICAL_COLOR_SHIFT),
          ("Smoke Colour", "NodeSocketColor", (0.6, 0.6, 0.6, 1.0))),
         (("Emission", "NodeSocketColor"),),

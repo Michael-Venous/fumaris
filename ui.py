@@ -9,7 +9,7 @@ from . import diagnostics
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
 from .sparks import MISSING_MARKER as SPARKS_MISSING_MARKER
-from .utils import FLAME_VALUE_KEYS, flame_value, peek_output_directory_for_object, physical_buoyancy
+from .utils import FLAME_VALUE_KEYS, flame_value, glow_source_heat, peek_output_directory_for_object, physical_buoyancy
 
 
 def _foldout(layout, props, property_name, label):
@@ -1403,6 +1403,11 @@ def _draw_domain(layout, scene, props):
         resolution.prop(props, "export_glow_resolution", text="")
         if props.export_glow_vdb:
             output.prop(props, "glow_radius")
+            output.prop(props, "glow_source")
+            if glow_source_heat(props):
+                heat = output.row(align=True)
+                heat.prop(props, "glow_heat_from", text="Heat From")
+                heat.prop(props, "glow_heat_to", text="To")
         if needed:
             _wrapped(output, "The material needs Density", "INFO")
             if not props.export_temperature_vdb and _scene_heat(props):

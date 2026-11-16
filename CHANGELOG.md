@@ -35,6 +35,12 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Glow Source (Output)**: Scatter Glow can be lit by all warm gas
+  (**Warm Gas**, as Houdini's pyro scatter: gas ramps in from Glow Heat From
+  to To and is fully lit above) instead of only by fire brightness. Auto,
+  the default, uses Warm Gas for the Pyro look, so the cooler cap of a
+  rising fireball glows in the gaps between its billows instead of turning
+  to grey smoke. Needs a re-bake.
 - **Pyro look shows the cells**: Pyro now glows by the fire's light (the baked
   heat, blurred, plus part of each voxel's own heat) through the volume of
   thin gas, and fades the fire out of smoke denser than Thin Gas, voxel by

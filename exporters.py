@@ -40,6 +40,7 @@ from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
 from .utils import (
     executable_path,
     flame_value,
+    glow_source_heat,
     output_directory_for_object,
     physical_buoyancy,
     scene_file_path,
@@ -499,6 +500,9 @@ def _domain_state(props, resolution_scale=1.0):
            for name in ("density", "temperature", "fuel", "burn", "glow")},
         "export_velocity_downsample": _velocity_downsample(props),
         "glow_radius": max(0.0, float(props.glow_radius)),
+        "glow_source": "HEAT" if glow_source_heat(props) else "WIEN",
+        "glow_heat_from": float(props.glow_heat_from),
+        "glow_heat_to": max(float(props.glow_heat_from) + 1.0, float(props.glow_heat_to)),
     }
 
 

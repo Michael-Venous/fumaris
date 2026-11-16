@@ -72,6 +72,9 @@ PYRO_RAMP = ((0.0, (1.0, 0.1, 0.0)), (0.35, (1.0, 0.32, 0.02)), (0.65, (1.0, 0.5
 PYRO_COLOR_RANGE = (0.45, 1.0)  # x Full Glow: deep red to pale gold
 PYRO_HOT_SOOT = 0.06            # albedo of hot soot (dark); cool smoke keeps Smoke Color
 GLOW_REFERENCE_K = 1500.0
+# Scatter Glow keeps its strength at these look defaults (scatter_glow_scale).
+SCATTER_DEFAULT_CONTRAST = 0.5
+SCATTER_DEFAULT_FULL_GLOW = 2000.0
 SCATTER_GLOW_SCALE = 1.0
 PHYSICAL_SATURATION = 1.8
 
@@ -281,7 +284,7 @@ def apply_generated_material_settings(material, settings):
 
     # Scatter Glow (the active look's values), on the flame's radiance scale at Contrast 1.
     look = active
-    to_full_glow = math.exp(WIEN_KELVIN * (1.0 / look["reference"] - 1.0 / GLOW_REFERENCE_K))
+    to_full_glow = scatter_glow_scale(look["reference"], look["contrast"])
     set_inputs(NODE_SCATTER_GLOW, {
         "Brightness": (SCATTER_GLOW_SCALE * look["scatter"] * look["brightness"] * density * to_full_glow)
         if enabled else 0.0,
@@ -299,6 +302,18 @@ def apply_generated_material_settings(material, settings):
     material.diffuse_color = smoke_color
     material.node_tree.update_tag()
     return True
+
+
+def scatter_glow_scale(full_glow, contrast):
+    """Scatter Glow on the flame's brightness scale. The baked glow is Wien
+    radiance at 1500 K; the flame falls off by Contrast, so the glow does too:
+    exp(26160 K x Contrast x (1/Full Glow - 1/1500 K)), times a constant that
+    keeps the defaults (Contrast 0.5, Full Glow 2000 K) where they were. The
+    former Contrast-1 scale made a Full Glow under 1500 K blow the glow up
+    (x567 at 1100 K) over a flame that brightens far less."""
+    reference = SCATTER_DEFAULT_CONTRAST * (1.0 / SCATTER_DEFAULT_FULL_GLOW - 1.0 / GLOW_REFERENCE_K)
+    old_default = 1.0 / SCATTER_DEFAULT_FULL_GLOW - 1.0 / GLOW_REFERENCE_K
+    return math.exp(WIEN_KELVIN * (contrast * (1.0 / full_glow - 1.0 / GLOW_REFERENCE_K) + old_default - reference))
 
 
 def add_density_material(volume_object, settings=None):

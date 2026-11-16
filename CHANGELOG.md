@@ -44,6 +44,8 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   preview matches. Thin Gas now defaults to 3 (was 1). Scenes using Pyro
   render differently: cooling smoke glows less than before (no more glowing
   cracks late in an explosion's smoke); raise Thin Gas for dense, sooty sims.
+  Pyro's Scatter Glow (fire light in the smoke) follows the same mask, so each
+  billow gets a glowing skin instead of a haze over dense smoke.
 - **Scatter Glow follows Contrast**: it falls off with the flame's Contrast,
   so a Full Glow below 1500 K no longer blows the smoke out to white (it was
   567 times too strong at 1100 K). Renders at the default Contrast and Full

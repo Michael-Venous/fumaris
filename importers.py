@@ -45,6 +45,7 @@ NODE_LOOK_MIX = "Fumaris Look"
 # at GLOW_REFERENCE_K (src/vdb_frame_writer.cpp); coloured by the gas at Full
 # Glow, filtered by the smoke colour.
 NODE_SCATTER_GLOW = "Fumaris Scatter Glow"
+NODE_SCATTER_MASK = "Fumaris Scatter Soot Mask"
 NODE_SMOKE_COLOR = "Fumaris Smoke Colour"
 NODE_COLOR_MIX = "Fumaris Colour Mixing"
 # Blue Core only (built when Blue Core > 0): fuel near ignition turns blue.
@@ -54,8 +55,8 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 4: Density Remap. 5-6: Pyro look. 7: Pyro Blue Core. 8: Pyro Colour.
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 12
-SHADER_GROUP_VERSION = 4
+GRAPH_VERSION = 13
+SHADER_GROUP_VERSION = 5
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
 PYRO_SOOT_MASK = (0.5, 1.5)
@@ -274,6 +275,8 @@ def apply_generated_material_settings(material, settings):
         "Soot To": PYRO_SOOT_MASK[1] * thin_gas,
         "Local Heat": PYRO_LOCAL_HEAT,
         "Local Offset": 293.15 * (1.0 - PYRO_LOCAL_HEAT),
+        "Cap": float(os.environ.get("FUMARIS_EXP_PYRO_CAP", "0")),
+        "Cap Gain": 1.0 + float(os.environ.get("FUMARIS_EXP_PYRO_CAP", "0")),
         "Golden From": PYRO_COLOR_RANGE[0] * look["reference"] / look["multiplier"],
         "Golden To": PYRO_COLOR_RANGE[1] * look["reference"] / look["multiplier"],
         "Blackbody": 1.0 if blackbody else 0.0,
@@ -293,6 +296,13 @@ def apply_generated_material_settings(material, settings):
         "Glow Shadowing": -look["glow_shadowing"],
         "Smoke Colour": smoke_color,
     })
+
+    mask = nodes.get(NODE_SCATTER_MASK)
+    if mask is not None:
+        thin_gas = max(1e-4, float(_appearance_value(settings, "shader_thin_gas", 3.0)))
+        mask.inputs["From Min"].default_value = PYRO_SOOT_MASK[0] * thin_gas
+        mask.inputs["From Max"].default_value = PYRO_SOOT_MASK[1] * thin_gas
+        mask.inputs["To Max"].default_value = 0.0 if pyro_look else 1.0
 
     if nodes.get(NODE_FRESH_FUEL) is not None:
         start_temperature, full_temperature = flame_temperature_range(
@@ -558,6 +568,18 @@ def _pyro_fire_group():
         graph.link(i["Contrast"], wien.inputs[1])
         graph.link(i["Full Glow"], wien.inputs[2])
         graph.link(wien.outputs[0], radiance.inputs[0])
+        # Soft cap (Houdini's pyro fire ramp levels off): R x (1 + k) / (1 + k R),
+        # linear for dim gas, at most (1 + k) / k times Full Glow brightness.
+        capped_den = graph.math("MULTIPLY_ADD", (240, 360), "1 + k R", law, ((2, 1.0),))
+        capped_num = graph.math("MULTIPLY", (240, 420), "R (1 + k)", law)
+        capped = graph.math("DIVIDE", (420, 380), "Soft Cap", law)
+        graph.link(radiance.outputs[0], capped_den.inputs[0])
+        graph.link(i["Cap"], capped_den.inputs[1])
+        graph.link(radiance.outputs[0], capped_num.inputs[0])
+        graph.link(i["Cap Gain"], capped_num.inputs[1])
+        graph.link(capped_num.outputs[0], capped.inputs[0])
+        graph.link(capped_den.outputs[0], capped.inputs[1])
+        radiance = capped
 
         thin = graph.frame("Thin Gas", (-660, 120), (0.30, 0.24, 0.16))
         dens = graph.math("MAXIMUM", (-660, 60), "Density", thin, ((1, 0.0),))
@@ -615,6 +637,7 @@ def _pyro_fire_group():
          ("Thin Gas", "NodeSocketFloat", 3.0), ("Presence To", "NodeSocketFloat", 0.6),
          ("Soot From", "NodeSocketFloat", 1.5), ("Soot To", "NodeSocketFloat", 4.5),
          ("Local Heat", "NodeSocketFloat", 1.0), ("Local Offset", "NodeSocketFloat", 0.0),
+         ("Cap", "NodeSocketFloat", 0.0), ("Cap Gain", "NodeSocketFloat", 1.0),
          ("Blackbody", "NodeSocketFloat", 0.0),
          ("Blackbody Scale", "NodeSocketFloat", PHYSICAL_COLOR_SHIFT)),
         (("Emission", "NodeSocketColor"),),
@@ -794,9 +817,20 @@ def _build_generated_material(material, blue_core=False):
     graph.link(glow, scatter.inputs["Glow"])
     graph.link(glow_wide, scatter.inputs["Glow Wide"])
     graph.link(glow_depth, scatter.inputs["Glow Depth"])
+    # Pyro: the fire's light shows only in gas thinner than Thin Gas (the Soot
+    # Mask, as Houdini's pyro emission mask does for scatter): every billow gets
+    # a glowing skin around a darker core. Temperature: no mask (both To = 1).
+    scatter_mask = graph.node("ShaderNodeMapRange", (-60, -620), "Scatter: Soot Mask", glow_frame,
+                              NODE_SCATTER_MASK, interpolation_type="SMOOTHSTEP")
+    scatter_mask.inputs["To Min"].default_value = 1.0
+    scatter_mask.inputs["To Max"].default_value = 1.0
+    graph.link(density.outputs[0], scatter_mask.inputs["Value"])
+    masked_glow = graph.node("ShaderNodeVectorMath", (120, -620), "Scatter x Soot Mask", glow_frame, operation="SCALE")
+    graph.link(scatter.outputs["Emission"], masked_glow.inputs[0])
+    graph.link(_socket(scatter_mask.outputs, "Result"), masked_glow.inputs["Scale"])
     emission = graph.node("ShaderNodeVectorMath", (160, 260), "Fire + Glow", fire, operation="ADD")
     graph.link(_rgba(look.outputs)[0], emission.inputs[0])
-    graph.link(scatter.outputs["Emission"], emission.inputs[1])
+    graph.link(masked_glow.outputs[0], emission.inputs[1])
 
     colour = group(_smoke_color_group, (380, 160), "Smoke Colour", NODE_SMOKE_COLOR, smoke)
     graph.link(temperature, colour.inputs["Temperature"])

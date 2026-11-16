@@ -615,7 +615,9 @@ title counts the settings changed from their defaults.
   would, so rich cores smoulder and fuel burns in sheets where it mixes with
   air.
 - `Oxygen Limit` makes fire need fresh air (0 burns evenly everywhere), so it
-  burns in shells where fuel meets air. `Oxygen Field` tracks the air's oxygen
+  burns in shells where fuel meets air. The default, 1, keeps a fireball's
+  temperatures varied and lets it smoulder on in pockets instead of sitting at
+  Flame Temperature and burning out at once. `Oxygen Field` tracks the air's oxygen
   as it moves: burning uses it up (`Use`) and fresh air mixes back in
   (`Mixing`), so fire starves inside thick burnt gas.
 - `Soot Radiation` lets sooty gas radiate its heat away, so dense pockets cool
@@ -1160,7 +1162,14 @@ effect. Rising Smoke emits continuously without fuel; Steady Fire emits smoke an
 fuel that burns out within half a second, so flames stay a few source widths tall.
 Explosion emits a burst of fuel for 8 frames, then vents warm soot that fades
 out over 80 frames (the stem), with a 120-frame range; strong buoyancy and
-Disturb lift it into a billowing mushroom cloud on that stem.
+Disturb lift it into a billowing mushroom cloud on that stem. Most of its fuel
+comes from **Clumps**, a hidden Geometry Nodes point source beside the source:
+two dozen balls of fuel fly out at random speeds and burn for random times, so
+the fireball grows uneven lobes instead of one smooth ball (its inputs, such as
+Clumps, Clump Size, Speed and Seed, are on its Geometry Nodes modifier). Its
+Disturb works only in hot smoke (500-1500 K), rolling the fireball into round
+billows while the stem stays coherent, and a fine Grain layer crunches the fast
+front.
 Ground Fog emits cold smoke that is heavier than air, and adds a collider floor
 just under the source for it to spread over. Chimney Smoke blows warm smoke
 straight up at 4 m/s.

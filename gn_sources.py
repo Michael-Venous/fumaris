@@ -127,6 +127,84 @@ def build_burst(name="Fumaris Burst"):
     return tree
 
 
+def _random(tree, data_type, low, high, seed, offset, location=(0, 0)):
+    """Random Value per point (by index), Seed + offset: a separate stream per use."""
+    node = tree.nodes.new("FunctionNodeRandomValue")
+    node.data_type = data_type
+    node.location = location
+    # Blender 5 shows only the data type's sockets: Min, Max, ID, Seed.
+    node.inputs["Min"].default_value = low
+    node.inputs["Max"].default_value = high
+    out = node.outputs[0]
+    index = tree.nodes.new("GeometryNodeInputIndex")
+    index.location = (location[0] - 200, location[1])
+    _link(tree, index.outputs["Index"], node.inputs["ID"])
+    _link(tree, _math(tree, "ADD", seed, float(offset), (location[0] - 200, location[1] - 60)), node.inputs["Seed"])
+    return out
+
+
+def build_clumps(name="Fumaris Explosion Clumps"):
+    """Uneven fireball lobes: Clumps balls of fuel start inside the source and
+    fly outward at random speeds (slowed by drag), each burning for its own
+    random time with its own size, fuel and expansion, the way the grains of
+    a Houdini/Axiom "grains emitter" seed separate cauliflower billows. Times
+    in frames from Start Frame; sizes in metres."""
+    tree = _new_tree(name)
+    _socket(tree, "Start Frame", "NodeSocketFloat", 1.0)
+    _socket(tree, "Duration", "NodeSocketFloat", 8.0, 1.0)
+    _socket(tree, "Clumps", "NodeSocketInt", 24, 1)
+    _socket(tree, "Radius", "NodeSocketFloat", 1.0, 0.0)
+    _socket(tree, "Clump Size", "NodeSocketFloat", 0.3, 0.0)
+    _socket(tree, "Speed", "NodeSocketFloat", 6.0, 0.0)
+    _socket(tree, "Drag", "NodeSocketFloat", 4.0, 0.0)
+    _socket(tree, "Fuel", "NodeSocketFloat", 16.0, 0.0)
+    _socket(tree, "Expansion", "NodeSocketFloat", 14.0, 0.0)
+    _socket(tree, "Seed", "NodeSocketInt", 0)
+    group_in, group_out, time = _io(tree)
+    i = group_in.outputs
+    seed = i["Seed"]
+    points = tree.nodes.new("GeometryNodePoints")
+    points.location = (-800, 300)
+    _link(tree, i["Clumps"], points.inputs["Count"])
+    # Start inside the source: a random direction, at a random depth.
+    direction = _vmath(tree, "NORMALIZE", _random(tree, "FLOAT_VECTOR", (-1, -1, -1), (1, 1, 1), seed, 1, (-1000, 600)), None, (-800, 600))
+    depth = _math(tree, "MULTIPLY", _random(tree, "FLOAT", 0.2, 0.7, seed, 2, (-1000, 500)), i["Radius"], (-800, 500))
+    start = _vmath(tree, "SCALE", direction, depth, (-600, 600))
+    # Outward and a little upward, each at its own speed.
+    up = tree.nodes.new("ShaderNodeCombineXYZ")
+    up.location = (-800, 450)
+    up.inputs["Z"].default_value = 0.4
+    heading = _vmath(tree, "NORMALIZE", _vmath(tree, "ADD", direction, up.outputs["Vector"], (-700, 450)), None, (-600, 450))
+    speed = _math(tree, "MULTIPLY", i["Speed"], _random(tree, "FLOAT", 0.4, 1.6, seed, 3, (-1000, 350)), (-600, 350))
+    v0 = _vmath(tree, "SCALE", heading, speed, (-400, 450))
+    # Each clump's own window: a random delay and burn time within Duration.
+    delay = _math(tree, "MULTIPLY", i["Duration"], _random(tree, "FLOAT", 0.0, 0.5, seed, 4, (-1000, 200)), (-800, 200))
+    life = _math(tree, "MULTIPLY", i["Duration"], _random(tree, "FLOAT", 0.4, 1.0, seed, 5, (-1000, 100)), (-800, 100))
+    since = _math(tree, "SUBTRACT", _math(tree, "SUBTRACT", time.outputs["Frame"], i["Start Frame"], (-800, 0)), delay, (-700, 0))
+    active = _math(tree, "MULTIPLY", _math(tree, "GREATER_THAN", since, -0.5, (-600, 0)),
+                   _math(tree, "LESS_THAN", since, life, (-600, -50)), (-500, 0))
+    fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base if bpy.context.scene else 24.0
+    seconds = _math(tree, "DIVIDE", _math(tree, "MAXIMUM", since, 0.0, (-600, -150)), fps, (-500, -150))
+    # Drag: x = x0 + v0 (1 - exp(-k t)) / k, v = v0 exp(-k t).
+    k = _math(tree, "MAXIMUM", i["Drag"], 1e-3, (-500, -250))
+    decay = _math(tree, "EXPONENT", _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", k, -1.0, (-400, -250)), seconds, (-300, -250)), None, (-200, -250))
+    travel = _math(tree, "DIVIDE", _math(tree, "SUBTRACT", 1.0, decay, (-100, -250)), k, (0, -250))
+    position = _vmath(tree, "ADD", start, _vmath(tree, "SCALE", v0, travel, (100, 450)), (200, 450))
+    velocity = _vmath(tree, "SCALE", v0, decay, (200, 350))
+    _link(tree, position, points.inputs["Position"])
+    radius = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", i["Radius"], i["Clump Size"], (0, 100)),
+                   _random(tree, "FLOAT", 0.6, 1.4, seed, 6, (-200, 100)), (100, 100))
+    fuel = _math(tree, "MULTIPLY", i["Fuel"], _random(tree, "FLOAT", 0.4, 1.6, seed, 7, (-200, 0)), (100, 0))
+    expansion = _math(tree, "MULTIPLY", i["Expansion"], _random(tree, "FLOAT", 0.5, 1.5, seed, 8, (-200, -100)), (100, -100))
+    geometry = _store(tree, points.outputs["Points"], "mask", active, location=(400, 300))
+    geometry = _store(tree, geometry, "radius", radius, location=(600, 300))
+    geometry = _store(tree, geometry, "velocity", velocity, "FLOAT_VECTOR", (800, 300))
+    geometry = _store(tree, geometry, "fuel", fuel, location=(1000, 300))
+    geometry = _store(tree, geometry, "expansion", expansion, location=(1200, 300))
+    _link(tree, geometry, group_out.inputs["Geometry"])
+    return tree
+
+
 def build_trail(name="Fumaris Trail"):
     tree = _new_tree(name)
     tree.interface.new_socket("Curve", in_out="INPUT", socket_type="NodeSocketObject")

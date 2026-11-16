@@ -68,8 +68,22 @@ PRESETS = {
         # Expansion 14) and more soot (Smoke Amount 2.5) leave a large
         # mushroom cloud instead of a fireball that fades within a second.
         "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0, "smoke_per_burn": 2.5},
-        # A Disturb layer; its largest swirls relative to the sources' largest dimension.
-        "disturb": {"strength": 220.0, "detail": 3, "size_per_size": 0.3},
+        # A Disturb layer; its largest swirls relative to the sources' largest
+        # dimension. Only in hot smoke (500-1500 K): the fireball rolls into
+        # round billows while the cooled stem and cap stay coherent; Grain
+        # crunches the fast front (Axiom lesson-10 match, 2026-11-16).
+        "disturb": {"strength": 220.0, "detail": 3, "size_per_size": 0.3,
+                    "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+                              {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
+        "grain": {"strength": 30.0, "size_per_size": 0.075,
+                  "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+                            {"field": "SPEED", "blend": "MULTIPLY", "range": [2.0, 5.0], "values": [0.0, 1.0]}]},
+        # Clumps: two dozen balls of fuel fly out of the source at random
+        # speeds and burn for random times (Geometry Nodes, gn_sources), so the
+        # fireball grows uneven lobes instead of one smooth ball (a "grains
+        # emitter"); the source itself keeps a smaller core burst.
+        "clumps": {"count": 24, "clump_size": 0.45, "speed_per_root_size": 7.0, "drag": 2.5,
+                   "fuel": 16.0, "expansion": 14.0},
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it. Light source smoke: soot forms as
@@ -80,7 +94,7 @@ PRESETS = {
                     # Expansion burst: the source gas swells about 14x per
                     # second during its burst frames, a pressure blast that
                     # drives the fast, tearing front of a detonation.
-                    "emitter_fuel": 16.0, "normal_velocity": 1.0, "emitter_divergence": 14.0,
+                    "emitter_fuel": 6.0, "normal_velocity": 1.0, "emitter_divergence": 14.0,
                     "velocity": (0.0, 0.0, 0.0)},
         "burst_frames": 8,
         # Then a stem: the source vents warm soot for 80 frames, fading over the
@@ -244,6 +258,37 @@ def _new_debris(collection, name, minimum, maximum, start_frame):
     _apply_settings(props, {"emitter_smoke": 2.0, "emitter_temperature": 0.6,
                             "source_op_temperature": "max", "emitter_fuel": 0.0,
                             "normal_velocity": 0.0, "emitter_divergence": 0.0})
+    return obj
+
+
+def _new_clumps(collection, name, minimum, maximum, start_frame, preset):
+    """The explosion's clumps: a Geometry Nodes point source (gn_sources.build_clumps)
+    sized to the sources, burning over the burst frames with the source's channels."""
+    from . import gn_sources
+    clumps = preset["clumps"]
+    size = max(0.1, max(maximum - minimum))
+    obj = bpy.data.objects.new(name, bpy.data.meshes.new(name))
+    collection.objects.link(obj)
+    obj.location = (minimum + maximum) * 0.5
+    obj.hide_render = True
+    tree = gn_sources.build_clumps(name)
+    inputs = tree.interface.items_tree
+    for key, value in (("Start Frame", float(start_frame)), ("Duration", float(preset.get("burst_frames", 8))),
+                       ("Clumps", int(clumps["count"])), ("Radius", 0.5 * size),
+                       ("Clump Size", clumps["clump_size"]), ("Speed", clumps["speed_per_root_size"] * math.sqrt(size)),
+                       ("Drag", clumps["drag"]), ("Fuel", clumps["fuel"]), ("Expansion", clumps["expansion"])):
+        inputs[key].default_value = value
+    modifier = obj.modifiers.new(name, "NODES")
+    modifier.node_group = tree
+    props = obj.fumaris
+    props.smoke_object_type = "emitter"
+    props.participant_enabled = True
+    props.participant_type = "geometry_nodes"
+    props.gn_subtype = "point_cloud"
+    props.point_radius = 1.0
+    # The source's burst channels; fuel and expansion come per clump.
+    _apply_settings(props, {key: value for key, value in preset["emitter"].items()
+                            if key not in ("normal_velocity", "velocity")})
     return obj
 
 
@@ -432,14 +477,21 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         if disturb:
             # Disturb's size is in world units: scale it to the sources so
             # large explosions get large billows (0.1 m did nothing at 20 m).
-            detail_stack.add_layer(props, "DISTURB", strength=disturb["strength"], detail=disturb["detail"],
+            detail_stack.add_layer(props, "DISTURB", masks=disturb.get("masks"), strength=disturb["strength"],
+                                   detail=disturb["detail"],
                                    size=max(0.05, disturb["size_per_size"] * max(maximum - minimum)))
+        grain = preset.get("grain")
+        if grain:
+            detail_stack.add_layer(props, "GRAIN", masks=grain.get("masks"), strength=grain["strength"],
+                                   size=max(0.02, grain["size_per_size"] * max(maximum - minimum)))
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:
             _configure_source(source, preset, props.sim_start_frame, context.scene.frame_current)
         if preset.get("ground"):
             _new_ground(collections["collider"], f"{name} Ground", minimum, maximum)
+        if preset.get("clumps"):
+            _new_clumps(collections["emitter"], f"{name} Clumps", minimum, maximum, props.sim_start_frame, preset)
         if self.debris and self.preset == "EXPLOSION":
             _new_debris(collections["emitter"], f"{name} Debris", minimum, maximum, props.sim_start_frame)
         for obj in context.selected_objects:

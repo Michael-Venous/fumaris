@@ -1542,7 +1542,7 @@ class FumarisSettings(PropertyGroup):
     oxygen_limit: FloatProperty(
         name="Oxygen Limit",
         description="Burning needs fresh air: hot, already-burnt gas burns slower, so fire concentrates in shells where it mixes with air and temperatures vary instead of the whole fireball sitting at Flame Temperature. Fireballs that burned everywhere at once become smaller and leaner. Gas emitted at Flame Temperature burns only as it mixes. 0 = burns evenly everywhere, air or not; try 1-4 (higher limits less)",
-        default=0.0,
+        default=1.0,
         min=0.0,
         soft_max=8.0,
     )

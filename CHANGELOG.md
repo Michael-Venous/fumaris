@@ -35,6 +35,11 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
+- **Better-looking fire out of the box**: Oxygen Limit now defaults to 1, so
+  fire burns where it mixes with air, temperatures vary and fireballs smoulder
+  on in glowing pockets. The Explosion quick setup adds Clumps (two dozen fuel
+  balls thrown out at random) for an uneven, lumpy fireball instead of a smooth
+  ball, Disturb only in hot smoke for round billows, and a fine Grain layer.
 - **Smooth timeline playback over a bake**: imported Fumaris volumes are hidden
   in the viewport while the timeline plays and shown again when it stops
   (Preferences > Hide Volumes While Playing, on by default).

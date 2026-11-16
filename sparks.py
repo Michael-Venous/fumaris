@@ -122,7 +122,7 @@ def build_group():
     _socket(tree, "Volume", "NodeSocketObject",
             description="Baked volume the sparks fly through. Fumaris keeps it on the bake the domain shows")
     _socket(tree, "Spawn Temperature", "NodeSocketFloat", 1500.0, 0.0,
-            "Sparks start in gas hotter than this, in Kelvin. Set to three quarters of the domain's Flame Temperature when added")
+            "Sparks start in gas hotter than this, in Kelvin. Set to 0.65 of the domain's Flame Temperature when added")
     _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0,
             "New sparks each frame, spread over the hot gas. At most one per hot voxel")
     _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0,
@@ -507,7 +507,9 @@ def add_sparks(context, domain, volume, name="Fumaris Sparks"):
     _input(modifier, "Volume").value = volume
     # The fire's own measures: its hottest quarter, its gravity in scene
     # units (as the solver scales it) and its time.
-    _input(modifier, "Spawn Temperature").value = 0.75 * props.flame_temperature
+    # 0.65: with Oxygen Limit (default 1) burning gas peaks near 0.85 of Flame
+    # Temperature, not at it; 0.75 left a small fire almost without sparks.
+    _input(modifier, "Spawn Temperature").value = 0.65 * props.flame_temperature
     _input(modifier, "Gravity").value = -props.gravity[2] / props.simulation_scale
     _input(modifier, "Simulation Speed").value = props.simulation_speed
     try:

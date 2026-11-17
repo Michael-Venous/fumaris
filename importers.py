@@ -59,6 +59,31 @@ NODE_SCATTER_GLOW = "Fumaris Scatter Glow"
 NODE_SCATTER_MASK = "Fumaris Scatter Soot Mask"
 NODE_SMOKE_COLOR = "Fumaris Smoke Colour"
 NODE_COLOR_MIX = "Fumaris Colour Mixing"
+# Shadow rays need only the extinction (density): a Mix Shader by Is Shadow
+# Ray gives them a Volume Absorption of the same density, so Cycles' SVM jumps
+# over the look's nodes and grid reads on shadow rays. The image is identical
+# (same seed, 2026-11-16 profile); sampling 1.36x faster biased, 3.8x unbiased.
+NODE_SHADOW_MIX = "Fumaris Shadow Rays"
+NODE_SHADOW_EXTINCTION = "Fumaris Shadow Extinction"
+# Packed Pyro grids (VDB writer): one 20 cm vec3 grid, (heat, glow,
+# glow_depth) on the heat lattice, instead of heat (20 cm) and glow and
+# glow_depth (1.4 m+). Cycles unions the topology of every grid it reads into
+# the volume mesh by resampling between transforms, so a coarse grid turned
+# the smoke's bounds into 1.4 m blocks of marched empty space (and capped the
+# ray-march steps there). Older caches keep the separate grids. The graph
+# reads the layout of the caches it is used with (GRID_LAYOUT_KEY on each
+# volume at import and on the material, see sync_grid_layout): "packed",
+# "separate", or "both" (a material shared by older and newer caches; a
+# missing grid reads 0, but its lookup still costs ~12%).
+PACKED_PYRO_GRID = "pyro"
+GRID_LAYOUT_KEY = "fumaris_grid_layout"
+BUILT_GRID_LAYOUT_KEY = "fumaris_built_grid_layout"
+# Thin Gas Auto: the frame's density reference (the writer's
+# "fumaris_density_reference" metadata) as an object property keyed per frame
+# at import (an object attribute is a constant, not a grid read per sample).
+# Older caches also have it as the "density_ref" grid; the graph takes the
+# larger of the two.
+DENSITY_REFERENCE_PROPERTY = "fumaris_density_reference"
 # Blue Core only (built when Blue Core > 0): fuel near ignition turns blue.
 NODE_FRESH_FUEL = "Fumaris Fresh Fuel"
 BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
@@ -66,7 +91,9 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # 4: Density Remap. 5-6: Pyro look. 7: Pyro Blue Core. 8: Pyro Colour.
 # 9: Temperature look Colour. 10: node groups (shared, values on the group
 # nodes). Older graphs are rebuilt on the next update.
-GRAPH_VERSION = 17
+# 18: shadow rays skip the look (Is Shadow Ray), packed "pyro" grid, density
+# reference from an object property.
+GRAPH_VERSION = 18
 SHADER_GROUP_VERSION = 8
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
@@ -233,6 +260,8 @@ def _graph_needs_rebuild(material, settings):
     nodes = material.node_tree.nodes
     if material.get(GRAPH_VERSION_KEY, 0) < GRAPH_VERSION:
         return True
+    if material.get(GRID_LAYOUT_KEY, "separate") != material.get(BUILT_GRID_LAYOUT_KEY, "separate"):
+        return True
     return _wants_core(settings) != (nodes.get(NODE_FRESH_FUEL) is not None)
 
 
@@ -379,10 +408,11 @@ def scatter_glow_scale(full_glow, contrast):
     return math.exp(WIEN_KELVIN * (contrast * (1.0 / full_glow - 1.0 / GLOW_REFERENCE_K) + old_default - reference))
 
 
-def add_density_material(volume_object, settings=None):
+def add_density_material(volume_object, settings=None, grid_layout="separate"):
     material = bpy.data.materials.new("Fumaris Material")
     material.use_nodes = True
     material[GENERATED_MATERIAL_MARKER] = True
+    material[GRID_LAYOUT_KEY] = grid_layout
     _build_generated_material(material, blue_core=_wants_core(settings))
     apply_generated_material_settings(material, settings)
     volume_object.data.materials.append(material)
@@ -841,10 +871,31 @@ def _build_generated_material(material, blue_core=False):
         node = graph.node("ShaderNodeAttribute", (-1000, y), label, grids, attribute_name=grid)
         return _socket(node.outputs, "Factor", "Fac")
 
-    heat = attribute("heat", "Heat above ambient (baked)", 120)
-    glow = attribute("glow", "Glow (baked)", -560)
+    layout = material.get(GRID_LAYOUT_KEY, "separate")
+    material[BUILT_GRID_LAYOUT_KEY] = layout
+    unpacked = None
+    if layout in ("packed", "both"):
+        packed = graph.node("ShaderNodeAttribute", (-1400, -380), "Pyro grids, packed (baked)", grids,
+                            attribute_name=PACKED_PYRO_GRID)
+        unpacked = graph.node("ShaderNodeSeparateXYZ", (-1220, -380), "Heat, Glow, Smoke to the fire", grids)
+        graph.link(packed.outputs["Vector"], unpacked.inputs[0])
+
+    def pyro_attribute(grid, component, label, y):
+        """The packed grid's component, the older cache's own grid, or (both)
+        their sum: one of the two is missing and reads 0."""
+        if layout == "separate":
+            return attribute(grid, label, y)
+        if layout == "packed":
+            return unpacked.outputs[component]
+        both = graph.math("ADD", (-820, y), label, grids)
+        graph.link(attribute(grid, label + " (older bakes)", y), both.inputs[0])
+        graph.link(unpacked.outputs[component], both.inputs[1])
+        return both.outputs[0]
+
+    heat = pyro_attribute("heat", "X", "Heat above ambient (baked)", 120)
+    glow = pyro_attribute("glow", "Y", "Glow (baked)", -560)
     glow_wide = attribute("glow_wide", "Glow, wide (baked)", -740)
-    glow_depth = attribute("glow_depth", "Smoke to the fire (baked)", -920)
+    glow_depth = pyro_attribute("glow_depth", "Z", "Smoke to the fire (baked)", -920)
     temperature = info.outputs["Temperature"]
 
     def group(kind, location, label, name, parent):
@@ -912,7 +963,16 @@ def _build_generated_material(material, blue_core=False):
     graph.link(density.outputs[0], scatter_mask.inputs["Value"])
     # Thin Gas: fixed, or Auto (ratio x the frame's density reference).
     thin_frame = graph.frame("Thin Gas (Pyro)", (-1000, -1700), (0.30, 0.24, 0.16))
-    reference = attribute("density_ref", "Density reference (baked)", -1740)
+    reference_property = graph.node("ShaderNodeAttribute", (-1000, -1900), "Density reference (keyed)", thin_frame,
+                                    attribute_type="OBJECT", attribute_name=DENSITY_REFERENCE_PROPERTY)
+    reference = _socket(reference_property.outputs, "Factor", "Fac")
+    if layout != "packed":
+        # Older bakes: also the "density_ref" grid (volumes imported before
+        # the property was keyed). Packed caches have no such grid.
+        either = graph.math("MAXIMUM", (-880, -1820), "Density reference", thin_frame)
+        graph.link(attribute("density_ref", "Density reference (older bakes)", -1740), either.inputs[0])
+        graph.link(reference, either.inputs[1])
+        reference = either.outputs[0]
     ratio = graph.math("MULTIPLY", (-760, -1740), "x Thin Gas Ratio", thin_frame, ((1, 0.12),), name=NODE_THIN_GAS_RATIO)
     has_reference = graph.math("GREATER_THAN", (-760, -1820), "Baked Reference?", thin_frame, ((1, 0.0),))
     use_auto = graph.math("MULTIPLY", (-580, -1820), "x Auto", thin_frame, ((1, 1.0),), name=NODE_THIN_GAS_AUTO)
@@ -960,8 +1020,18 @@ def _build_generated_material(material, blue_core=False):
     graph.link(_rgba(mixed.outputs)[0], shader.inputs["Color"])
     graph.link(gain.outputs[0], shader.inputs["Density"])
     graph.link(emission.outputs[0], shader.inputs["Emission Color"])
-    output = graph.node("ShaderNodeOutputMaterial", (940, 360), "", smoke)
-    graph.link(shader.outputs["Volume"], output.inputs["Volume"])
+    # Shadow rays: the same extinction without the look (see NODE_SHADOW_MIX).
+    light_path = graph.node("ShaderNodeLightPath", (660, -260), "", smoke)
+    extinction = graph.node("ShaderNodeVolumeAbsorption", (660, -60), "Shadow rays: density only", smoke,
+                            NODE_SHADOW_EXTINCTION)
+    extinction.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+    graph.link(gain.outputs[0], extinction.inputs["Density"])
+    shadow_mix = graph.node("ShaderNodeMixShader", (900, 360), "Look / Shadow Rays", smoke, NODE_SHADOW_MIX)
+    graph.link(light_path.outputs["Is Shadow Ray"], shadow_mix.inputs["Fac"])
+    graph.link(shader.outputs["Volume"], shadow_mix.inputs[1])
+    graph.link(extinction.outputs["Volume"], shadow_mix.inputs[2])
+    output = graph.node("ShaderNodeOutputMaterial", (1120, 360), "", smoke)
+    graph.link(shadow_mix.outputs["Shader"], output.inputs["Volume"])
     material[GRAPH_VERSION_KEY] = GRAPH_VERSION
 
 
@@ -1014,6 +1084,7 @@ def _assign_material(volume_object, material):
         materials[0] = material
     else:
         materials.append(material)
+    sync_grid_layout(material)
 
 
 def update_generated_materials(domain, settings):
@@ -1097,23 +1168,28 @@ def import_sequence(
     volume_object[VOLUME_PREFIX_MARKER] = prefix
     sequence_start = _frame_number(files[0], prefix)
     sequence_end = _frame_number(files[-1], prefix)
-    _configure_volume(
+    grid_names = _configure_volume(
         volume_object,
         import_files[0],
         sequence_end - sequence_start + 1,
         sequence_start,
         last_filepath=import_files[-1],
     )
+    layout = "packed" if PACKED_PYRO_GRID in grid_names else "separate"
+    volume_object[GRID_LAYOUT_KEY] = layout
+    _key_density_reference(volume_object, files, prefix)
     volume_object.select_set(False)
     volume_object.hide_select = not bool(selectable)
     if material is not None:
         volume_object.data.materials.append(material)
         if material.get(GENERATED_MATERIAL_MARKER):
+            sync_grid_layout(material)
             apply_generated_material_settings(material, appearance)
     else:
         add_density_material(
             volume_object,
             settings=appearance,
+            grid_layout=layout,
         )
     _restore_selection(previous_selection, previous_active)
     # Sparks made for the volume this one replaces carry on with it.
@@ -1331,6 +1407,138 @@ def _configure_volume(volume_object, filepath, frame_count, frame_start, last_fi
             break
     volume.update_tag()
     volume_object.update_tag()
+    return grid_names
+
+
+def _volume_grid_layout(obj):
+    """The grid layout of a volume's cache (GRID_LAYOUT_KEY, noted at
+    import); "separate" for Fumaris volumes imported before it was noted (an
+    older writer's cache), None for other volumes (unknown)."""
+    layout = obj.get(GRID_LAYOUT_KEY)
+    if layout in ("packed", "separate"):
+        return layout
+    return "separate" if obj.get(VOLUME_MARKER) else None
+
+
+def sync_grid_layout(material):
+    """Point a generated material's graph at the grid layouts of the volumes
+    that use it: "packed", "separate", or "both" when it is shared by older
+    and newer caches. A changed layout rebuilds the graph in place, keeping
+    its values (Appearance's, or a version's own look). Returns the layout."""
+    if material is None or not material.get(GENERATED_MATERIAL_MARKER):
+        return None
+    layouts = {_volume_grid_layout(obj) for obj in bpy.data.objects
+               if obj.type == "VOLUME" and any(slot is material for slot in obj.data.materials)}
+    layouts.discard(None)
+    current = material.get(GRID_LAYOUT_KEY, "separate")
+    layout = (layouts.pop() if len(layouts) == 1 else "both") if layouts else current
+    material[GRID_LAYOUT_KEY] = layout
+    tree = material.node_tree
+    if (material.use_nodes and tree is not None and tree.nodes.get(NODE_VOLUME_SHADER) is not None
+            and material.get(BUILT_GRID_LAYOUT_KEY, "separate") != layout
+            and material.get(GRAPH_VERSION_KEY, 0) >= GRAPH_VERSION):
+        _rebuild_keeping_values(material)
+    return layout
+
+
+def _rebuild_keeping_values(material):
+    """Rebuild the graph, restoring the input values of its named nodes (what
+    apply_generated_material_settings writes) with no settings at hand."""
+    kept = {}
+    for node in material.node_tree.nodes:
+        if not node.name.startswith("Fumaris "):
+            continue
+        values = []
+        for index, socket in enumerate(node.inputs):
+            if socket.is_linked or not hasattr(socket, "default_value"):
+                continue
+            value = socket.default_value
+            values.append((index, value if isinstance(value, (int, float, str, bool)) else tuple(value)))
+        kept[node.name] = values
+    _build_generated_material(material, blue_core=material.node_tree.nodes.get(NODE_FRESH_FUEL) is not None)
+    nodes = material.node_tree.nodes
+    for name, values in kept.items():
+        node = nodes.get(name)
+        if node is None:
+            continue
+        for index, value in values:
+            if index < len(node.inputs) and not node.inputs[index].is_linked:
+                try:
+                    node.inputs[index].default_value = value
+                except (AttributeError, TypeError, ValueError):
+                    pass
+    material.node_tree.update_tag()
+
+
+def _key_density_reference(volume_object, files, prefix=PREFIX):
+    """Thin Gas Auto's per-frame density reference as the volume object's
+    DENSITY_REFERENCE_PROPERTY, keyed (constant interpolation) at the scene
+    frame each file shows at, from the writer's "fumaris_density_reference"
+    metadata (on the packed "pyro" grid, or on "density_ref" in older bakes);
+    0 (the fixed Thin Gas) where a frame has none. Without the openvdb module
+    nothing is keyed: older bakes' graphs still read the "density_ref" grid,
+    packed ones fall back to the fixed Thin Gas."""
+    if openvdb is None:
+        console_log("Fumaris: no openvdb module, so Thin Gas Auto has no density reference for packed caches")
+        return False
+    if not files:
+        return False
+    volume = volume_object.data
+    first = _frame_number(files[0], prefix)
+    keys = []
+    for path in files:
+        frame = _frame_number(path, prefix)
+        if frame is None:
+            continue
+        value = 0.0
+        try:
+            for grid in openvdb.readAllGridMetadata(path):
+                if grid.name in (PACKED_PYRO_GRID, "density_ref"):
+                    metadata = grid.metadata
+                    if DENSITY_REFERENCE_PROPERTY in metadata:
+                        value = float(metadata[DENSITY_REFERENCE_PROPERTY])
+                        break
+        except Exception:
+            pass
+        # _stage_import_sequence numbers the files from 1; Blender shows
+        # file index i at scene frame frame_start + i - 1 - frame_offset.
+        index = frame - first + 1
+        keys.append((volume.frame_start + index - 1 - volume.frame_offset, value))
+    if not keys:
+        return False
+    volume_object[DENSITY_REFERENCE_PROPERTY] = keys[0][1]
+    if len({value for _, value in keys}) == 1:
+        return True
+    data_path = f'["{DENSITY_REFERENCE_PROPERTY}"]'
+    had_action = volume_object.animation_data is not None and volume_object.animation_data.action is not None
+    volume_object.keyframe_insert(data_path, frame=keys[0][0])
+    if not had_action and volume_object.animation_data is not None and volume_object.animation_data.action is not None:
+        # Ours: removed with the volume (_remove_generated_volume_object).
+        volume_object.animation_data.action[DENSITY_REFERENCE_PROPERTY] = True
+    curve = _property_fcurve(volume_object, data_path)
+    if curve is not None and len(curve.keyframe_points) == 1:
+        curve.keyframe_points.add(len(keys) - 1)
+        for point, (frame, value) in zip(curve.keyframe_points, keys):
+            point.co = (frame, value)
+    else:
+        for frame, value in keys[1:]:
+            volume_object[DENSITY_REFERENCE_PROPERTY] = value
+            volume_object.keyframe_insert(data_path, frame=frame)
+        curve = _property_fcurve(volume_object, data_path)
+    if curve is not None:
+        for point in curve.keyframe_points:
+            point.interpolation = "CONSTANT"
+        curve.update()
+    return True
+
+
+def _property_fcurve(obj, data_path):
+    animation = obj.animation_data
+    if animation is None or animation.action is None:
+        return None
+    from bpy_extras import anim_utils
+    channelbag = anim_utils.action_get_channelbag_for_slot(animation.action, animation.action_slot)
+    return channelbag.fcurves.find(data_path) if channelbag is not None else None
 
 
 def _file_grid_names(path):
@@ -1378,9 +1586,13 @@ def _remove_volume_for_directory(directory, prefix=PREFIX):
 def _remove_generated_volume_object(obj):
     volume = obj.data if obj.type == "VOLUME" else None
     materials = tuple(volume.materials) if volume else ()
+    action = obj.animation_data.action if obj.animation_data is not None else None
     bpy.data.objects.remove(obj, do_unlink=True)
     if volume and volume.users == 0:
         bpy.data.volumes.remove(volume)
+    # The density reference keys made at import (_key_density_reference).
+    if action is not None and action.get(DENSITY_REFERENCE_PROPERTY) and action.users == 0:
+        bpy.data.actions.remove(action)
     # Repeated pause imports replace the volume. Only discard our now-orphan
     # materials; keep user materials, shared materials and explicit fake users.
     for material in dict.fromkeys(materials):

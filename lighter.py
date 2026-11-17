@@ -3,14 +3,19 @@
 Writes a derived cache slot next to the source one (FUTURE "Bake
 post-processing", default chosen 2026-11-05): every frame's grids are
 averaged 2x2x2 into voxels twice as large, and voxels whose smoke falls below
-the cull threshold are dropped. The glow grids are copied unchanged (already
-coarse, and their lattice is the light's spread). The Pyro look's heat and
-density_soft, already at half resolution, are halved again: copied as they
-were, they were most of a fire's lighter copy (121 -> 115 MB, 2026-11-14).
+the cull threshold are dropped. The Pyro look's grids, already at half
+resolution, are halved again: copied as they were, they were most of a fire's
+lighter copy (121 -> 115 MB, 2026-11-14). Since 2.0.0 beta 2 they are "pyro"
+(heat, glow, glow_depth packed on the heat lattice), density_soft and glow_wide,
+all on one lattice, so all three are halved alike. Older bakes' coarse glow
+grids (glow, glow_wide, glow_depth) are copied unchanged (their lattice is the
+light's spread).
 """
 
-# Copied as they are.
+# Copied as they are (older bakes' coarse glow lattices).
 _KEEP = ("glow", "glow_wide", "glow_depth")
+# On the Pyro lattice in newer bakes (with "pyro"): halved like it.
+_ON_PYRO_LATTICE = ("glow_wide",)
 # Culled by their own values when no density mask applies.
 _CULLED = ("density", "fuel", "flame", "density_soft")
 import os
@@ -124,10 +129,11 @@ def lighten_file(source, target, cull=0.01):
     out = {}
     culled_density = None
     # Density first: grids too large for one array are culled by its coarse copy.
+    packed = any(g.name == "pyro" for g in grids)
     for grid in sorted(grids, key=lambda g: g.name != "density"):
         vector = "Vec3" in type(grid).__name__
         size = grid.transform.voxelSize()[0]
-        if grid.name in _KEEP:
+        if grid.name in _KEEP and not (packed and grid.name in _ON_PYRO_LATTICE):
             out[id(grid)] = grid
             continue
         box = _active_box(grid)
@@ -165,6 +171,7 @@ def lighten_file(source, target, cull=0.01):
         result.copyFromArray(np.ascontiguousarray(coarse), ijk=coarse_low,
                              tolerance=(0.0, 0.0, 0.0) if vector else 0.0)
         result.saveFloatAsHalf = True
+        _copy_fumaris_metadata(grid, result)
         out[id(grid)] = result
         if grid.name == "density":
             culled_density = result
@@ -203,7 +210,16 @@ def _lighten_regions(grid, vector, cull, culled_density, threshold):
         result.copyFromArray(np.ascontiguousarray(coarse), ijk=coarse_low,
                              tolerance=(0.0, 0.0, 0.0) if vector else 0.0)
     result.saveFloatAsHalf = True
+    _copy_fumaris_metadata(grid, result)
     return result
+
+
+def _copy_fumaris_metadata(source, target):
+    """Fumaris's own grid metadata (the "pyro" grid's density reference,
+    which Thin Gas Auto is keyed from at import)."""
+    for key, value in source.metadata.items():
+        if key.startswith("fumaris_"):
+            target[key] = value
 
 
 def make_lighter_copy(source_dir, target_dir, files, cull=0.01, progress=None):

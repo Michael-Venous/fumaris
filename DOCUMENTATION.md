@@ -967,10 +967,19 @@ Density is the standard smoke grid. Additional outputs are:
 - `fuel`: remaining unburned fuel.
 - `velocity`: world-space motion used for volume motion blur and compositing.
 
-With fire, bakes also write a coarse `glow` grid (fire light blurred into the
-smoke around it, for Scatter Glow), `glow_wide` (the same light spread four
-times farther, for Glow Spread) and `glow_depth` (the least smoke between a
-cell and the fire, for Glow Shadowing). `Glow Radius` (Output) sets how far the
+With fire, bakes also write the grids the generated material's fire and
+Scatter Glow read, all on one half-resolution lattice over the smoke:
+`density_soft` (the smoke, slightly blurred) and `pyro`, a vector grid packing
+three values per voxel: x the blurred heat above ambient (Kelvin, the Pyro
+look), y the fire light blurred into the smoke around it (Scatter Glow) and z
+the least smoke between the voxel and the fire (Glow Shadowing); `glow_wide`
+holds the same light spread four times farther (Glow Spread). In your own
+material, an Attribute node named `pyro` with a Separate XYZ node gives the
+three. The light is computed on a coarse lattice and sampled onto the smoke's
+voxels, so renders do not march through empty space around the smoke. Bakes
+before 2.0.0 beta 2 wrote `heat`, `glow`, `glow_wide`, `glow_depth` and
+`density_ref` instead; the generated material still renders them. `Glow
+Radius` (Output) sets how far the
 light reaches; 0 follows the size of the fire. `Glow Source` sets what lights
 it: `Fire Brightness` weights each voxel by its fire's brightness (Wien's law,
 so the hottest core outshines everything), `Warm Gas` lights from all smoke
@@ -995,13 +1004,15 @@ still follows the temperature. The ramp belongs to the domain's Fumaris material
 (**Edit Ramp** creates it before a bake) and the live preview follows it. Both
 looks offer Ramp. **Thin Gas** (Pyro) sets which smoke counts as thin
 enough to glow; with **Auto** (default) it is Thin Gas Ratio (0.12) x each
-frame's typical smoke density (its density-weighted mean, baked per frame as the
-`density_ref` grid and measured live in the preview), so the look holds at any
+frame's typical smoke density (its density-weighted mean, baked per frame as
+the `pyro` grid's `fumaris_density_reference` metadata, keyed on the volume
+object at import as its `fumaris_density_reference` property, and measured
+live in the preview), so the look holds at any
 Smoke Amount, scale or time; lower the ratio for darker, more cellular smoke.
 Off, Thin Gas is a fixed density. Fire glows from the hotter of the gas and its
-blurred surroundings (the baked `heat` grid), so cells glow softly and nearby
+blurred surroundings (the baked heat, `pyro`'s x), so cells glow softly and nearby
 smoke picks up their light, and hot soot turns dark. Pyro glows by the fire's
-light: the baked, blurred `heat` (and part of each voxel's own heat), so gas
+light: the baked, blurred heat (and part of each voxel's own heat), so gas
 near fire glows too and billows read round and soft. Gas glows by volume, so a
 billow is brightest through its middle, and smoke denser than `Thin Gas` fades
 to dark soot (none of it glows above 1.5 x Thin Gas): the dense tops of billows
@@ -1014,7 +1025,7 @@ Color Blackbody with Blackbody Scale about 1.3, Full Glow about 1100 K,
 Contrast about 0.3, Scatter Glow 0 (it lights thin gas around the cloud, which
 softens the edges). It holds at any scene size, and Full Glow changes need no
 re-bake. Pyro needs a bake from
-Fumaris 2.0 or later (heat and soft density grids, written with the glow
+Fumaris 2.0 or later (the heat and soft density grids, written with the glow
 grids).
 
 When `Volume Material` is unset, Fumaris creates a material driven by the

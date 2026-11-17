@@ -13,6 +13,7 @@ as it moves, and the result no longer depends on the VRAM setting).
 
 Measured on an RTX 3090 Ti against beta 1, back to back:
 
+- Fixed: renders of baked Pyro caches spent minutes of CPU time before sampling ("Computing Volume Mesh"): the Thin Gas reference grid covered the whole smoke box in empty space. Re-bake to benefit.
 - Fixed: OpenVDB sequence emitters kept their GPU memory after their last frame, so bakes with many of them used several GB more VRAM than Simulation Memory.
 - **Bakes about 2.8 times faster**: 200 frames of the comparison explosion
   to VDB in 21 s instead of 59 (less read back from the GPU, multithreaded

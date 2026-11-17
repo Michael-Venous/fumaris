@@ -48,7 +48,7 @@ def _object_type_updated(self, _context):
         obj.display_type = "WIRE"
     # Made a domain in the panel: Auto VRAM on, as Quick Setup and New Domain
     # do. Not in background Blender: scripts and tests expect the fixed amount
-    # (80% of a GPU each would not fit several at once).
+    # (most of a GPU each would not fit several at once).
     if self.smoke_object_type == "domain" and not bpy.app.background:
         self.simulation_memory_auto = True
     # A new domain starts with the last cache directory chosen, in any scene.
@@ -784,7 +784,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_memory_auto: BoolProperty(
         name="Auto VRAM",
-        description="Reserve 80% of the GPU memory that is free when the simulation starts (at least 0.5 GB) instead of a fixed amount. Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used",
+        description="Use the GPU memory that is free when the simulation starts, less 6% of the GPU's memory (12% for a bake; at least 1 GB) left for Blender, other programs and Fumaris's emitter and export buffers, instead of a fixed amount (at least 0.5 GB). Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used",
         default=False,
         update=auto_toggled,
     )

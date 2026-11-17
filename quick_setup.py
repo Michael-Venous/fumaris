@@ -25,10 +25,10 @@ _DOMAIN_DEFAULTS = {
 
 
 def _domain_defaults():
-    # New domains reserve 80% of the free GPU memory (user, 2026-11-14): the
+    # New domains reserve the free GPU memory less a reserve (Auto VRAM; user, 2026-11-14): the
     # result no longer depends on the amount, so more only means more room;
     # 2 GB stays the amount when Auto is turned off. Not in background
-    # Blender: scripts and tests expect the fixed amount (80% of a GPU each
+    # Blender: scripts and tests expect the fixed amount (most of a GPU each
     # would not fit several at once).
     return {**_DOMAIN_DEFAULTS, "simulation_memory_auto": not bpy.app.background}
 

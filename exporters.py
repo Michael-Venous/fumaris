@@ -16,7 +16,7 @@ except ImportError:
 
 from . import detail_stack
 from .diagnostics import console_log
-from .memory_auto import AUTO_FRACTION
+from .memory_auto import AUTO_RESERVE_SHARE
 from .collection_export import collection_mesh_arrays, collection_point_arrays
 from .mesh_export import (
     _add_mesh_initial_velocity,
@@ -41,6 +41,7 @@ from .utils import (
     executable_path,
     flame_value,
     glow_source_heat,
+    is_pyro_look,
     output_directory_for_object,
     physical_buoyancy,
     scene_file_path,
@@ -443,7 +444,7 @@ def _domain_state(props, resolution_scale=1.0):
         "color_mixing": bool(getattr(props, "color_mixing", False)),
         "simulation_memory_mb": simulation_memory_mb(props),
         "simulation_memory_auto": bool(getattr(props, "simulation_memory_auto", False)),
-        "simulation_memory_auto_fraction": AUTO_FRACTION,
+        "simulation_memory_auto_reserve": AUTO_RESERVE_SHARE,
         "physics_convex_collision": props.physics_convex_collision,
         "sparse_block_min_lifetime": props.sparse_block_min_lifetime,
         "auto_cell_size": props.auto_cell_size,
@@ -494,7 +495,12 @@ def _domain_state(props, resolution_scale=1.0):
         # The generated material no longer reads burn (Burn look removed).
         "export_burn_vdb": props.export_burn_vdb,
         "export_velocity_vdb": props.export_velocity_vdb,
-        "export_glow_vdb": bool(getattr(props, "export_glow_vdb", True)),
+        # The Pyro look's fire is the baked glow (the "pyro" grid's y and z):
+        # without it the generated material shows no fire at all (Explosion
+        # 0.44x as bright, the Steady Fire's flame gone; 2026-11-17), so Pyro
+        # writes it whatever the toggle says. Glow costs ~4% of the files.
+        "export_glow_vdb": bool(getattr(props, "export_glow_vdb", True))
+        or (generated_material and is_pyro_look(props)),
         "export_density_vdb": bool(getattr(props, "export_density_vdb", True)) or generated_material,
         **{f"export_{name}_downsample": _EXPORT_DOWNSAMPLE.get(getattr(props, f"export_{name}_resolution", "FULL"), 1)
            for name in ("density", "temperature", "fuel", "burn", "glow")},

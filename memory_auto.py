@@ -7,18 +7,24 @@ subprocess.
 """
 import threading
 
-AUTO_FRACTION = 0.8
+# Auto leaves max(1 GiB, 6% of the GPU) of the free memory to everything else
+# (the bridge's buffers outside the block pool, Blender, the desktop); it was
+# 80% of free memory, which left 4.7 GB of a free 24 GB card idle (2026-11-17).
+AUTO_RESERVE_SHARE = 0.06
+AUTO_RESERVE_MINIMUM_BYTES = 1 << 30
 AUTO_MINIMUM_BYTES = 512 << 20
 DEFAULT_FALLBACK_BYTES = 1 << 30
 
 
 def auto_memory_bytes(free_bytes=None, device_local_bytes=None,
-                      fallback_bytes=DEFAULT_FALLBACK_BYTES, fraction=AUTO_FRACTION):
-    """autoSimulationMemory: share of free memory, half the device without a
-    budget reading, otherwise the explicit value; never below the minimum."""
-    fraction = min(1.0, max(0.05, float(fraction)))
+                      fallback_bytes=DEFAULT_FALLBACK_BYTES, reserve_share=AUTO_RESERVE_SHARE):
+    """autoSimulationMemory: free memory less the reserve, half the device
+    without a budget reading, otherwise the explicit value; never below the
+    minimum."""
+    reserve_share = min(0.95, max(0.0, float(reserve_share)))
     if free_bytes is not None:
-        result = int(max(0, free_bytes) * fraction)
+        reserve = max(AUTO_RESERVE_MINIMUM_BYTES, int(int(device_local_bytes or 0) * reserve_share))
+        result = max(0, int(free_bytes) - reserve)
     elif device_local_bytes:
         result = int(device_local_bytes) // 2
     else:
@@ -120,7 +126,7 @@ def draw_budget_summary(layout, props, state=None):
     column = layout.column(align=True)
     if getattr(props, "simulation_memory_auto", False):
         if budget is None:
-            column.label(text=f"Auto: {AUTO_FRACTION:.0%} of free GPU memory at start", icon="MEMORY")
+            column.label(text="Auto: free GPU memory at start, less a reserve", icon="MEMORY")
         else:
             column.label(text=f"Auto: {budget / (1 << 30):.1f} GB ({when})", icon="MEMORY")
     elif budget is not None:

@@ -13,6 +13,10 @@ as it moves, and the result no longer depends on the VRAM setting).
 
 Measured on an RTX 3090 Ti against beta 1, back to back:
 
+- Changed: Auto VRAM uses the GPU memory free at the start less a reserve of 6% of the GPU (12% for a bake, at least 1 GB) instead of 80% of it: about 22 GB on a free 24 GB card instead of 18.8 GB, still clear of running out of memory.
+- Fixed: the simulation used more GPU memory than Simulation Memory: the block pool's estimate missed some of its textures and tables (the desert explosion set to 19 GB held 20.3 GB while previewing; now 19.5 GB, the rest being its emitters' data). The same setting now holds about 4% fewer blocks; results are unchanged.
+- Fixed: bakes wrote the Pyro and glow grids full of zeros wherever smoke had no fire: Ground Fog caches are 42% smaller, Rising Smoke 29%, Steady Fire 21%, renders identical.
+- Changed: the Pyro look always bakes Glow (its fire is the baked glow: with Glow off it rendered no fire at all); the Glow toggle shows as on for Pyro.
 - Changed: Pyro look defaults from the explosions that looked best: Glow Heat 1500-2000 K, Full Glow 1700 K, Blackbody fire colour (the Ramp stays one click away). The Fire and Explosion quick setups use the Pyro look with dense, defined soot (Smoke Density 4.5, Sharp detail, Wisp Cooling 3, no Dissipation); Fire gains Disturb billows in hot gas and Grain where it moves fast, and its source emits almost no smoke so it glows instead of showing a dark ball.
 - Fixed: the Explosion's fire clumps no longer fly into the ground and emit fire below the ground plane.
 - Changed: the Explosion quick setup is a grand ground explosion: it balloons out wide and low on a ground collider instead of shooting up into a mushroom on a smoke stem (low buoyancy, slower Simulation Speed, fuel burnt in the blast), in the Pyro look with blackbody fire and lit soot. Explosion Clumps have a Lift input (how far up they are thrown).

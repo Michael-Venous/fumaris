@@ -9,7 +9,7 @@ from . import diagnostics
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
 from .sparks import MISSING_MARKER as SPARKS_MISSING_MARKER
-from .utils import FLAME_VALUE_KEYS, flame_value, glow_source_heat, peek_output_directory_for_object, physical_buoyancy
+from .utils import FLAME_VALUE_KEYS, flame_value, glow_source_heat, is_pyro_look, peek_output_directory_for_object, physical_buoyancy
 
 
 def _foldout(layout, props, property_name, label):
@@ -1436,17 +1436,27 @@ def _draw_domain(layout, scene, props):
             resolution.active = written
             resolution.prop(props, f"export_{name}_resolution", text="")
         row = channels.split(factor=0.6, align=True)
-        row.prop(props, "export_glow_vdb", text="Glow")
+        # The Pyro look's fire is the baked glow: written whatever the toggle.
+        glow_forced = props.volume_material is None and is_pyro_look(props)
+        glow_written = props.export_glow_vdb or glow_forced
+        if glow_forced:
+            forced = row.row(align=True)
+            forced.enabled = False
+            forced.label(text="Glow", icon="CHECKBOX_HLT")
+        else:
+            row.prop(props, "export_glow_vdb", text="Glow")
         resolution = row.row(align=True)
-        resolution.active = props.export_glow_vdb
+        resolution.active = glow_written
         resolution.prop(props, "export_glow_resolution", text="")
-        if props.export_glow_vdb:
+        if glow_written:
             output.prop(props, "glow_radius")
             output.prop(props, "glow_source")
             if glow_source_heat(props):
                 heat = output.row(align=True)
                 heat.prop(props, "glow_heat_from", text="Heat From")
                 heat.prop(props, "glow_heat_to", text="To")
+        if glow_forced and not props.export_glow_vdb:
+            _wrapped(output, "The Pyro look's fire needs Glow", "INFO")
         if needed:
             _wrapped(output, "The material needs Density", "INFO")
             if not props.export_temperature_vdb and _scene_heat(props):

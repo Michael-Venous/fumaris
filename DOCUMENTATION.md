@@ -386,8 +386,12 @@ renders. If the simulation does not fit, Fumaris shows "GPU memory full": the
 driver moves data to system memory and the simulation runs very slowly, so
 lower Simulation Memory and restart.
 
-`Auto` next to Memory reserves 80% of the GPU memory that is free when the
-simulation starts (at least 0.5 GB), read from the driver; the GB value then
+`Auto` next to Memory uses the GPU memory that is free when the
+simulation starts, less a reserve of 6% of the GPU's memory (12% for a
+bake; at least 1 GB) for Blender, the desktop and Fumaris's own buffers
+outside the smoke's space (emitters, the VDB export, the preview cache's
+copies); at least 0.5 GB. On a free 24 GB card that is about 22 GB for
+the live preview and 20.5 GB for a bake. It is read from the driver; the GB value then
 only applies if no reading is available. Close other GPU work before starting
 for the most space. Drivers without a free-memory reading (some macOS
 versions) use half the GPU memory. Auto is on for new domains (Quick Setup,

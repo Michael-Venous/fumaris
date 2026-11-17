@@ -1883,7 +1883,7 @@ class FumarisSettings(PropertyGroup):
     glow_heat_from: FloatProperty(
         name="Glow Heat From",
         description="Warm Gas glow source: gas starts to light the smoke at this temperature (K)",
-        default=1000.0,
+        default=1500.0,
         min=300.0,
         soft_max=3000.0,
     )
@@ -1891,7 +1891,7 @@ class FumarisSettings(PropertyGroup):
     glow_heat_to: FloatProperty(
         name="Glow Heat To",
         description="Warm Gas glow source: gas lights the smoke fully at and above this temperature (K)",
-        default=1700.0,
+        default=2000.0,
         min=301.0,
         soft_max=4000.0,
     )
@@ -2075,7 +2075,7 @@ class FumarisSettings(PropertyGroup):
             ("GOLDEN", "Ramp", "Colour from a ramp you edit, over 0.45-1 x Full Glow (as Houdini's Pyro fire colour ramp; starts deep red to pale gold). Brightness still follows the heat", 0),
             ("BLACKBODY", "Blackbody", "Real blackbody colour of the gas temperature, as the Temperature look (Blackbody Scale shifts it)", 1),
         ),
-        default="GOLDEN",
+        default="BLACKBODY",
         update=_appearance_updated,
     )
     pyro_brightness: FloatProperty(
@@ -2090,7 +2090,7 @@ class FumarisSettings(PropertyGroup):
         name="Full Glow",
         unit="TEMPERATURE",
         description="Pyro look: temperature (K) at which fire glows at full Brightness and takes the ramp's palest gold; cooler gas falls off by Contrast toward deep red",
-        default=2000.0,
+        default=1700.0,
         min=300.0,
         soft_min=800.0,
         soft_max=3000.0,

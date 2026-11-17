@@ -32,6 +32,15 @@ def _domain_defaults():
     # would not fit several at once).
     return {**_DOMAIN_DEFAULTS, "simulation_memory_auto": not bpy.app.background}
 
+# Fire looks shared by the Fire and Explosion setups, from the two explosions
+# that looked right (cauliflower study and desert shot, 2026-11-17): dense,
+# defined soot (Smoke Density 4.5), Sharp transport (crisp billows), thin gas
+# cooling faster than dense cores (Wisp Cooling 3: glowing cores, dark wisps)
+# and soot that does not fade on its own (Dissipation 0). The Pyro look's own
+# defaults (Glow Heat 1500-2000 K, Full Glow 1700 K, Blackbody) match them.
+_PYRO_FIRE = {"shader_look": "PYRO", "shader_smoke_density": 4.5, "smoke_detail": "sharp",
+              "wisp_cooling": 3.0, "dissipation": 0.0}
+
 # Emitters are physical since 2.0: Expansion in 1/s, and Normal Velocity on a
 # closed source is a volume source (v x area), so presets use smaller values
 # than the old, mostly cancelled per-cell push (output/expansion, 2026-11-04).
@@ -50,10 +59,21 @@ PRESETS = {
         "description": "Continuous flames with rising smoke",
         # Short-lived fuel ends the flames a few source widths up instead of
         # in a tall column; more Vorticity makes them flicker (2026-11-07).
-        "domain": {"shader_flame_enabled": True, "burn_time": 0.5, "vorticity": 4.0},
+        "domain": {"shader_flame_enabled": True, "burn_time": 0.5, "vorticity": 4.0, **_PYRO_FIRE},
+        # Billows in the hot gas and crunch where it moves fast (as the
+        # Explosion; sizes relative to the source).
+        "disturb": {"strength": 120.0, "detail": 3, "size_per_size": 0.3,
+                    "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+                              {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
+        "grain": {"strength": 30.0, "size_per_size": 0.075,
+                  "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+                            {"field": "SPEED", "blend": "MULTIPLY", "range": [2.0, 5.0], "values": [0.0, 1.0]}]},
         # The source only ignites the fuel; burning makes the heat (Fuel 1
         # burns at Flame Temperature with the default Fuel Energy).
-        "emitter": {"emitter_smoke": 5.0, "emitter_temperature": 0.35,
+        # Almost no source smoke: soot forms as the fuel burns, so under Smoke
+        # Density 4.5 the source glows instead of being a dark ball of cool,
+        # unburnt gas.
+        "emitter": {"emitter_smoke": 0.1, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 10.0, "source_op_temperature": "max",
                     "emitter_fuel": 1.0, "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
@@ -74,10 +94,9 @@ PRESETS = {
         # Scatter Glow are scaled for a fireball this size in daylight AgX.
         "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 0.5, "smoke_per_burn": 2.5,
                    "oxygen_limit": 0.0, "burn_time": 1.6, "cooling_time": 1.6, "simulation_speed": 0.75,
-                   "shader_look": "PYRO", "pyro_color": "BLACKBODY", "pyro_brightness": 0.2,
-                   "pyro_glow_temperature": 1700.0, "pyro_temperature_multiplier": 0.8, "pyro_scatter_glow": 2.0,
-                   "glow_heat_from": 1500.0, "glow_heat_to": 2000.0,
-                   "shader_smoke_density": 4.5, "shader_smoke_color": (0.55, 0.53, 0.51)},
+                   "shader_look": "PYRO", "pyro_brightness": 0.2,
+                   "pyro_temperature_multiplier": 0.8, "pyro_scatter_glow": 2.0,
+                   "shader_smoke_color": (0.55, 0.53, 0.51), **_PYRO_FIRE},
         # A Disturb layer; its largest swirls relative to the sources' largest
         # dimension. Only in hot smoke (500-1500 K): the fireball rolls into
         # round billows while the cooled smoke stays coherent; Grain crunches

@@ -1,5 +1,6 @@
 """Save Playblast: the live preview's smoke over the viewport, frame by frame, to a
-movie (and its PNG frames) next to the .blend file.
+movie (and its PNG frames) kept in the domain's Versions, beside its snapshots,
+with the settings it was made with (View Changes, Load Settings).
 
 The simulation runs from the start of the range as fast as it can (not in real
 time): for each frame the scene is set to it, the largest 3D viewport is drawn
@@ -43,11 +44,22 @@ def _largest_view(context):
     return best[1:] if best else None
 
 
-def playblast_directory(domain):
-    """//playblast/<domain> next to the .blend (a temporary folder for an unsaved file)."""
-    base = bpy.path.abspath("//") if bpy.data.filepath else tempfile.gettempdir()
-    name = bpy.path.clean_name(domain.name)
-    return os.path.join(base, "playblast", name)
+PLAYBLAST_SUFFIX = "_playblast"
+MOVIE_NAME = "playblast.mp4"
+
+
+def new_playblast_directory(domain):
+    """A new folder for a playblast in the domain's Versions (its snapshot folder)."""
+    from .compare import snapshot_root
+    root = snapshot_root(domain, create=True) or tempfile.gettempdir()
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = os.path.join(root, stamp + PLAYBLAST_SUFFIX)
+    index = 1
+    while os.path.exists(path):
+        index += 1
+        path = os.path.join(root, f"{stamp}-{index}{PLAYBLAST_SUFFIX}")
+    os.makedirs(path)
+    return path
 
 
 def _encode_movie(frames_dir, names, width, height, fps, fps_base, movie_path):
@@ -92,7 +104,7 @@ class FUMARIS_OT_playblast(Operator):
     bl_idname = "fumaris.playblast"
     bl_label = "Save Playblast"
     bl_description = ("Simulate the whole range as fast as possible and save the viewport with the live smoke "
-                      "to a movie (and its PNG frames) in a playblast folder next to the .blend file. "
+                      "to a movie (and its PNG frames) in Versions, with the current settings. "
                       "Uses the largest 3D viewport as it is shown, without overlays; Esc stops it")
     bl_options = {"REGISTER"}
 
@@ -126,11 +138,7 @@ class FUMARIS_OT_playblast(Operator):
         self._start, self._end = simulation_frame_range(domain)
         self._original_frame = scene.frame_current
         self._width, self._height = self._region.width, self._region.height
-        self._directory = playblast_directory(domain)
-        os.makedirs(self._directory, exist_ok=True)
-        for name in os.listdir(self._directory):
-            if name.startswith("frame_") and name.endswith(".png"):
-                os.remove(os.path.join(self._directory, name))
+        self._directory = new_playblast_directory(domain)
         self._names = []
         self._depth_serial = 1 << 30
         session, self._participants = exporters.build_session(
@@ -255,17 +263,31 @@ class FUMARIS_OT_playblast(Operator):
             return {"CANCELLED"}
         return {"RUNNING_MODAL"}
 
+    def _keep(self, context, movie=None):
+        """List the playblast in the domain's Versions: settings, frames, movie."""
+        from . import cache, compare
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None or not self._names:
+            return
+        values = cache.settings_snapshot_data(domain, self._participants)
+        values.update(frames=[self._start, self._start + len(self._names) - 1],
+                      movie=os.path.basename(movie) if movie and os.path.isfile(movie) else "")
+        compare.write_sidecar(self._directory, **values)
+        domain.fumaris.compare_selected = "blast:" + self._directory
+        compare.forget_scan()
+
     def _complete(self, context):
         self._finish(context, cancelled=False)
-        movie = os.path.join(self._directory, f"{os.path.basename(self._directory)}.mp4")
+        movie = os.path.join(self._directory, MOVIE_NAME)
         scene = context.scene
         try:
             _encode_movie(self._directory, self._names, self._width, self._height,
                           scene.render.fps, scene.render.fps_base, movie)
-            self.report({"INFO"}, f"Playblast saved: {movie} ({len(self._names)} frames, "
+            self.report({"INFO"}, f"Playblast saved in Versions ({len(self._names)} frames, "
                                   f"{time.monotonic() - self._started:.0f} s)")
         except Exception as error:  # noqa: BLE001 - the PNG frames are still there
-            self.report({"WARNING"}, f"Playblast frames saved in {self._directory}; the movie failed: {error}")
+            self.report({"WARNING"}, f"Playblast frames saved in Versions; the movie failed: {error}")
+        self._keep(context, movie)
         return {"FINISHED"}
 
     def _finish(self, context, cancelled):
@@ -288,7 +310,12 @@ class FUMARIS_OT_playblast(Operator):
         context.workspace.status_text_set(None)
         context.scene.frame_set(self._original_frame)
         if cancelled and self._names:
-            self.report({"INFO"}, f"Playblast stopped: {len(self._names)} frames in {self._directory}")
+            # The frames made so far stay in Versions (no movie).
+            self._keep(context)
+            self.report({"INFO"}, f"Playblast stopped: {len(self._names)} frames kept in Versions")
+        elif cancelled:
+            import shutil
+            shutil.rmtree(self._directory, ignore_errors=True)
 
 
 CLASSES = (FUMARIS_OT_playblast,)

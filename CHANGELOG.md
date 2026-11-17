@@ -45,11 +45,12 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 
 ### All changes
 
-- **Save Playblast** (Bake menu ▾): simulates the range as fast as it can and
-  saves the viewport with the live smoke (overlays off, smoke hidden behind
-  objects) as an MP4 plus its PNG frames, in a playblast folder next to the
-  .blend. Nothing is kept in the preview cache, so long or high-resolution
-  shots work on any RAM. Esc stops it.
+- **Save Playblast** (Versions, and the Bake menu ▾): simulates the range as
+  fast as it can and saves the viewport with the live smoke (overlays off, smoke
+  hidden behind objects) as an MP4 plus its PNG frames, kept in Versions beside
+  the snapshots with the settings it was made with (Preview plays it; View
+  Changes, rename, pin, delete). Nothing is kept in the preview cache, so long
+  or high-resolution shots work on any RAM. Esc stops it.
 - **Eye toggle on each domain** (sidebar Domains list): hides the domain, its
   live preview and every volume imported from its bakes in the viewport, and
   shows them again; its bakes stay linked and editable. Renders are not affected.

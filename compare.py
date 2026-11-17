@@ -749,13 +749,19 @@ def side_by_side(left, right, gap=6):
     return out
 
 
-def show_image(context, image):
-    """Show `image` in an Image Editor, opening Blender's image window if none is open."""
+def show_image(context, image, frames=None):
+    """Show `image` in an Image Editor, opening Blender's image window if none is open.
+    frames (first, count): a movie or sequence plays along the timeline from first."""
     def find():
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type == "IMAGE_EDITOR":
-                    area.spaces.active.image = image
+                    space = area.spaces.active
+                    space.image = image
+                    if frames:
+                        user = space.image_user
+                        user.frame_start, user.frame_duration, user.frame_offset = frames[0], frames[1], 0
+                        user.use_auto_refresh = True
                     area.tag_redraw()
                     return True
         return False
@@ -806,8 +812,22 @@ def _image_frame(path):
     return int(tail[1]) if len(tail) == 2 and tail[1].isdigit() else None
 
 
+PLAYBLAST_SUFFIX = "_playblast"
+
+
+def _icon(entry):
+    return {"vdb": "VOLUME_DATA", "playblast": "FILE_MOVIE"}.get(entry["kind"], "IMAGE_DATA")
+
+
+def _playblast_frames(path):
+    try:
+        return sorted(name for name in os.listdir(path) if name.startswith("frame_") and name.endswith(".png"))
+    except OSError:
+        return []
+
+
 def list_entries(domain, *, fresh=False):
-    """VDB versions and snapshots, pinned first, then newest first."""
+    """VDB versions, snapshots and playblasts, pinned first, then newest first."""
     entries = []
     for version in list_versions(domain, fresh=fresh):
         if version["frames"] or version["protected"]:
@@ -844,6 +864,34 @@ def list_entries(domain, *, fresh=False):
             "settings": bool(meta.get("settings")) or bool(owner and read_settings_snapshot(owner) is not None),
             "protected": False,
         })
+    # Playblasts: a folder of frames and a movie (playblast.py), settings in its sidecar.
+    if root:
+        try:
+            folders = [name for name in os.listdir(root) if name.endswith(PLAYBLAST_SUFFIX)]
+        except OSError:
+            folders = []
+        for name in folders:
+            path = os.path.join(root, name)
+            frames = _playblast_frames(path)
+            if not os.path.isdir(path) or not frames:
+                continue
+            meta = read_sidecar(path)
+            span = meta.get("frames") or [1, len(frames)]
+            entries.append({
+                "key": "blast:" + path,
+                "kind": "playblast",
+                "name": meta.get("note") or f"Playblast · frames {span[0]}–{span[-1]}",
+                "note": meta.get("note", ""),
+                "path": path,
+                "owner": None,
+                "frame": None,
+                "frames": span,
+                "movie": os.path.join(path, meta["movie"]) if meta.get("movie") else "",
+                "modified": os.path.getmtime(path),
+                "pinned": bool(meta.get("pinned", False)),
+                "settings": bool(meta.get("settings")),
+                "protected": False,
+            })
     entries.sort(key=lambda entry: (not entry["pinned"], -entry["modified"]))
     return entries
 
@@ -863,8 +911,8 @@ def entry_settings(entry):
 
 
 def entry_summary(entry):
-    if entry["kind"] == "image":
-        return "image"
+    if entry["kind"] in ("image", "playblast"):
+        return entry["kind"]
     return version_summary(entry)
 
 
@@ -912,6 +960,12 @@ def remove_entry_from_scene(entry):
 def delete_entry(domain, entry):
     if entry["kind"] == "vdb":
         delete_version(domain, entry["name"])
+    elif entry["kind"] == "playblast":
+        shutil.rmtree(entry["path"], ignore_errors=True)
+        try:
+            os.remove(_sidecar(entry["path"]))
+        except OSError:
+            pass
     else:
         for path in (entry["path"], _sidecar(entry["path"])):
             try:
@@ -1138,7 +1192,7 @@ class FUMARIS_OT_entry_import(_DomainOperator, Operator):
 class FUMARIS_OT_entry_image(_DomainOperator, Operator):
     bl_idname = "fumaris.entry_image"
     bl_label = "Preview"
-    bl_description = "Open this snapshot in an Image Editor"
+    bl_description = "Open this snapshot, or play this playblast, in an Image Editor"
 
     key: StringProperty()
 
@@ -1148,16 +1202,27 @@ class FUMARIS_OT_entry_image(_DomainOperator, Operator):
 
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
-        if entry is None or entry["kind"] != "image":
+        if entry is None or entry["kind"] not in ("image", "playblast"):
             return {"CANCELLED"}
-        path = os.path.normpath(entry["path"])
+        frames = None
+        if entry["kind"] == "playblast":
+            # The movie (or, without one, the frames as a sequence), playing from the
+            # frame the playblast starts at as the timeline runs.
+            names = _playblast_frames(entry["path"])
+            path = entry["movie"] if entry["movie"] and os.path.isfile(entry["movie"]) else os.path.join(entry["path"], names[0])
+            frames = (entry["frames"][0], len(names))
+        else:
+            path = entry["path"]
+        path = os.path.normpath(path)
         image = next((image for image in bpy.data.images
                       if os.path.normpath(bpy.path.abspath(image.filepath)) == path), None)
         if image is None:
             image = bpy.data.images.load(path, check_existing=True)
+            if entry["kind"] == "playblast" and not path.endswith(".mp4"):
+                image.source = "SEQUENCE"
         else:
             image.reload()
-        if not show_image(context, image):
+        if not show_image(context, image, frames):
             self.report({"INFO"}, f"Image '{image.name}' ({path})")
         return {"FINISHED"}
 
@@ -1546,7 +1611,7 @@ def _button_context_menu(self, context):
         return
     layout = self.layout
     layout.separator()
-    layout.label(text=entry["name"], icon="VOLUME_DATA" if entry["kind"] == "vdb" else "IMAGE_DATA")
+    layout.label(text=entry["name"], icon=_icon(entry))
     if entry["kind"] == "vdb":
         layout.operator("fumaris.entry_import", text="Remove from Scene" if _entry_volumes(entry) else "Import",
                         icon="IMPORT").key = op.key
@@ -1559,14 +1624,14 @@ def _button_context_menu(self, context):
 def _draw_entry_row(column, domain, entry, selected):
     from . import ui
     row = column.row(align=True)
-    icon = "VOLUME_DATA" if entry["kind"] == "vdb" else "IMAGE_DATA"
+    icon = _icon(entry)
     if ui._TIGHT:
         # The name gets the room; its frames are under the selected entry.
         name = row.row(align=True)
     else:
         split = row.split(factor=0.62, align=True)
         name = split.row(align=True)
-        split.label(text="" if entry["kind"] == "image" else version_summary(entry),
+        split.label(text=version_summary(entry) if entry["kind"] == "vdb" else "",
                     icon="LOCKED" if entry["protected"] else "NONE")
     name.operator("fumaris.entry_select", text=entry["name"], icon=icon, depress=selected).key = entry["key"]
     row.operator("fumaris.entry_pin", text="", icon="PINNED" if entry["pinned"] else "UNPINNED",
@@ -1576,7 +1641,7 @@ def _draw_entry_row(column, domain, entry, selected):
         row.operator("fumaris.entry_show", text="", icon="HIDE_OFF" if shown else "HIDE_ON",
                      depress=shown).key = entry["key"]
     else:
-        row.operator("fumaris.entry_image", text="", icon="IMAGE_DATA").key = entry["key"]
+        row.operator("fumaris.entry_image", text="", icon="PLAY" if entry["kind"] == "playblast" else "IMAGE_DATA").key = entry["key"]
 
 
 def draw_compare(layout, domain, props):
@@ -1586,6 +1651,8 @@ def draw_compare(layout, domain, props):
     column = box.column(align=True)
     if not entries:
         column.label(text="Bake, or save while previewing (Cache Preview)", icon="INFO")
+    # Playblasts are kept here too (also in the Bake menu).
+    box.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE").domain_name = domain.name
     pinned = [entry for entry in entries if entry["pinned"]]
     others = [entry for entry in entries if not entry["pinned"]]
     for entry in pinned:
@@ -1607,7 +1674,7 @@ def draw_compare(layout, domain, props):
         row.operator("fumaris.entry_import", text="Remove" if imported else "Import",
                      icon="X" if imported else "IMPORT").key = entry["key"]
     else:
-        row.operator("fumaris.entry_image", icon="IMAGE_DATA").key = entry["key"]
+        row.operator("fumaris.entry_image", icon="PLAY" if entry["kind"] == "playblast" else "IMAGE_DATA").key = entry["key"]
     if ui._TIGHT:
         row = column.row(align=True)
     changes = row.row(align=True)
@@ -1615,8 +1682,13 @@ def draw_compare(layout, domain, props):
     changes.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = entry["key"]
     row.operator("fumaris.entry_menu", text="", icon="DOWNARROW_HLT").key = entry["key"]
     # What it is, on its own line (wraps in a narrow panel).
-    parts = [version_summary(entry, size=True) if entry["kind"] == "vdb"
-             else (f"Snapshot of frame {entry['frame']}" if entry.get("frame") is not None else "Snapshot")]
+    if entry["kind"] == "vdb":
+        parts = [version_summary(entry, size=True)]
+    elif entry["kind"] == "playblast":
+        first, last = entry["frames"][0], entry["frames"][-1]
+        parts = [f"Playblast of frames {first}–{last}" + ("" if entry["movie"] else ", frames only")]
+    else:
+        parts = [f"Snapshot of frame {entry['frame']}" if entry.get("frame") is not None else "Snapshot"]
     if entry["modified"]:
         parts.append("saved " + time.strftime("%b %d %H:%M", time.localtime(entry["modified"])))
     if entry["protected"]:

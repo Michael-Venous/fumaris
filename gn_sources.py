@@ -169,8 +169,10 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     points = tree.nodes.new("GeometryNodePoints")
     points.location = (-800, 300)
     _link(tree, i["Clumps"], points.inputs["Count"])
-    # Start inside the source: a random direction, at a random depth.
-    direction = _vmath(tree, "NORMALIZE", _random(tree, "FLOAT_VECTOR", (-1, -1, -1), (1, 1, 1), seed, 1, (-1000, 600)), None, (-800, 600))
+    # Start inside the source: a random direction, at a random depth. Upper
+    # hemisphere only: clumps thrown downward ended up under the ground
+    # collider, emitting fire below the floor (2026-11-17).
+    direction = _vmath(tree, "NORMALIZE", _random(tree, "FLOAT_VECTOR", (-1, -1, 0), (1, 1, 1), seed, 1, (-1000, 600)), None, (-800, 600))
     depth = _math(tree, "MULTIPLY", _random(tree, "FLOAT", 0.2, 0.7, seed, 2, (-1000, 500)), i["Radius"], (-800, 500))
     start = _vmath(tree, "SCALE", direction, depth, (-600, 600))
     # Outward and a little upward, each at its own speed.

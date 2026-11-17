@@ -160,6 +160,9 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     _socket(tree, "Fuel", "NodeSocketFloat", 16.0, 0.0)
     _socket(tree, "Expansion", "NodeSocketFloat", 14.0, 0.0)
     _socket(tree, "Seed", "NodeSocketInt", 0)
+    # Upward share of each clump's heading: low keeps the burst wide and low
+    # (a ground explosion ballooning out), high throws it up into a column.
+    _socket(tree, "Lift", "NodeSocketFloat", 0.4, 0.0)
     group_in, group_out, time = _io(tree)
     i = group_in.outputs
     seed = i["Seed"]
@@ -173,7 +176,7 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     # Outward and a little upward, each at its own speed.
     up = tree.nodes.new("ShaderNodeCombineXYZ")
     up.location = (-800, 450)
-    up.inputs["Z"].default_value = 0.4
+    _link(tree, i["Lift"], up.inputs["Z"])
     heading = _vmath(tree, "NORMALIZE", _vmath(tree, "ADD", direction, up.outputs["Vector"], (-700, 450)), None, (-600, 450))
     speed = _math(tree, "MULTIPLY", i["Speed"], _random(tree, "FLOAT", 0.4, 1.6, seed, 3, (-1000, 350)), (-600, 350))
     v0 = _vmath(tree, "SCALE", heading, speed, (-400, 450))

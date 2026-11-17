@@ -60,30 +60,42 @@ PRESETS = {
     "EXPLOSION": {
         "name": "Explosion",
         "description": "A short burst of expanding fire and smoke",
-        # Hot gas rises at about g (1 - T_air / T) ~ 8 m/s^2: the fireball
-        # lifts into a cap over a smoke stem. Disturb (size set below) breaks
-        # it into cauliflower billows; the fire burns out in about a second,
-        # leaving glowing cracks in the smoke (output/presets1.4).
-        # Grander (2026-11-08): a longer, stronger burst (8 frames, Fuel 16,
-        # Expansion 14) and more soot (Smoke Amount 2.5) leave a large
-        # mushroom cloud instead of a fireball that fades within a second.
-        "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 8.0, "smoke_per_burn": 2.5},
+        # A grand ground explosion that balloons out wide and low rather than
+        # shooting up into a mushroom on a stem (user, 2026-11-17; lessons of
+        # the desert ground-explosion shot, mushroom_cloud README). Hot gas
+        # rises at about g (1 - T_air / T) whatever its size, so a small
+        # fireball races up its own height in a moment and reads as small:
+        # low buoyancy and a slower Simulation Speed keep it big and heavy.
+        # Oxygen Limit 0 burns the fuel in the blast (with 1 a dense fireball
+        # stays full of fuel and glows evenly for the whole shot); Burn Time
+        # 1.6 then leaves fire glowing in the seams of the soot as it cools.
+        # Our Pyro look (cauliflower/desert work): blackbody fire, warm-gas
+        # glow over 1500-2000 K, dense, lit grey-brown soot; brightness and
+        # Scatter Glow are scaled for a fireball this size in daylight AgX.
+        "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 0.5, "smoke_per_burn": 2.5,
+                   "oxygen_limit": 0.0, "burn_time": 1.6, "cooling_time": 1.6, "simulation_speed": 0.75,
+                   "shader_look": "PYRO", "pyro_color": "BLACKBODY", "pyro_brightness": 0.2,
+                   "pyro_glow_temperature": 1700.0, "pyro_temperature_multiplier": 0.8, "pyro_scatter_glow": 2.0,
+                   "glow_heat_from": 1500.0, "glow_heat_to": 2000.0,
+                   "shader_smoke_density": 4.5, "shader_smoke_color": (0.55, 0.53, 0.51)},
         # A Disturb layer; its largest swirls relative to the sources' largest
         # dimension. Only in hot smoke (500-1500 K): the fireball rolls into
-        # round billows while the cooled stem and cap stay coherent; Grain
-        # crunches the fast front (Axiom lesson-10 match, 2026-11-16).
+        # round billows while the cooled smoke stays coherent; Grain crunches
+        # the fast front (Axiom lesson-10 match, 2026-11-16).
         "disturb": {"strength": 220.0, "detail": 3, "size_per_size": 0.3,
                     "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
                               {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
         "grain": {"strength": 30.0, "size_per_size": 0.075,
                   "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
                             {"field": "SPEED", "blend": "MULTIPLY", "range": [2.0, 5.0], "values": [0.0, 1.0]}]},
-        # Clumps: two dozen balls of fuel fly out of the source at random
+        # Clumps: four dozen balls of fuel fly out of the source at random
         # speeds and burn for random times (Geometry Nodes, gn_sources), so the
-        # fireball grows uneven lobes instead of one smooth ball (a "grains
-        # emitter"); the source itself keeps a smaller core burst.
-        "clumps": {"count": 24, "clump_size": 0.45, "speed_per_root_size": 7.0, "drag": 2.5,
-                   "fuel": 16.0, "expansion": 14.0},
+        # fireball grows uneven lobes instead of one smooth ball (the puff
+        # emitters of a Houdini/Axiom explosion). Thrown mostly sideways (Lift
+        # 0.05) with a strong swell, they balloon the fireball outward along
+        # the ground instead of up.
+        "clumps": {"count": 48, "clump_size": 0.45, "speed_per_root_size": 12.0, "drag": 2.5,
+                   "fuel": 16.0, "expansion": 28.0, "lift": 0.05},
         # No forced jet: a sustained upward push sheds stacked vortex rings.
         # The source only ignites the fuel (Temperature 1 is Flame
         # Temperature); burning heats it. Light source smoke: soot forms as
@@ -91,17 +103,15 @@ PRESETS = {
         # smoke.
         "emitter": {"emitter_smoke": 1.5, "emitter_temperature": 0.35,
                     "couple_rate_temperature": 30.0, "source_op_temperature": "max",
-                    # Expansion burst: the source gas swells about 14x per
+                    # Expansion burst: the source gas swells about 28x per
                     # second during its burst frames, a pressure blast that
                     # drives the fast, tearing front of a detonation.
-                    "emitter_fuel": 6.0, "normal_velocity": 1.0, "emitter_divergence": 14.0,
+                    "emitter_fuel": 6.0, "normal_velocity": 1.0, "emitter_divergence": 28.0,
                     "velocity": (0.0, 0.0, 0.0)},
-        "burst_frames": 8,
-        # Then a stem: the source vents warm soot for 80 frames, fading over the
-        # last 30, so the cloud stands on a column instead of floating off the
-        # ground (2026-11-09, output/qs_review/exp1-2).
-        "stem": {"frames": 80, "smoke": 3.0, "temperature": 0.4, "normal_velocity": 1.0,
-                 "expansion": 1.0, "fade": 30},
+        "burst_frames": 14,
+        # No smoke stem (it stood the cloud on a column: a mushroom). A ground
+        # collider under the source lets the blast spread along it.
+        "ground": True,
         "duration": 120,
     },
     "FOG": {
@@ -276,7 +286,8 @@ def _new_clumps(collection, name, minimum, maximum, start_frame, preset):
     for key, value in (("Start Frame", float(start_frame)), ("Duration", float(preset.get("burst_frames", 8))),
                        ("Clumps", int(clumps["count"])), ("Radius", 0.5 * size),
                        ("Clump Size", clumps["clump_size"]), ("Speed", clumps["speed_per_root_size"] * math.sqrt(size)),
-                       ("Drag", clumps["drag"]), ("Fuel", clumps["fuel"]), ("Expansion", clumps["expansion"])):
+                       ("Drag", clumps["drag"]), ("Fuel", clumps["fuel"]), ("Expansion", clumps["expansion"]),
+                       ("Lift", clumps.get("lift", 0.4))):
         inputs[key].default_value = value
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree

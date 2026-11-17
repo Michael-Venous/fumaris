@@ -13,6 +13,7 @@ as it moves, and the result no longer depends on the VRAM setting).
 
 Measured on an RTX 3090 Ti against beta 1, back to back:
 
+- Changed: the Explosion quick setup is a grand ground explosion: it balloons out wide and low on a ground collider instead of shooting up into a mushroom on a smoke stem (low buoyancy, slower Simulation Speed, fuel burnt in the blast), in the Pyro look with blackbody fire and lit soot. Explosion Clumps have a Lift input (how far up they are thrown).
 - Fixed: renders of baked Pyro caches spent minutes of CPU time before sampling ("Computing Volume Mesh"): the Thin Gas reference grid covered the whole smoke box in empty space. Re-bake to benefit.
 - Fixed: Pyro and Scatter Glow renders in Cycles took about 2.5 times longer than needed (3.7 times with unbiased volume sampling) and came out about 8% too dark: the coarse glow grids made Cycles march through large blocks of empty space around the smoke (where it ran out of steps), and shadow rays evaluated the whole fire shading. Bakes now write the fire's heat and glow as one grid (`pyro`) on the smoke's lattice, and shadow rays read only the smoke's density. Re-bake to benefit fully (renders get slightly brighter, as they should); older caches still render unchanged, about 1.2 times faster.
 - Fixed: OpenVDB sequence emitters kept their GPU memory after their last frame, so bakes with many of them used several GB more VRAM than Simulation Memory.

@@ -106,7 +106,7 @@ BLUE_CORE_COLOR = (0.12, 0.3, 1.0, 1.0)
 # node), Fire and Thin Gas groups, Hot Smoke Density, laid out in stages.
 # Group 9: laid out in stages (same sockets and maths as 8, so graphs before
 # 19, such as a version's own copy, still work).
-GRAPH_VERSION = 19
+GRAPH_VERSION = 20
 SHADER_GROUP_VERSION = 9
 GRAPH_VERSION_KEY = "fumaris_graph_version"
 # Pyro Soot Mask: glow fades from full at 0.5 x to none at 1.5 x Thin Gas density.
@@ -352,6 +352,8 @@ _CONTROLS = (
          "forward, so a backlit plume glows at its edges; 0 scatters evenly", -0.999999, 0.999999),
         ("Per-Emitter Color", "BOOL", False,
          "Each emitter's smoke carries its own Smoke Color: multiply by the bake's color grid"),
+        ("Hot Soot", "FACTOR", 1.0,
+         "Pyro look: how dark hot soot turns (0 keeps hot smoke the Smoke Color, 1 is full dark soot)", 0.0, 1.0),
     )),
     ("Hot Smoke Density", (
         ("Hot Smoke Density", "FLOAT", 1.0,
@@ -421,6 +423,7 @@ def control_values(settings):
         "Smoke Density": max(0.0, float(_appearance_value(settings, "shader_smoke_density", 2.0))),
         "Anisotropy": max(-0.999999, min(0.999999, float(_appearance_value(settings, "shader_anisotropy", 0.3)))),
         "Per-Emitter Color": bool(_appearance_value(settings, "color_mixing", False)),
+        "Hot Soot": max(0.0, min(1.0, float(_appearance_value(settings, "shader_hot_soot", 1.0)))),
         "Hot Smoke Density": max(0.0, float(_appearance_value(settings, "shader_hot_density", 1.0))),
         "Hot Smoke From": max(0.0, float(_appearance_value(settings, "shader_hot_density_from", 500.0))),
         "Hot Smoke To": max(0.0, float(_appearance_value(settings, "shader_hot_density_to", 1500.0))),
@@ -1274,9 +1277,10 @@ def _controls_group():
         for name in ("Smoke Color", "Per-Emitter Color", "Hot Smoke From", "Hot Smoke To", "Smoke Density",
                      "Anisotropy"):
             graph.link(i[name], o[name])
-        graph.link(pyro.outputs[0], o["Hot Soot"])
+        hot_soot = times("x Hot Soot", frame, pyro.outputs[0], i["Hot Soot"])
+        graph.link(hot_soot.outputs[0], o["Hot Soot"])
         graph.link(extra.outputs[0], o["Hot Smoke Extra"])
-        stages.append((i[0].node, [[pyro], [extra]]))
+        stages.append((i[0].node, [[pyro, hot_soot], [extra]]))
 
         # Fire inputs: Blue Core range, Colour Ramp range, Thin Gas
         frame, i = stage("Colour Ramp range: 0.45-1 x Full Glow / Blackbody Scale", _FRAME_COLOUR)

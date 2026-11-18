@@ -1961,6 +1961,16 @@ class FumarisSettings(PropertyGroup):
 
     # Hot Smoke Density (render only): the material's Look Controls; the live
     # preview does not show it.
+    shader_hot_soot: FloatProperty(
+        name="Hot Soot",
+        description="Pyro look: how dark hot soot turns (0 keeps hot smoke the Smoke Color, 1 is full dark soot)",
+        default=1.0,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_appearance_updated,
+    )
+
     shader_hot_density: FloatProperty(
         name="Hot Smoke Density",
         description="Hot gas is this many times denser than cool smoke (x1 at Hot Smoke From, rising to this at Hot "

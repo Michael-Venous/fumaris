@@ -1168,6 +1168,8 @@ def _draw_domain(layout, scene, props):
         color = _label_split(smoke, 0.2, 0.3)
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")
+        if is_pyro_look(props):
+            smoke.prop(props, "shader_hot_soot", slider=True)
         hot = _pair(smoke)
         hot.prop(props, "shader_hot_density")
         hot_range = hot.row(align=True)

@@ -587,7 +587,8 @@ class FrameRangeJob:
             cleanup(self._sample_memory, force=True)
         worker = getattr(self, "_worker", None)
         if worker:
-            cleanup(worker.close, timeout=0.0 if getattr(self, "_failed", False) else 0.5)
+            cleanup(worker.close, timeout=0.0 if getattr(self, "_failed", False) else 0.5,
+                    wait=not getattr(self, "_close_without_wait", False))
             for line in cleanup(worker.poll_stderr) or ():
                 diagnostics.add_log(getattr(self, "_diagnostic_key", None), line)
         cleanup(self._restore_imported_volumes)

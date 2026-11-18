@@ -3,6 +3,7 @@ import queue
 import sys
 import subprocess
 import threading
+import time
 from collections import deque
 
 if os.name == "nt":
@@ -47,6 +48,27 @@ from .memory_auto import update_readings as update_memory_readings
 
 _TRACE = bool(os.environ.get("FUMARIS_WORKER_TRACE"))
 
+# Bridges closed without waiting (a stopped preview) whose processes may
+# still be exiting: one holding 20 GB of GPU memory and gigabytes of pinned
+# host memory took a second or two, which Stop spent blocking Blender. A new
+# bridge waits for them on its own thread before it reads free GPU memory
+# (Auto Simulation Memory) or starts.
+_RETIRING = []
+_RETIRING_LOCK = threading.Lock()
+_RETIRING_WAIT_SECONDS = 20.0
+# A cancelled bridge still running after this is killed.
+_KILL_AFTER_SECONDS = 2.0
+
+
+def _wait_for_retiring(own):
+    deadline = time.monotonic() + _RETIRING_WAIT_SECONDS
+    with _RETIRING_LOCK:
+        workers = [worker for worker in _RETIRING if worker is not own]
+    for worker in workers:
+        worker._thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    with _RETIRING_LOCK:
+        _RETIRING[:] = [worker for worker in _RETIRING if worker._thread.is_alive()]
+
 
 class BridgeWorker:
     def __init__(self, executable, session, *, keep_alive=False):
@@ -67,6 +89,7 @@ class BridgeWorker:
         self._stderr_lock = threading.Lock()
         self._stderr_thread = None
         self._cancel_requested = threading.Event()
+        self._cancel_at = None
         self._failed = threading.Event()
         self._closing = threading.Event()
         self._reader_thread = None
@@ -100,6 +123,8 @@ class BridgeWorker:
         self._requests.put_nowait((SESSION_RESET, session, b""))
 
     def cancel(self):
+        if self._cancel_at is None:
+            self._cancel_at = time.monotonic()
         self._cancel_requested.set()
         try:
             self._requests.put_nowait((CANCEL, {}, b""))
@@ -113,8 +138,17 @@ class BridgeWorker:
             except OSError:
                 pass
 
-    def close(self, timeout=0.5):
+    def close(self, timeout=0.5, wait=True):
+        """Stop the bridge. wait=False returns at once: the process is told
+        to stop and exits on the worker thread (killed if it lingers), and
+        the next bridge waits for it before starting."""
         self.cancel()
+        if not wait:
+            if self._thread.is_alive():
+                with _RETIRING_LOCK:
+                    if self not in _RETIRING:
+                        _RETIRING.append(self)
+            return
         self._thread.join(timeout=timeout)
         with self._process_lock:
             process = self._process
@@ -153,6 +187,7 @@ class BridgeWorker:
         so a frame can be sent while the one before it is still running: the
         bridge overlaps the next frame's CPU work with a frame's GPU time."""
         try:
+            _wait_for_retiring(self)
             if self._gpu_uuid:
                 available = discover_devices(self._executable, self._environment)
                 update_memory_readings(available)
@@ -183,6 +218,8 @@ class BridgeWorker:
                 except queue.Empty:
                     if self._process.poll() is not None:
                         raise RuntimeError("Bridge exited while waiting for the next frame")
+                    if self._cancel_at is not None and time.monotonic() - self._cancel_at > _KILL_AFTER_SECONDS:
+                        self._process.kill()
                     continue
                 if self._process.poll() is not None:
                     raise RuntimeError("Bridge exited before the next frame was sent")

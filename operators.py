@@ -1418,7 +1418,12 @@ def _cancel_job(context, job):
         clear_preview(domain)
     job.request_cancel()
     if getattr(job, "_worker", None):
-        job._worker.close()
+        # A preview's bridge exits on its own thread: a large one took a
+        # second or two to release its GPU and pinned memory, and Stop froze
+        # Blender meanwhile. A save in progress is waited for (its files).
+        job._close_without_wait = (getattr(job, "_job_mode", None) == "previewing"
+                                   and not getattr(job, "_export_pending", None))
+        job._worker.close(wait=not job._close_without_wait)
     job._finish(context)
 
 

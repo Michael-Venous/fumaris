@@ -1168,6 +1168,12 @@ def _draw_domain(layout, scene, props):
         color = _label_split(smoke, 0.2, 0.3)
         color.label(text="Color")
         color.prop(props, "shader_smoke_color", text="")
+        hot = _pair(smoke)
+        hot.prop(props, "shader_hot_density")
+        hot_range = hot.row(align=True)
+        hot_range.active = props.shader_hot_density != 1.0
+        hot_range.prop(props, "shader_hot_density_from", text="From")
+        hot_range.prop(props, "shader_hot_density_to", text="To")
         _draw_emitter_colors(smoke, props)
         appearance.separator()
         flame_header = appearance.row(align=True)

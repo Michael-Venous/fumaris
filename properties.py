@@ -1959,6 +1959,37 @@ class FumarisSettings(PropertyGroup):
         soft_max=0.95,
     )
 
+    # Hot Smoke Density (render only): the material's Look Controls; the live
+    # preview does not show it.
+    shader_hot_density: FloatProperty(
+        name="Hot Smoke Density",
+        description="Hot gas is this many times denser than cool smoke (x1 at Hot Smoke From, rising to this at Hot "
+                    "Smoke To and above), as Houdini's pyro shading thickens fire. 1 is off. Render only: the live "
+                    "preview does not show it",
+        default=1.0,
+        min=0.0,
+        soft_max=20.0,
+        update=_appearance_updated,
+    )
+    shader_hot_density_from: FloatProperty(
+        name="Hot Smoke From",
+        unit="TEMPERATURE",
+        description="Temperature (K) where smoke starts to thicken (Hot Smoke Density)",
+        default=500.0,
+        min=0.0,
+        soft_max=5000.0,
+        update=_appearance_updated,
+    )
+    shader_hot_density_to: FloatProperty(
+        name="Hot Smoke To",
+        unit="TEMPERATURE",
+        description="Temperature (K) where smoke is Hot Smoke Density times as dense",
+        default=1500.0,
+        min=0.0,
+        soft_max=5000.0,
+        update=_appearance_updated,
+    )
+
     shader_flame_enabled: BoolProperty(
         name="Flame",
         description="Show burn-driven fire in the generated material and live volume preview",

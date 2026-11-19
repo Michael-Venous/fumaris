@@ -731,9 +731,20 @@ _GPU_LIST_LINE = re.compile(r"Flow device (\d+ name=|selected )")
 
 def stop_message(message, stderr):
     """A stop's report: the reason, then what the bridge said beyond its
-    routine GPU list (which read as part of every reason, 2026-11-14)."""
-    lines = [line for line in (stderr or "").splitlines()
-             if line.strip() and not _GPU_LIST_LINE.match(line)]
+    routine GPU list (which read as part of every reason, 2026-11-14) and
+    MoltenVK's start-up banner on macOS ("[mvk-info] ..." and its indented
+    extension list, which buried the reason, 2026-11-19)."""
+    lines = []
+    in_banner = False
+    for line in (stderr or "").splitlines():
+        if line.startswith("[mvk-info]"):
+            in_banner = True
+            continue
+        if in_banner and line[:1] in ("\t", " "):
+            continue
+        in_banner = False
+        if line.strip() and not _GPU_LIST_LINE.match(line):
+            lines.append(line)
     return f"{message}: {' '.join(lines)}" if lines else message
 
 

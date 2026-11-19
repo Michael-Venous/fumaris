@@ -430,7 +430,11 @@ def _folder_activity(directory, prefix):
                 if not entry.name.startswith(prefix):
                     continue
                 try:
-                    info = entry.stat(follow_symlinks=False)
+                    # os.stat, not the directory entry's cached stat: on Windows
+                    # (NTFS) the entry's size and time stay stale while the
+                    # bridge still has the file open, so a write in progress
+                    # looked idle.
+                    info = os.stat(entry.path)
                 except OSError:
                     continue
                 count += 1

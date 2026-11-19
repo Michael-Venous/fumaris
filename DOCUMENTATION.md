@@ -253,13 +253,22 @@ Under `Output`:
 solver state cannot currently be serialized, so a stopped bake cannot resume;
 the next Bake starts from the beginning.
 
+After the last frame is simulated, the bake still writes the frames waiting
+for the disk; the status shows `Writing the last frames to disk…`. At high
+resolution on a hard disk or network drive this can take minutes: the bake
+waits for it and ends by itself. `Stop` in that phase ends the bake at once:
+the frames already written are kept and imported, the ones still being
+written are lost.
+
 ### Bake in Background
 
 `Bake in Background` (in the menu beside Bake) bakes the domain in a
 separate Blender process, so you can keep working: edit the scene, play a live
 preview or bake another domain. `Bake All` and `Bake Selected`, in the Fumaris
 tab of the 3D Viewport's sidebar, do the same for every domain in the scene or
-for the selected domains.
+for the selected domains. Background bakes run hidden, without a live preview,
+whatever `Preview While Baking` is set to; the volume appears when the bake is
+done.
 
 - A background bake uses the scene as it was when you clicked, unsaved changes
   included. Edits you make afterwards do not reach it.
@@ -274,12 +283,18 @@ for the selected domains.
   Simulation GPU.
 - With more than one GPU in use, each bake's progress says which GPU it runs
   on.
-- When more bakes run than GPUs are ticked, several share a GPU. Give each
-  domain a fixed `VRAM (GB)` instead of Auto, so they fit together.
+- When more bakes run than GPUs are ticked, several share a GPU. With Auto,
+  each takes what is free on its GPU when it starts, so a later one gets less
+  (down to 0.5 GB, and its smoke may be cut off). Give each domain a fixed
+  `VRAM (GB)` instead of Auto, so they fit together.
 - While a domain bakes, its panel and its row in the sidebar show the frame,
   the speed and the time left, with a `Stop`. Stop keeps the frames already
   written, like Stop during a Bake. A second click (`Stop Now`) ends the bake at
   once and loses the frame it was writing.
+- After the last frame the status shows `Writing the last frames to disk…`
+  while the last files are written (minutes on a slow disk at high
+  resolution); the bake then ends by itself. Stop in that phase ends it at
+  once, keeping the frames already written.
 - Bake, Delete and Play are unavailable for that domain until its bake ends.
   Other domains are not affected.
 - When it ends, the bake is imported and shown like any bake. If you are in
@@ -385,8 +400,13 @@ higher resolution covers a smaller region.
 
 Leave room for Blender and anything else on the same GPU, such as Cycles
 renders. If the simulation does not fit, Fumaris shows "GPU memory full": the
-driver moves data to system memory and the simulation runs very slowly, so
-lower Simulation Memory and restart.
+driver moves data to system memory and the simulation runs very slowly. Lower
+VRAM or close other GPU programs, then press Play (or Bake) again; with Auto
+on, close other GPU programs or turn Auto off and set a lower VRAM.
+
+VRAM is GPU memory only. The preview cache (Cache Preview) keeps its frames in
+system RAM, with its own limit (Preferences > Preview Cache RAM); its figures
+in the panel say RAM.
 
 `Auto` next to Memory uses the GPU memory that is free when the
 simulation starts, less a reserve of 6% of the GPU's memory (12% for a
@@ -402,7 +422,11 @@ only how much room the smoke has. Turn it off to reserve a set amount, for
 example to leave memory to other programs (Quick Setup's domains then use
 2 GB, which holds every preset with room to spare). A set amount larger than the GPU's memory
 is flagged under the field: it would spill into system memory and run slowly. The panel shows the amount Auto resolved to at the last
-start; Diagnostics shows the voxel size (32 scene units divided by Resolution),
+start, with the free memory it was read from and what it left free, for
+example `Auto VRAM: 9.0 GB (10.0 GB free, 1.0 GB left free)`; the VRAM bar's
+total is that amount. Auto reads the free memory once, when the simulation
+starts: a program started afterwards (a Cycles render, a game) is not
+accounted for until you Stop and Play again. Diagnostics shows the voxel size (32 scene units divided by Resolution),
 the voxel count and about how much space the budget lets smoke fill. The live
 preview's shadow and flame light volumes are part of the same budget.
 
@@ -417,7 +441,7 @@ the Oxygen Field; the difference shrinks as Resolution rises.
 Scenes without fire store no fuel or burn, and scenes without heat no
 temperature. This is automatic, also with `Full-Resolution Channels`. Fuel
 and burn go back to full resolution while `Full-Resolution Channels`
-(Advanced), the Fuel or Burn output or `Per-Emitter Color` is on.
+(Advanced), the Fuel or Burn output or `Per-Emitter Smoke Color` is on.
 
 Resolution has no artificial maximum: values above the slider's suggested
 range can be typed directly, but extreme values produce no extra detail when
@@ -690,11 +714,14 @@ smoke back to the amount it started with, within 5%. Dissipation, Decay and
 combustion still add and remove smoke as set. (Beta 1 had a `Conserve Smoke`
 switch for this; scripts can still set `conserve_smoke`.)
 
-### Per-Emitter Color
+### Per-Emitter Smoke Color
 
-`Per-Emitter Color` (Look, under the smoke Color) lets each emitter's smoke
-carry its own `Smoke Color`, set with the swatch beside Smoke on the emitter
-(times the domain's Color). Where plumes meet, the colors mix by amount; smoke
+`Per-Emitter Smoke Color` (Look, under the smoke Color; called Per-Emitter
+Color before 2.0 beta 3) lets each emitter's smoke carry its own `Smoke
+Color`, set with the swatch beside Smoke on the emitter, under Emitted
+Channels (times the domain's Color). It colors the smoke only, not the flame:
+the flame's color is set under Flame in the Look (Ramp or Blackbody, Flame
+Tint), for the whole domain. Where plumes meet, the colors mix by amount; smoke
 that combustion forms takes the color of the emitted smoke around it. The live
 preview tints the smoke, bakes gain a `color` grid, and the generated material
 multiplies its Color by that grid (a volume without the grid is unchanged).
@@ -704,7 +731,8 @@ a third fewer blocks for the same VRAM, so it is off by default. While it is
 off, an emitter shows a color button instead of the swatch: it offers to turn
 the option on for the emitter's domain or to show the domain's Color, which
 colors all of its smoke at no cost. With the option on and every emitter the
-same color, the domain's Look says so. Mesh, box, sphere, Collection Points,
+same Smoke Color, the domain's Look says so: the option changes nothing until
+the emitters have different colors. Mesh, box, sphere, Collection Points,
 Collection Mesh, particle and OpenVDB sources all carry a color (one per
 emitter, or per particle system).
 
@@ -981,7 +1009,7 @@ Density is the standard smoke grid. Additional outputs are:
   Temperature and Velocity average the gas only. Velocity is simulated at half
   resolution and written at Half by default; Full appears with Full-Resolution
   Channels. VDB Precision Half (default) stores 16-bit values.
-- `color` (with Per-Emitter Color): the smoke's color per voxel, as the emitters'
+- `color` (with Per-Emitter Smoke Color): the smoke's color per voxel, as the emitters'
   Smoke Colors mixed by amount; white where no emitted smoke is. The
   generated material multiplies its Colour by it; in your own material, an
   Attribute node named `color` does the same.
@@ -1307,7 +1335,12 @@ Preferences > Preview Cache RAM sets the most memory the cache may use (0: a
 quarter of the RAM, from 1 to 16 GB; set more to keep more frames, for example
 20 on a 32 GB machine). When it is full the oldest frames are dropped, so the
 cache holds the most recent part of the preview; the status line shows the
-range it still holds and its size against the limit. Whatever RAM is set to,
+range it still holds and its size against the limit, for example `Preview
+cache: frames 84–109 · 8.4 of 8.6 GB RAM`. A full cache is not an error: the
+simulation keeps running, and the panel says `Preview cache RAM is full`, which
+frames were dropped and what Save Sequence still keeps. To keep more frames,
+raise Preview Cache RAM, set Cache Every to 2 or more, lower Resolution, or
+Bake (to disk, any length). Whatever RAM is set to,
 the cache also drops its oldest frames when the system runs short of free
 memory, leaving 2 GB or an eighth of the RAM (whichever is more) for Blender and
 other programs; the status line then says System RAM is low.

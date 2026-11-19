@@ -49,6 +49,7 @@ from .exporters import bridge_executable, build_session
 from .importers import VOLUME_MARKER, baked_frame_count, delete_generated_data, delete_temporary_writes
 from .preview import clear_preview
 from .runtime import active_job, active_mode, background_job
+from .jobs import WRITING_LAST_FRAMES
 from .utils import (
     addon_directory,
     cache_slot_directory,
@@ -811,8 +812,13 @@ def progress(job):
     status = job.status
     total = max(1, int(status.get("end", 0)) - int(status.get("start", 0)) + 1)
     frames = int(status.get("frames", 0))
+    writing = WRITING_LAST_FRAMES if status.get("writing") else ""
     if job.state == "stopping":
-        return frames / total, f"Stopping after frame {frames} of {total}", ""
+        return frames / total, f"Stopping after frame {frames} of {total}", writing
+    if writing:
+        # Every frame is simulated: the last files take a while on a slow
+        # disk (was "0 s left" for minutes, 2026-11-19).
+        return frames / total, f"Frame {frames} of {total}", writing
     if not status.get("accepted"):
         return None, "Starting…", "First-run shaders can take several minutes"
     fps = float(status.get("fps", 0.0))
@@ -895,7 +901,9 @@ class FUMARIS_OT_bake_background(Operator):
     bl_idname = "fumaris.bake_background"
     bl_label = "Bake in Background"
     bl_description = ("Bake this domain in a separate Blender process, from the scene as it is now: keep working, "
-                      "preview or bake other domains meanwhile. Preferences > Baking sets how many bake at once and on which GPUs")
+                      "preview or bake other domains meanwhile. It runs hidden, without a live preview, whatever "
+                      "Preview While Baking is set to; the volume appears when it is done. "
+                      "Preferences > Baking sets how many bake at once and on which GPUs")
 
     # Set by the Replace / New Bake menu. Scripts calling the operator
     # directly bake into the current version, unasked.
@@ -967,8 +975,9 @@ def bake_all_domains(context, scope="AUTO"):
 class FUMARIS_OT_bake_all(Operator):
     bl_idname = "fumaris.bake_all"
     bl_label = "Bake All"
-    bl_description = ("Bake every domain in the scene in the background. Preferences > Baking sets how many "
-                      "bake at once and on which GPUs; the others wait their turn")
+    bl_description = ("Bake every domain in the scene in the background. It runs hidden, without a live preview, "
+                      "whatever Preview While Baking is set to; each volume appears when its bake is done. "
+                      "Preferences > Baking sets how many bake at once and on which GPUs; the others wait their turn")
 
     # The sidebar's two buttons: every domain, or the selected ones. AUTO
     # (scripts): the selected ones when some are selected, else every domain.
@@ -1001,8 +1010,9 @@ class FUMARIS_OT_bake_all(Operator):
     @classmethod
     def description(cls, _context, properties):
         if properties.scope == "SELECTED":
-            return ("Bake the selected domains in the background. Preferences > Baking sets how many bake at once "
-                    "and on which GPUs; the others wait their turn")
+            return ("Bake the selected domains in the background. It runs hidden, without a live preview, "
+                    "whatever Preview While Baking is set to; each volume appears when its bake is done. "
+                    "Preferences > Baking sets how many bake at once and on which GPUs; the others wait their turn")
         return cls.bl_description
 
     def _waiting(self, context):
@@ -1073,8 +1083,13 @@ class FUMARIS_OT_bake_background_stop(Operator):
             return "Stop every background bake after the frame it is on, and drop the queued ones. The frames written so far are kept"
         domain = bpy.data.objects.get(properties.domain) if properties.domain else _active_domain(context)
         job = background_job(domain)
+        if job is not None and job.state == "stopping" and job.status.get("writing"):
+            return "The bake is writing its last frames to disk. Click to end it now: the frames not yet written are lost"
         if job is not None and job.state == "stopping":
             return "The bake is finishing the frame it is on. Click to end it now: that frame is lost"
+        if job is not None and job.status.get("writing"):
+            return ("Every frame is simulated and the last ones are being written to disk. "
+                    "Stop ends it now: the frames already written are kept and imported, the rest are lost")
         if job is not None and job.state == "queued":
             return "Take this domain out of the queue"
         return cls.bl_description

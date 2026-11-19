@@ -58,6 +58,18 @@ _RETIRING_LOCK = threading.Lock()
 _RETIRING_WAIT_SECONDS = 20.0
 # A cancelled bridge still running after this is killed.
 _KILL_AFTER_SECONDS = 2.0
+# After the last frame the bridge still writes its queued VDB files: on a hard
+# disk at high resolution that took minutes (beta 2 killed it after 30 s,
+# losing the last frames and leaving the bake waiting forever). The worker now
+# waits as long as the bridge shows any sign of work: a reply, a log line, CPU
+# time, or a file in its output folder changing. Only a bridge showing none of
+# them for _HUNG_SECONDS is taken as hung (reported as failed, then killed).
+_READER_POLL_SECONDS = 0.25
+_ACTIVITY_CHECK_SECONDS = 10.0
+_HUNG_SECONDS = 600.0
+# An exited bridge's output ends at once; a reader still blocked after this
+# (an inherited pipe) is given up on.
+_EXITED_GRACE_SECONDS = 5.0
 
 
 def _wait_for_retiring(own):
@@ -91,7 +103,11 @@ class BridgeWorker:
         self._cancel_requested = threading.Event()
         self._cancel_at = None
         self._failed = threading.Event()
+        self._failure_lock = threading.Lock()
         self._closing = threading.Event()
+        # Signs of life while waiting for the last frames' files.
+        self._messages_received = 0
+        self._stderr_lines = 0
         self._reader_thread = None
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -241,19 +257,73 @@ class BridgeWorker:
                     break
             # Every request is written: the replies still to come end the
             # reader (the session's completion, or the stream closing).
-            if self._reader_thread is not None:
-                self._reader_thread.join(timeout=30.0)
+            self._wait_for_reader()
         except Exception as error:
             self._report_failure(error)
         finally:
             self._closing.set()
             self._close_process()
 
+    def _wait_for_reader(self):
+        """Wait for the session's last replies: as long as the bridge lives
+        and works (writing the last frames can take minutes), ending early
+        only when it failed, was cancelled (killed after _KILL_AFTER_SECONDS)
+        or shows no sign of work for _HUNG_SECONDS."""
+        reader = self._reader_thread
+        if reader is None:
+            return
+        process = self._process
+        last_activity = self._activity()
+        active_at = next_check = time.monotonic()
+        exited_at = None
+        while reader.is_alive():
+            reader.join(timeout=_READER_POLL_SECONDS)
+            if not reader.is_alive() or self._failed.is_set():
+                return
+            now = time.monotonic()
+            if process.poll() is not None:
+                # Its output ends with it: the reader sees the end at once.
+                exited_at = exited_at if exited_at is not None else now
+                if now - exited_at > _EXITED_GRACE_SECONDS:
+                    self._report_failure(RuntimeError(_ENDED_EARLY_MESSAGE))
+                    return
+                continue
+            if self._cancel_at is not None:
+                if now - self._cancel_at > _KILL_AFTER_SECONDS:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                continue
+            if now >= next_check:
+                next_check = now + _ACTIVITY_CHECK_SECONDS
+                activity = self._activity()
+                if activity != last_activity:
+                    last_activity, active_at = activity, now
+                elif now - active_at > _HUNG_SECONDS:
+                    minutes = max(1, int(round(_HUNG_SECONDS / 60.0)))
+                    self._report_failure(RuntimeError(
+                        "The simulation process stopped responding while writing the last frames "
+                        f"(no progress for {minutes} minute{'s' if minutes != 1 else ''})"))
+                    return
+
+    def _activity(self):
+        """What changes while the bridge works: replies, log lines, its CPU
+        time and its output folder's files (None where unknown)."""
+        process = self._process
+        return (
+            self._messages_received,
+            self._stderr_lines,
+            process_cpu_seconds(process.pid) if process is not None else None,
+            _folder_activity(self._session.get("output_directory"), self._session.get("output_prefix")),
+        )
+
     def _read_responses(self):
         """Reader thread: every reply, in order, to self.responses."""
         try:
             while True:
                 response = read_message(self._process.stdout)
+                self._messages_received += 1
                 if _TRACE:
                     print(f"WORKER got {response[0]} frame={response[1].get('frame') if isinstance(response[1], dict) else None} payload={len(response[2])}", file=sys.stderr, flush=True)
                 if response[0] == FAILED:
@@ -263,14 +333,18 @@ class BridgeWorker:
                     return
         except Exception as error:
             if self._closing.is_set() and isinstance(error, (EOFError, OSError, ValueError)):
-                return   # the stream closed as the session ended
+                # The stream closed as the session ended without its last
+                # reply (SESSION_COMPLETE or CANCELLED): the bridge was
+                # stopped (CANCELLED) or died (FAILED). A job always hears.
+                error = RuntimeError(_ENDED_EARLY_MESSAGE)
             self._report_failure(error)
 
     def _report_failure(self, error):
         """One CANCELLED or FAILED reply, whichever thread hit the problem first."""
-        if self._failed.is_set():
-            return
-        self._failed.set()
+        with self._failure_lock:
+            if self._failed.is_set():
+                return
+            self._failed.set()
         message_type = (
             CANCELLED if self._cancel_requested.is_set() else FAILED
         )
@@ -314,6 +388,7 @@ class BridgeWorker:
             if not chunk:
                 return
             line = chunk.decode("utf-8", errors="replace")
+            self._stderr_lines += 1
             with self._stderr_lock:
                 self._stderr.append(line)
                 self._pending_stderr.append(line)
@@ -338,6 +413,66 @@ class BridgeWorker:
             process.stdout.close()
         if process.stderr and (not self._stderr_thread or not self._stderr_thread.is_alive()):
             process.stderr.close()
+
+
+_ENDED_EARLY_MESSAGE = "The simulation process ended before the last frames were written"
+
+
+def _folder_activity(directory, prefix):
+    """(files, bytes, newest change) of the bridge's files in its output
+    folder, or None: a writer still writing changes it."""
+    if not directory or not prefix:
+        return None
+    count = size = newest = 0
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if not entry.name.startswith(prefix):
+                    continue
+                try:
+                    info = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                count += 1
+                size += info.st_size
+                newest = max(newest, info.st_mtime_ns)
+    except OSError:
+        return None
+    return count, size, newest
+
+
+def process_cpu_seconds(pid):
+    """A process's CPU time so far (user and system), or None where unknown."""
+    try:
+        if os.name == "nt":
+            return _windows_process_cpu_seconds(pid)
+        with open(f"/proc/{int(pid)}/stat", encoding="ascii") as stream:
+            fields = stream.read().rsplit(")", 1)[1].split()
+        # utime and stime: fields 14 and 15 of proc(5), after the name.
+        return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, AttributeError):
+        return None   # macOS has no /proc: the other signs of work count
+
+
+def _windows_process_cpu_seconds(pid):
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    handle = kernel32.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        times = [wintypes.FILETIME() for _ in range(4)]
+        if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+            return None
+        # Kernel and user time, in 100 ns units.
+        return sum((t.dwHighDateTime << 32 | t.dwLowDateTime) for t in times[2:]) / 1e7
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def _popen_options():

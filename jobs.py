@@ -11,6 +11,7 @@ from .diagnostics import console_log
 from . import diagnostics
 from .exporters import bridge_executable, build_frame, build_session
 from .importers import (
+    baked_frame_count,
     delete_generated_data,
     delete_temporary_writes,
     hide_generated_volumes,
@@ -32,6 +33,17 @@ from .utils import (
     runtime_validation_error,
     simulation_frame_range,
 )
+
+
+# A bake's status once every frame is simulated and its files are still
+# being written (the panel's and a background bake's).
+WRITING_LAST_FRAMES = "Writing the last frames to disk…"
+
+
+def writing_last_frames(job):
+    """True for a bake waiting for its last frames' files."""
+    check = getattr(job, "writing_last_frames", None)
+    return bool(check()) if callable(check) else False
 
 
 class FrameRangeJob:
@@ -125,6 +137,7 @@ class FrameRangeJob:
         self._accepted = False
         self._stop_requested = False
         self._ending_session = False
+        self._stop_now = False
         self._show_progress = bool(show_progress)
         self._finished = False
         self._failed = False
@@ -317,6 +330,8 @@ class FrameRangeJob:
                         f"{self._final_flush_ms:.3f}ms"
                     )
                 return self._complete(context)
+            if message_type == CANCELLED and getattr(self, "_stop_now", False):
+                return self._stopped_while_writing(context)
             if message_type in {CANCELLED, FAILED}:
                 return self._cancelled(context, data)
 
@@ -352,7 +367,28 @@ class FrameRangeJob:
         """Escape pressed: True when it stopped something (overridden)."""
         return False
 
+    def writing_last_frames(self):
+        """A bake whose frames are all simulated, waiting while the bridge
+        writes the last ones to disk (minutes on a slow disk at high
+        resolution): the status says so instead of "0 s left"."""
+        return bool(
+            getattr(self, "_job_mode", None) == "baking"
+            and getattr(self, "_accepted", False)
+            and getattr(self, "_ending_session", False)
+            and not self._submitted
+            and not getattr(self, "_finished", False)
+        )
+
     def request_stop(self, _context=None):
+        if self.writing_last_frames():
+            # Nothing is left to simulate, only files to write: Stop ends the
+            # bridge now. The frames already on disk are kept and imported;
+            # the ones still being written are lost.
+            self._stop_requested = True
+            self._stop_now = True
+            self._worker.cancel()
+            console_log(f"Fumaris stop requested for {self._domain_name} while writing its last frames")
+            return
         self._stop_requested = True
         if self._accepted and not self._submitted and not self._ending_session:
             self._ending_session = True
@@ -547,6 +583,19 @@ class FrameRangeJob:
 
     def _next_frame_after_complete(self, _context, completed):
         return completed + 1
+
+    def _stopped_while_writing(self, context):
+        """Stopped while the bridge wrote its last frames: a stopped bake of
+        the frames that reached the disk."""
+        try:
+            on_disk = baked_frame_count(self._directory, self._prefix)
+        except OSError:
+            on_disk = len(self._completed_frames)
+        self._completed_frames = list(self._completed_frames)[:on_disk]
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain:
+            domain.fumaris.baked_frames = len(self._completed_frames)
+        return self._complete(context)
 
     def _end_of_range(self, context, _completed):
         self._ending_session = True

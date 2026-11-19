@@ -35,7 +35,7 @@ from .importers import (
     import_sequence,
     _frame_files,
 )
-from .jobs import FrameRangeJob, stop_message
+from .jobs import FrameRangeJob, stop_message, writing_last_frames
 from .protocol import PREVIEW_CACHE_EXPORTED
 from .preview import (
     capture_volume_preview,
@@ -1921,6 +1921,14 @@ class FUMARIS_OT_stop(_ActiveBakeOperator, Operator):
     bl_idname = "fumaris.stop"
     bl_label = "Stop"
     bl_description = "Stop the active bake and import the frames written so far"
+
+    @classmethod
+    def description(cls, context, _properties):
+        job = active_job() if active_mode() == "baking" else None
+        if writing_last_frames(job):
+            return ("Every frame is simulated and the last ones are being written to disk. "
+                    "Stop ends it now: the frames already written are kept and imported, the rest are lost")
+        return cls.bl_description
 
     def execute(self, context):
         job = self._active_job(context)

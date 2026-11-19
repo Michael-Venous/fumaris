@@ -204,6 +204,8 @@ class _Status:
             "frame": 0,
             "frames": 0,
             "fps": 0.0,
+            # Every frame simulated, the last files still being written.
+            "writing": False,
             "elapsed": 0.0,
             "peak_vram_bytes": 0,
             "peak_ram_bytes": 0,
@@ -238,6 +240,7 @@ class _Status:
             frame=int(bake._completed_frames[-1]) if frames else int(bake._progress_start_frame),
             frames=frames,
             fps=(self._samples[-1][1] - self._samples[0][1]) / span if span > 0.0 else 0.0,
+            writing=bake.writing_last_frames(),
             elapsed=now - bake._started_at,
             peak_vram_bytes=int(bake._peak_vram_bytes),
             peak_ram_bytes=int(bake._peak_ram_bytes),

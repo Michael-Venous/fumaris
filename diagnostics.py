@@ -197,6 +197,15 @@ def memory_usage(state):
     return allocated * min(1.0, use), allocated
 
 
+def memory_full_advice(state):
+    """What to do when the simulation does not fit in GPU memory. Under
+    Auto there is no VRAM amount to lower: Auto already took what was free."""
+    again = "bake again" if (state or {}).get("mode") in ("Bake", "Background Bake") else "press Play again"
+    if (state or {}).get("vram_setting") == "auto":
+        return f"Close other GPU programs, or turn Auto off and set a lower VRAM, then {again}."
+    return f"Lower VRAM or close other GPU programs, then {again}."
+
+
 def memory_spill_warning(state):
     """Explain a simulation that no longer fits in GPU memory."""
     spilled = value(state, "flow_system_memory_fallback_bytes") if state else 0.0
@@ -204,8 +213,7 @@ def memory_spill_warning(state):
         return ""
     return (
         f"GPU memory is full: {spilled / 1073741824:.1f} GB of simulation data went to "
-        "system memory, so it runs very slowly. Lower VRAM, or close "
-        "other GPU work such as Cycles renders, then restart."
+        "system memory, so it runs very slowly. " + memory_full_advice(state)
     )
 
 

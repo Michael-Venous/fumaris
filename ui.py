@@ -5,6 +5,7 @@ from bpy.types import Panel
 
 from . import detail_stack
 from .runtime import active_job, active_mode, background_job
+from .jobs import WRITING_LAST_FRAMES, writing_last_frames
 from . import diagnostics
 from .memory_auto import draw_budget_summary
 from .cache import is_protected
@@ -394,7 +395,7 @@ def _draw_emitter(layout, obj, props):
         smoke_row.active = not props.emitter_influence
         smoke_row.prop(props, "emitter_smoke")
         # Its own smoke color: the swatch while a domain of it has Per-Emitter
-        # Color on; otherwise a button that offers to turn it on (with its
+        # Smoke Color on; otherwise a button that offers to turn it on (with its
         # cost) or to set the domain's Color, so no one pays for it unawares.
         domains = emitter_domains(obj)
         # (narrow, so the Smoke label keeps its room)
@@ -650,13 +651,21 @@ def _draw_memory_usage(layout, domain):
     started = state.get("vram_setting")
     if isinstance(started, float):
         allocated = started * gib
-    elif started == "auto" and diagnostics.value(state, "flow_auto_memory_bytes") > 0:
-        allocated = diagnostics.value(state, "flow_auto_memory_bytes")
+    elif started == "auto":
+        # Auto's amount, as the Auto line shows it (Flow's own allocation can
+        # differ from it, and read as a second, larger VRAM figure).
+        from .memory_auto import budget_bytes_for_display
+        auto = diagnostics.value(state, "flow_auto_memory_bytes")
+        if auto <= 0 and getattr(domain, "fumaris", None) is not None and domain.fumaris.simulation_memory_auto:
+            auto = budget_bytes_for_display(domain.fumaris, state)[0] or 0
+        if auto > 0:
+            allocated = auto
     used = fraction * allocated
     # GPU memory: the simulation's reserved pool and the share smoke fills.
     if _NARROW:
-        # (the whole line no longer fits: the bar cut it mid-text)
-        text = f"In use {used / gib:.1f}/{allocated / gib:.1f} GB ({fraction:.0%})"
+        # (the whole line no longer fits: the bar cut it mid-text; it still
+        # says VRAM, so it is not read as the preview cache's RAM below)
+        text = f"VRAM {used / gib:.1f}/{allocated / gib:.1f} GB ({fraction:.0%})"
     else:
         # "reserved": the total is the pool Flow holds, the fill what smoke
         # uses of it (0.0 of 1.0 GB read as wrong while Flow held 823 MB).
@@ -677,9 +686,8 @@ def _draw_capacity_warning(layout, domain):
         box = layout.column(align=True)
         title = box.row(align=True)
         title.alert = True
-        title.label(text="GPU memory full — simulation slowed", icon="ERROR")
-        box.label(text="Lower VRAM or free")
-        box.label(text="GPU memory, then restart.")
+        title.label(text="GPU memory full: simulation slowed", icon="ERROR")
+        _wrapped(box, diagnostics.memory_full_advice(state))
     status = diagnostics.capacity_status(state)
     if not status:
         return
@@ -782,9 +790,12 @@ def _draw_preview_cache_status(layout, scene, job, paused):
         _wrapped(layout, "At the end: Resume starts over", "INFO")
     frames = cache["frames"]
     every = "" if frames >= last - first + 1 else f" ({frames} frames)"
-    _wrapped(layout, f"Cache {first}–{last}{every} · {size_text(cache.get('bytes', 0))} of "
-                     f"{size_text(cache.get('budget', 0))}", "DISK_DRIVE")
-    # Out of cache RAM: say which frames are gone and what Save Sequence keeps.
+    # The cache lives in system RAM, not on the GPU: its figures say so (a
+    # tester read "8.6 GB" beside the VRAM bar as GPU memory, 2026-11-19).
+    _wrapped(layout, f"Preview cache: frames {first}–{last}{every} · {size_text(cache.get('bytes', 0))} of "
+                     f"{size_text(cache.get('budget', 0))} RAM", "DISK_DRIVE")
+    # Out of cache RAM: not an error (the simulation runs on), so no red;
+    # which frames are gone and what Save Sequence keeps is the one warning.
     start = None
     domain = bpy.data.objects.get(getattr(job, "_domain_name", "") or "")
     if domain is not None:
@@ -793,17 +804,16 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     lost = start is not None and first > start
     if cache.get("low_memory") or cache.get("dropped") or lost:
         box = layout.box().column(align=True)
-        box.alert = True
         if cache.get("low_memory"):
-            _wrapped(box, "Out of RAM: system memory is low (other programs use it), so the cache holds fewer frames",
-                     "ERROR")
+            _wrapped(box, "System RAM is low (other programs use it), so the preview cache keeps fewer frames. "
+                          "The simulation is not affected.", "INFO")
         else:
-            _wrapped(box, f"Cache full: it holds {size_text(cache.get('budget', 0))}", "ERROR")
+            _wrapped(box, f"Preview cache RAM is full ({size_text(cache.get('budget', 0))}): the oldest frames "
+                          "are dropped. The simulation is not affected.", "INFO")
         if lost:
             gone = f"frame {start}" if first - 1 == start else f"frames {start}–{first - 1}"
-            _wrapped(box, f"Lost {gone}; Save Sequence keeps only {first}–{last}", "BLANK1")
-        box.alert = False
-        _wrapped(box, "Keep more: Preferences > Preview Cache RAM, Cache Every 2+, lower Resolution, "
+            _wrapped(box, f"Lost {gone}; Save Sequence keeps only {first}–{last}", "ERROR")
+        _wrapped(box, "Keep more frames: Preferences > Preview Cache RAM, Cache Every 2+, lower Resolution, "
                       "or Bake (to disk, any length)", "INFO")
 
 
@@ -833,7 +843,7 @@ _COLOR_CHECK_LIMIT = 500
 
 
 def _emitter_color_note(props):
-    """None, or why Per-Emitter Color buys nothing in this domain: every
+    """None, or why Per-Emitter Smoke Color buys nothing in this domain: every
     enabled emitter has one (unanimated) colour, which the domain's Color
     gives without the second smoke field."""
     collection = props.emitter_collection
@@ -860,11 +870,12 @@ def _emitter_color_note(props):
             return None
     if len(colors) != 1:
         return None
-    return "Every emitter has the same color: turn this off and set Color, which looks the same at no cost"
+    return ("All emitters have the same Smoke Color, so this changes nothing yet. Give the emitters "
+            "different Smoke Colors (emitter > Emitted Channels), or turn this off and use Color above")
 
 
 def _draw_emitter_colors(layout, props):
-    """Per-Emitter Color, under the smoke Color: the switch, its cost while
+    """Per-Emitter Smoke Color, under the smoke Color: the switch, its cost while
     it is on, and a note when it buys nothing."""
     layout.prop(props, "color_mixing")
     if not props.color_mixing:
@@ -874,7 +885,8 @@ def _draw_emitter_colors(layout, props):
         # (advice, not an error: the result is right, only slower)
         _wrapped(layout, note, "INFO")
     else:
-        _wrapped(layout, "Costs about 1.4x the simulation time and a third of the blocks per GB", "INFO")
+        _wrapped(layout, "Colors the smoke, not the flame. Costs about 1.4x the simulation time and a third "
+                         "of the blocks per GB", "INFO")
 
 
 def emitter_domains(obj, scene=None):
@@ -913,9 +925,9 @@ class FUMARIS_MT_bake_more(bpy.types.Menu):
 class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
     bl_idname = "fumaris.emitter_color_offer"
     bl_label = "Own Smoke Color"
-    bl_description = ("Give this emitter's smoke its own color. That needs the domain's Per-Emitter Color "
-                      "(about 1.4x the simulation time and a third of the blocks per GB); for one color "
-                      "everywhere, set the domain's Color instead")
+    bl_description = ("Give this emitter's smoke its own color (the smoke, not the flame). That needs the "
+                      "domain's Per-Emitter Smoke Color (about 1.4x the simulation time and a third of the "
+                      "blocks per GB); for one color everywhere, set the domain's Color instead")
 
     def invoke(self, context, _event):
         obj = context.object
@@ -926,7 +938,7 @@ class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
 
         def draw(menu, _context):
             layout = menu.layout
-            layout.label(text="Per-Emitter Color: about 1.4x the simulation time", icon="INFO")
+            layout.label(text="Per-Emitter Smoke Color: about 1.4x the simulation time", icon="INFO")
             layout.label(text="and a third of the blocks per GB.", icon="BLANK1")
             layout.separator()
             for domain in domains:
@@ -946,8 +958,8 @@ class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
 
 class FUMARIS_OT_color_mixing_enable(bpy.types.Operator):
     bl_idname = "fumaris.color_mixing_enable"
-    bl_label = "Turn On Per-Emitter Color"
-    bl_description = ("Turn on the domain's Per-Emitter Color, so each emitter's smoke keeps its own color "
+    bl_label = "Turn On Per-Emitter Smoke Color"
+    bl_description = ("Turn on the domain's Per-Emitter Smoke Color, so each emitter's smoke keeps its own color "
                       "(about 1.4x the simulation time and a third of the blocks per GB)")
     bl_options = {"REGISTER", "UNDO"}
 
@@ -966,7 +978,7 @@ class FUMARIS_OT_color_mixing_enable(bpy.types.Operator):
             self.report({"WARNING"}, f"No domain named {self.domain}")
             return {"CANCELLED"}
         domain.fumaris.color_mixing = True
-        self.report({"INFO"}, f"Per-Emitter Color is on in {domain.name}: set this emitter's Smoke Color")
+        self.report({"INFO"}, f"Per-Emitter Smoke Color is on in {domain.name}: set this emitter's Smoke Color")
         return {"FINISHED"}
 
 
@@ -1087,6 +1099,10 @@ def _draw_domain(layout, scene, props):
         elif is_initializing:
             status.label(text="Initializing Flow GPU…", icon="INFO")
             _wrapped(status, "First-run shaders can take several minutes")
+        elif is_baking and writing_last_frames(job):
+            # Every frame is simulated; the files are still being written
+            # (minutes on a slow disk): not stuck, not "0 s left".
+            status.label(text=WRITING_LAST_FRAMES, icon="TIME")
         elif is_baking:
             status.label(text="Baking…", icon="TIME")
         elif mode is None and props.simulation_state in {"baked", "stopped"}:

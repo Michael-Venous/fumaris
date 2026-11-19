@@ -120,15 +120,47 @@ def budget_bytes_for_display(props, state=None):
     return auto_memory_bytes(reading["free_bytes"], reading["device_local_bytes"], explicit), "now"
 
 
+def free_bytes_for_display(props, state=None):
+    """The free GPU memory behind the Auto amount budget_bytes_for_display
+    shows (at the last start, or now), or None if unknown."""
+    if not getattr(props, "simulation_memory_auto", False):
+        return None
+    metrics = (state or {}).get("metrics", {}) if state else {}
+    try:
+        used = int(float(metrics.get("flow_auto_memory_bytes", 0)))
+        free = int(float(metrics.get("flow_free_memory_at_start_bytes", 0)))
+    except (TypeError, ValueError):
+        used = free = 0
+    if used > 0:
+        return free if free > 0 else None
+    reading = selected_reading(_gpu_uuid())
+    return reading.get("free_bytes") if reading else None
+
+
+def budget_text(props, state=None):
+    """'Auto VRAM: 9.0 GB (10.0 GB free, 1.0 GB left free)', or None: what
+    Auto takes and what it leaves to other programs, so a full GPU reads as
+    other programs using it, not as Fumaris asking too much."""
+    budget, when = budget_bytes_for_display(props, state)
+    if budget is None:
+        return None
+    gib = float(1 << 30)
+    free = free_bytes_for_display(props, state)
+    if free is None:
+        return f"Auto VRAM: {budget / gib:.1f} GB ({when})"
+    left = max(0, int(free) - int(budget))
+    return f"Auto VRAM: {budget / gib:.1f} GB ({free / gib:.1f} GB free, {left / gib:.1f} GB left free)"
+
+
 def draw_budget_summary(layout, props, state=None):
     """Read-only line under Resolution / VRAM: the Auto amount."""
     budget, when = budget_bytes_for_display(props, state)
     column = layout.column(align=True)
     if getattr(props, "simulation_memory_auto", False):
         if budget is None:
-            column.label(text="Auto: free GPU memory at start, less a reserve", icon="MEMORY")
+            column.label(text="Auto VRAM: free GPU memory at start, less a reserve", icon="MEMORY")
         else:
-            column.label(text=f"Auto: {budget / (1 << 30):.1f} GB ({when})", icon="MEMORY")
+            column.label(text=budget_text(props, state), icon="MEMORY")
     elif budget is not None:
         # A set amount above what the GPU has spills into system memory.
         reading = selected_reading(_gpu_uuid())

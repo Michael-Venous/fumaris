@@ -316,7 +316,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_color: FloatVectorProperty(
         name="Smoke Color",
-        description="Color of this emitter's smoke, times the domain's smoke Color. Used when the domain's Per-Emitter Color (Look) is on",
+        description="Color of this emitter's smoke, times the domain's smoke Color. Used when the domain's Per-Emitter Smoke Color (Look) is on. It colors the smoke, not the flame",
         default=(1.0, 1.0, 1.0), min=0.0, soft_max=1.0, size=3, subtype="COLOR",
     )
 
@@ -739,7 +739,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_bake: BoolProperty(
         name="Preview While Baking",
-        description="Show the live preview while baking, to watch the bake as it runs. Off keeps the bake as fast as possible",
+        description="Show the live preview while baking, to watch the bake as it runs. Off keeps the bake as fast as possible. Bake only: Bake in Background and Bake All never show a preview",
         default=True,
     )
 
@@ -796,8 +796,9 @@ class FumarisSettings(PropertyGroup):
     )
 
     color_mixing: BoolProperty(
-        name="Per-Emitter Color",
-        description="Each emitter's smoke carries its own Smoke Color (set on the emitter); where plumes meet, the colors mix by amount. Bakes gain a color grid and the material and preview use it. Costs a second smoke field: about 1.4x the simulation time and a third fewer blocks for the same VRAM. For one color everywhere, leave this off and set Color",
+        # (identifier kept as color_mixing: saved files and scripts use it)
+        name="Per-Emitter Smoke Color",
+        description="Each emitter's smoke takes the Smoke Color set on the emitter (Emitted Channels); where plumes meet, the colors mix. It colors the smoke, not the flame (the flame's color is set under Flame, for the whole domain). Bakes gain a color grid and the material and preview use it. Costs about 1.4x the simulation time and a third fewer blocks for the same VRAM. For one color everywhere, leave this off and set Color",
         default=False,
     )
 

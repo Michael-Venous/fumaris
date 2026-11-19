@@ -71,10 +71,20 @@ PRESETS = {
     },
     "FIRE": {
         "name": "Steady Fire",
-        "description": "Continuous flames with rising smoke",
+        "description": "Continuous flames rising from a fuel bed, with smoke above",
         # Short-lived fuel ends the flames a few source widths up instead of
         # in a tall column; more Vorticity makes them flicker (2026-11-07).
-        "domain": {"shader_flame_enabled": True, "burn_time": 0.5, "vorticity": 4.0, **_PYRO_FIRE},
+        # A fuel fire, not a glowing ball (2026-11-19, steady-fire-2026-11-19):
+        # burnt gas stops glowing within 0.6 s (Cooling Time), so the flames
+        # end in tips that turn to smoke; half the soot per fuel burnt (Smoke
+        # Amount 0.5) keeps the smoke from burying them, while enough remains
+        # between the tongues to outline them. Pyro look: the fire glows by
+        # its light in the gas, so Brightness 0.08 (1.5 washed every flame out
+        # to peach-white in AgX), full glow at Flame Temperature and a steeper
+        # Contrast give a yellow base, orange tongues and deep orange tips.
+        "domain": {"shader_flame_enabled": True, "burn_time": 0.5, "vorticity": 4.0,
+                   "cooling_time": 0.6, "smoke_per_burn": 0.5, **_PYRO_FIRE,
+                   "pyro_brightness": 0.08, "pyro_glow_temperature": 2000.0, "pyro_contrast": 1.0},
         # Billows in the hot gas and crunch where it moves fast (sizes
         # relative to the source). Kept on 2026-11-19: without the Disturb, or
         # with Vorticity 2 or 1 instead of 4, the flames puffed about as much
@@ -83,14 +93,33 @@ PRESETS = {
                     "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
                               {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
         "grain": _FAST_GRAIN,
+        # Flame tongues instead of stacked round lobes: Shred tears the hot
+        # edges into strands and Vorticity is up to 5x stronger in flames
+        # (1x at 500 K), so the puffs break into licking tongues.
+        "layers": [{"type": "SHRED", "strength": 4.0},
+                   {"type": "VORTICITY",
+                    "masks": [{"field": "TEMPERATURE", "range": [500.0, 2000.0], "values": [1.0, 5.0]}]}],
+        # New Source is a fuel bed on the 3D cursor: a cylinder 2 m across and
+        # 0.25 m high, filled with fuel (Volume emission), instead of a ball
+        # that glowed above the ground. A ground collider under it, as under a
+        # real fire, takes the air in from the sides only, which wrinkles the
+        # flame base into tongues; its margin is thin (0.1 m), as the default
+        # 0.3 m held the air still inside the bed and starved the fire.
+        "new_source": {"kind": "pool", "height": 0.25,
+                       "emitter": {"mesh_emission_mode": "volume", "mesh_emission_distance": 0.5}},
+        "ground": True,
+        "ground_margin": 0.1,
         # The source only ignites the fuel; burning makes the heat (Fuel 1
         # burns at Flame Temperature with the default Fuel Energy).
         # Almost no source smoke: soot forms as the fuel burns, so under Smoke
         # Density 4.5 the source glows instead of being a dark ball of cool,
-        # unburnt gas.
+        # unburnt gas. Rich fuel (2) is written as Maximum at a fast rate, so
+        # the gas crossing the thin bed takes it up fully (Blend at rate 2 gave
+        # a weak, dull red fire) and keeps burning as it mixes with air.
         "emitter": {"emitter_smoke": 0.1, "emitter_temperature": 0.35,
-                    "couple_rate_temperature": 10.0, "source_op_temperature": "max",
-                    "emitter_fuel": 1.0, "normal_velocity": 0.25, "emitter_divergence": 0.2},
+                    "couple_rate_temperature": 20.0, "source_op_temperature": "max",
+                    "emitter_fuel": 2.0, "source_op_fuel": "max", "couple_rate_fuel": 20.0,
+                    "normal_velocity": 0.25, "emitter_divergence": 0.2},
     },
     "EXPLOSION": {
         "name": "Explosion",
@@ -266,18 +295,28 @@ def new_domain_group(scene, name):
     return group, {role: _new_collection(f"{group.name} {label}", group) for role, label in _ROLE_LABELS}
 
 
-def _new_source(collection, name, position):
+def _new_source(collection, name, position, shape=None):
+    """New Source: a 2 m icosphere centred on the 3D cursor, or with a "pool"
+    shape a low cylinder 2 m across standing on it (a fuel bed)."""
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     try:
-        # Smooth enough not to show facets when scaled up for large effects.
-        bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)
+        if shape and shape.get("kind") == "pool":
+            height = shape["height"]
+            bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=48, radius1=1.0, radius2=1.0,
+                                  depth=height)
+            bmesh.ops.translate(bm, vec=(0.0, 0.0, 0.5 * height), verts=bm.verts)
+        else:
+            # Smooth enough not to show facets when scaled up for large effects.
+            bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)
         bm.to_mesh(mesh)
     finally:
         bm.free()
     obj = bpy.data.objects.new(name, mesh)
     collection.objects.link(obj)
     obj.location = position
+    if shape:
+        _apply_settings(obj.fumaris, shape.get("emitter", {}))
     return obj
 
 
@@ -391,8 +430,9 @@ def _masks(masks, size):
     return resolved
 
 
-def _new_ground(collection, name, minimum, maximum):
-    """A collider floor just under the sources, ten source widths across."""
+def _new_ground(collection, name, minimum, maximum, margin=None):
+    """A collider floor just under the sources, ten source widths across
+    (margin: its Collider Margin, if not the default)."""
     size = 10.0 * max(1.0, max(maximum - minimum))
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
@@ -406,6 +446,8 @@ def _new_ground(collection, name, minimum, maximum):
     obj.location = ((minimum.x + maximum.x) * 0.5, (minimum.y + maximum.y) * 0.5, minimum.z - 0.05)
     obj.fumaris.smoke_object_type = "collider"
     obj.fumaris.participant_enabled = True
+    if margin is not None:
+        obj.fumaris.collider_margin = margin
     return obj
 
 
@@ -558,7 +600,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         name = _unique_group_name(preset["name"])
         root, collections = new_domain_group(context.scene, name)
         if not sources:
-            sources = [_new_source(collections["emitter"], f"{name} Source", context.scene.cursor.location)]
+            sources = [_new_source(collections["emitter"], f"{name} Source", context.scene.cursor.location,
+                                   preset.get("new_source"))]
         else:
             for source in sources:
                 collections["emitter"].objects.link(source)
@@ -589,12 +632,16 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         if grain:
             detail_stack.add_layer(props, "GRAIN", masks=_masks(grain.get("masks"), basis), strength=grain["strength"],
                                    size=max(0.02, grain["size_per_size"] * size))
+        for layer in preset.get("layers", ()):
+            # Other layers (Shred, Vorticity, Cooling...): strength and masks as given.
+            detail_stack.add_layer(props, layer["type"], masks=_masks(layer.get("masks"), basis),
+                                   **{key: value for key, value in layer.items() if key not in ("type", "masks")})
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:
             _configure_source(source, preset, props.sim_start_frame, context.scene.frame_current)
         if preset.get("ground"):
-            _new_ground(collections["collider"], f"{name} Ground", minimum, maximum)
+            _new_ground(collections["collider"], f"{name} Ground", minimum, maximum, preset.get("ground_margin"))
         if preset.get("clumps"):
             _new_clumps(collections["emitter"], f"{name} Clumps", minimum, maximum, props.sim_start_frame, preset)
         if self.debris and self.preset == "EXPLOSION":

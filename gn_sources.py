@@ -12,7 +12,7 @@ from .sparks import _link, _math, _vmath, _socket
 
 SOURCES = (
     ("CANDLE", "Candle", "A small flickering flame that burns where it sits. Added at least three cells tall: a real candle flame (about 4 cm) needs Resolution 2400 or more"),
-    ("BURST", "Burst", "A ball of fuel and heat that bursts outward over a few frames and rolls up into smoke, for blasts and puffs"),
+    ("BURST", "Burst", "Clumps of fuel and heat thrown out of a ball over a few frames: uneven lobes that roll up into smoke, for blasts and puffs"),
     ("TRAIL", "Trail", "Fire that travels along a curve: a fuse, a comet, a burning streak"),
     ("SPREADING", "Spreading Fire", "A burning front that spreads across a surface from an ignition point"),
 )
@@ -92,38 +92,25 @@ def build_candle(name="Fumaris Candle"):
     return tree
 
 
+# Burst: the Explosion's clump generator at the size of a blast or puff. It was
+# one icosphere shell of points pushed straight out (2026-11-10): it could only
+# make a round ball ("just a ball of points", user, 2026-11-19). Clumps of fuel
+# thrown out at their own speeds, sizes, delays and fuel break it into uneven
+# lobes that roll up into smoke.
+BURST_DEFAULTS = (
+    ("Duration", 8.0), ("Clumps", 24), ("Radius", 0.6), ("Clump Size", 0.5), ("Speed", 6.0), ("Drag", 3.0),
+    ("Fuel", 8.0), ("Expansion", 16.0), ("Lift", 0.3), ("Upward Spread", 1.0), ("Downward Spread", 0.35),
+    ("Fuel Low", 0.3), ("Fuel High", 3.0), ("Long Burn", 0.15), ("Long Burn Frames", 24.0),
+)
+
+
 def build_burst(name="Fumaris Burst"):
-    tree = _new_tree(name)
-    _socket(tree, "Start Frame", "NodeSocketFloat", 1.0)
-    _socket(tree, "Duration", "NodeSocketFloat", 6.0, 1.0)
-    _socket(tree, "Radius", "NodeSocketFloat", 0.6, 0.0)
-    # A growing shell stamps each point's path, so the ball came out in radial
-    # streaks; Speed and the emitter's Expansion push it out instead (2026-11-10).
-    _socket(tree, "Growth", "NodeSocketFloat", 0.0, 0.0)
-    _socket(tree, "Speed", "NodeSocketFloat", 4.0)
-    _socket(tree, "Detail", "NodeSocketInt", 3, 1)
-    group_in, group_out, time = _io(tree)
-    active, progress = _window(tree, time.outputs["Frame"], group_in.outputs["Start Frame"], group_in.outputs["Duration"], (-1000, -300))
-    sphere = tree.nodes.new("GeometryNodeMeshIcoSphere")
-    sphere.location = (-800, 200)
-    # The shell grows from Radius to Radius x (1 + Growth) over Duration.
-    grow = _math(tree, "ADD", 1.0, _math(tree, "MULTIPLY", _math(tree, "MINIMUM", progress, 1.0, (-900, 0)), group_in.outputs["Growth"], (-900, 0)), (-900, 0))
-    _link(tree, _math(tree, "MULTIPLY", group_in.outputs["Radius"], grow, (-900, 100)), sphere.inputs["Radius"])
-    _link(tree, group_in.outputs["Detail"], sphere.inputs["Subdivisions"])
-    to_points = tree.nodes.new("GeometryNodeMeshToPoints")
-    to_points.location = (-600, 200)
-    _link(tree, sphere.outputs["Mesh"], to_points.inputs["Mesh"])
-    position = tree.nodes.new("GeometryNodeInputPosition")
-    position.location = (-600, -100)
-    outward = _vmath(tree, "NORMALIZE", position.outputs["Position"], None, (-400, -100))
-    velocity = _vmath(tree, "SCALE", outward, group_in.outputs["Speed"], (-200, -100))
-    # Point size about the spacing of the shell's vertices.
-    spacing = _math(tree, "DIVIDE", _math(tree, "MULTIPLY", group_in.outputs["Radius"], grow, (-400, 0)),
-                    _math(tree, "POWER", 2.0, group_in.outputs["Detail"], (-400, 0)), (-300, 0))
-    geometry = _store(tree, to_points.outputs["Points"], "mask", active, location=(100, 200))
-    geometry = _store(tree, geometry, "radius", _math(tree, "MULTIPLY", spacing, 1.5, (0, 0)), location=(300, 200))
-    geometry = _store(tree, geometry, "velocity", velocity, "FLOAT_VECTOR", (500, 200))
-    _link(tree, geometry, group_out.inputs["Geometry"])
+    """A blast or puff: Clumps balls of fuel and heat fly out of a ball of
+    Radius at random speeds (slowed by Drag), each burning for its own time with
+    its own size and fuel, so the burst grows uneven lobes (build_clumps)."""
+    tree = build_clumps(name)
+    for key, value in BURST_DEFAULTS:
+        tree.interface.items_tree[key].default_value = value
     return tree
 
 
@@ -176,6 +163,9 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     # How high the clumps' directions reach: 1 = the whole upper hemisphere,
     # lower = a flat lens that sets the width at once and rises later.
     _socket(tree, "Upward Spread", "NodeSocketFloat", 1.0, 0.0)
+    # How far below the source's level directions reach (0: upper hemisphere
+    # only, for a source on the ground; Burst goes some way down too).
+    _socket(tree, "Downward Spread", "NodeSocketFloat", 0.0, 0.0)
     group_in, group_out, time = _io(tree)
     i = group_in.outputs
     seed = i["Seed"]
@@ -185,12 +175,19 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     # Start inside the source: a random direction, at a random depth. Upper
     # hemisphere only: clumps thrown downward ended up under the ground
     # collider, emitting fire below the floor (2026-11-17).
+    # z in [-Downward Spread, Upward Spread] (the same random stream as before
+    # Downward Spread existed: at 0 the directions are unchanged).
     flatten = tree.nodes.new("ShaderNodeCombineXYZ")
     flatten.location = (-1100, 700)
     flatten.inputs["X"].default_value = flatten.inputs["Y"].default_value = 1.0
-    _link(tree, i["Upward Spread"], flatten.inputs["Z"])
-    raw = _vmath(tree, "MULTIPLY", _random(tree, "FLOAT_VECTOR", (-1, -1, 0), (1, 1, 1), seed, 1, (-1000, 600)),
-                 flatten.outputs["Vector"], (-900, 600))
+    _link(tree, _math(tree, "ADD", i["Upward Spread"], i["Downward Spread"], (-1200, 700)), flatten.inputs["Z"])
+    lower = tree.nodes.new("ShaderNodeCombineXYZ")
+    lower.location = (-1100, 800)
+    _link(tree, i["Downward Spread"], lower.inputs["Z"])
+    raw = _vmath(tree, "SUBTRACT",
+                 _vmath(tree, "MULTIPLY", _random(tree, "FLOAT_VECTOR", (-1, -1, 0), (1, 1, 1), seed, 1, (-1000, 600)),
+                        flatten.outputs["Vector"], (-950, 600)),
+                 lower.outputs["Vector"], (-900, 600))
     direction = _vmath(tree, "NORMALIZE", raw, None, (-800, 600))
     depth = _math(tree, "MULTIPLY", _random(tree, "FLOAT", 0.2, 0.7, seed, 2, (-1000, 500)), i["Radius"], (-800, 500))
     start = _vmath(tree, "SCALE", direction, depth, (-600, 600))
@@ -386,6 +383,10 @@ def add_source(context, kind, domain):
     inputs = tree.interface.items_tree
     if kind == "CANDLE":
         inputs["Flame Size"].default_value = max(inputs["Flame Size"].default_value, 3.0 * cell)
+    elif kind == "BURST":
+        # Each clump at least 2.5 cells across.
+        inputs["Radius"].default_value = max(inputs["Radius"].default_value,
+                                             2.5 * cell / max(inputs["Clump Size"].default_value, 1e-3))
     elif kind == "TRAIL":
         inputs["Radius"].default_value = max(inputs["Radius"].default_value, 2.5 * cell)
     elif kind == "SPREADING":
@@ -409,10 +410,14 @@ def add_source(context, kind, domain):
         props.emitter_smoke = 0.5
         props.emitter_fuel = 0.0
     elif kind == "BURST":
-        props.emitter_fuel = 2.0
+        # Fuel and Expansion come per clump (the group's Fuel and Expansion).
+        # A Steady Fire domain at Resolution 384: a ~3 m fireball of uneven
+        # lobes in half a second, a few pockets burning on, rolling up into
+        # soot (2026-11-19, /tmp/burst sheets).
+        props.emitter_fuel = 8.0
         props.emitter_temperature = 1.0
         props.emitter_smoke = 2.0
-        props.emitter_divergence = 3.0
+        props.emitter_divergence = 16.0
     else:
         # Trail and Spreading Fire light their own fuel: at Flame Temperature.
         # Their points pass over a cell briefly, so fuel couples fast.

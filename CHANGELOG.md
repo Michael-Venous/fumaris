@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Changed: the Burst source (Add Source) throws two dozen clumps of fuel and heat out of a ball at their own speeds, sizes, delays and fuel, as the Explosion quick setup does: the burst grows uneven lobes, a few pockets burn on, and it rolls up into soot. It was one shell of points pushed straight out, so it always made a round ball. The clump source has a new Downward Spread input (0 for the Explosion: unchanged).
+
 - Changed: Versions sits right under Simulate (it was below Output), with Save Playblast at its top.
 - Changed: Save Playblast asks for a name first (playblasts of the same frames looked alike in the list). The playblast being recorded is selected from the start, and an Image Editor showing a playblast switches to the new one when it finishes, and to whichever one you select (it kept showing the previous movie).
 - Added: Play on a playblast opens it in your video player, independent of Blender's timeline (playing the live preview no longer scrubs it); Image Editor shows it along the timeline as before. Export MP4… saves a copy where you choose and Open Folder shows where it is kept: playblasts are files in the domain's Versions folder, never inside the .blend.

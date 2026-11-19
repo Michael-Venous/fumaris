@@ -1,5 +1,6 @@
 import json
 import math
+import re
 import platform
 import textwrap
 import tomllib
@@ -118,13 +119,21 @@ def set_status(domain, status):
         state["status"] = status
 
 
+# MoltenVK's info chatter (macOS): its start-up banner lists ~150 extensions,
+# one per line, and evicted the error a run ended with from this 80-line log
+# (2026-11-19). Its [mvk-warn] and [mvk-error] lines are kept.
+_MOLTENVK_INFO = re.compile(r"^(\[mvk-info\]|VK_\w+ v\d+$|The following \d+ Vulkan extensions are supported:?$)")
+
+
 def add_log(domain, message):
     state = snapshot(domain)
     if state is None:
         return
     for line in message.splitlines():
         line = line.strip()[:1024]
-        if line and (not state["log"] or state["log"][-1] != line):
+        if not line or _MOLTENVK_INFO.match(line):
+            continue
+        if not state["log"] or state["log"][-1] != line:
             state["log"].append(line)
 
 

@@ -1197,6 +1197,13 @@ def _draw_domain(layout, scene, props):
         cells.active = props.num_sub_steps > 1
         cells.prop(props, "adaptive_cfl")
 
+    # Versions right under Simulate: bakes, snapshots and playblasts are what a
+    # shot goes back and forth between (Brent, 2026-11-19: it sat below Output).
+    compare_box = layout.box()
+    if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
+        from .compare import draw_compare
+        draw_compare(compare_box, props.id_data, props)
+
     look_box = layout.box()
     look_box.enabled = not is_baking
     if _section(look_box, props, "show_appearance", "Look", "SHADING_RENDERED"):
@@ -1512,11 +1519,6 @@ def _draw_domain(layout, scene, props):
             _wrapped(output, "The material needs Density", "INFO")
             if not props.export_temperature_vdb and _scene_heat(props):
                 _wrapped(output, "Without Temperature the material shows no fire", "INFO")
-
-    compare_box = layout.box()
-    if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
-        from .compare import draw_compare
-        draw_compare(compare_box, props.id_data, props)
 
     advanced_box = layout.box()
     advanced_box.enabled = not is_baking

@@ -108,7 +108,11 @@ class FUMARIS_OT_playblast(Operator):
                       "Uses the largest 3D viewport as it is shown, without overlays; Esc stops it")
     bl_options = {"REGISTER"}
 
-    domain_name: bpy.props.StringProperty(options={"HIDDEN"})
+    domain_name: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    # Asked before recording (Brent, 2026-11-19: playblasts of the same frames
+    # looked alike in Versions). Passed by a script: no dialog.
+    name: bpy.props.StringProperty(name="Name", description="How this playblast is listed in Versions",
+                                   options={"SKIP_SAVE"})
 
     @classmethod
     def poll(cls, context):
@@ -128,9 +132,26 @@ class FUMARIS_OT_playblast(Operator):
         if domain is None:
             self.report({"WARNING"}, "Choose a Fumaris domain")
             return {"CANCELLED"}
-        view = _largest_view(context)
-        if view is None:
+        if _largest_view(context) is None:
             self.report({"WARNING"}, "Open a 3D viewport to playblast")
+            return {"CANCELLED"}
+        if self.name.strip():
+            return self.execute(context)
+        start, end = simulation_frame_range(domain)
+        self.name = f"Playblast · frames {start}–{end}"
+        return context.window_manager.invoke_props_dialog(
+            self, width=320, title="Save Playblast", confirm_text="Record")
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.prop(self, "name")
+        layout.label(text="Kept on disk in Versions, not in the .blend", icon="INFO")
+
+    def execute(self, context):
+        domain = self._domain(context)
+        view = _largest_view(context)
+        if domain is None or view is None:
+            self.report({"WARNING"}, "Choose a Fumaris domain and open a 3D viewport")
             return {"CANCELLED"}
         self._area, self._region, self._space = view
         self._domain_name = domain.name
@@ -140,6 +161,13 @@ class FUMARIS_OT_playblast(Operator):
         self._width, self._height = self._region.width, self._region.height
         self._directory = new_playblast_directory(domain)
         self._names = []
+        # Listed and selected from its first frame under its name, so the list
+        # never shows another playblast as the one being made.
+        from . import compare
+        self._note = self.name.strip() or f"Playblast · frames {self._start}–{self._end}"
+        compare.write_sidecar(self._directory, note=self._note, frames=[self._start, self._end])
+        domain.fumaris.compare_selected = "blast:" + self._directory
+        compare.forget_scan()
         self._depth_serial = 1 << 30
         session, self._participants = exporters.build_session(
             context, start_frame=self._start, end_frame=self._end, domain=domain,
@@ -271,10 +299,16 @@ class FUMARIS_OT_playblast(Operator):
             return
         values = cache.settings_snapshot_data(domain, self._participants)
         values.update(frames=[self._start, self._start + len(self._names) - 1],
-                      movie=os.path.basename(movie) if movie and os.path.isfile(movie) else "")
+                      movie=os.path.basename(movie) if movie and os.path.isfile(movie) else "",
+                      note=self._note)
         compare.write_sidecar(self._directory, **values)
         domain.fumaris.compare_selected = "blast:" + self._directory
         compare.forget_scan()
+        # An Image Editor showing a playblast now shows this one (it kept the
+        # previous movie while the list moved on, 2026-11-19).
+        entry = compare.find_entry(domain, "blast:" + self._directory, fresh=True)
+        if entry is not None:
+            compare.refresh_playblast_viewers(context, entry)
 
     def _complete(self, context):
         self._finish(context, cancelled=False)

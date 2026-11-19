@@ -775,6 +775,54 @@ def show_image(context, image, frames=None):
     return find()
 
 
+def playblast_image(entry):
+    """(image, (first frame, frame count)) for a playblast entry: its movie, or
+    without one its frames as a sequence."""
+    names = _playblast_frames(entry["path"])
+    movie = entry.get("movie") or ""
+    path = movie if movie and os.path.isfile(movie) else os.path.join(entry["path"], names[0])
+    path = os.path.normpath(path)
+    image = next((image for image in bpy.data.images
+                  if os.path.normpath(bpy.path.abspath(image.filepath)) == path), None)
+    if image is None:
+        image = bpy.data.images.load(path, check_existing=True)
+        if not path.endswith(".mp4"):
+            image.source = "SEQUENCE"
+    else:
+        image.reload()
+    return image, (entry["frames"][0], len(names))
+
+
+def _is_playblast_image(image):
+    path = bpy.path.abspath(image.filepath) if image is not None else ""
+    return PLAYBLAST_SUFFIX + os.sep in path or os.path.basename(os.path.dirname(path)).endswith(PLAYBLAST_SUFFIX)
+
+
+def refresh_playblast_viewers(context, entry):
+    """Image Editors showing a playblast switch to this one: the list and the
+    viewer stay in step (they did not, 2026-11-19). Others are left alone."""
+    if entry is None or entry.get("kind") != "playblast" or not _playblast_frames(entry["path"]):
+        return False
+    image = frames = None
+    changed = False
+    for window in context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != "IMAGE_EDITOR":
+                continue
+            space = area.spaces.active
+            if not _is_playblast_image(space.image):
+                continue
+            if image is None:
+                image, frames = playblast_image(entry)
+            space.image = image
+            user = space.image_user
+            user.frame_start, user.frame_duration, user.frame_offset = frames[0], frames[1], 0
+            user.use_auto_refresh = True
+            area.tag_redraw()
+            changed = True
+    return changed
+
+
 # --- Entries: VDB versions and snapshots --------------------------------------
 
 def snapshot_root(domain, *, create=False):
@@ -1090,7 +1138,10 @@ class FUMARIS_OT_entry_select(_DomainOperator, Operator):
         return _domain(context) is not None
 
     def execute(self, context):
-        _domain(context).fumaris.compare_selected = self.key
+        domain = _domain(context)
+        domain.fumaris.compare_selected = self.key
+        if self.key.startswith("blast:"):
+            refresh_playblast_viewers(context, find_entry(domain, self.key))
         return {"FINISHED"}
 
 
@@ -1192,8 +1243,9 @@ class FUMARIS_OT_entry_import(_DomainOperator, Operator):
 
 class FUMARIS_OT_entry_image(_DomainOperator, Operator):
     bl_idname = "fumaris.entry_image"
-    bl_label = "Preview"
-    bl_description = "Open this snapshot, or play this playblast, in an Image Editor"
+    bl_label = "Image Editor"
+    bl_description = ("Show this snapshot, or this playblast, in an Image Editor (a playblast follows Blender's "
+                      "timeline there; Play opens it in your video player instead)")
 
     key: StringProperty()
 
@@ -1209,22 +1261,119 @@ class FUMARIS_OT_entry_image(_DomainOperator, Operator):
         if entry["kind"] == "playblast":
             # The movie (or, without one, the frames as a sequence), playing from the
             # frame the playblast starts at as the timeline runs.
-            names = _playblast_frames(entry["path"])
-            path = entry["movie"] if entry["movie"] and os.path.isfile(entry["movie"]) else os.path.join(entry["path"], names[0])
-            frames = (entry["frames"][0], len(names))
+            image, frames = playblast_image(entry)
+            path = bpy.path.abspath(image.filepath)
         else:
-            path = entry["path"]
-        path = os.path.normpath(path)
-        image = next((image for image in bpy.data.images
-                      if os.path.normpath(bpy.path.abspath(image.filepath)) == path), None)
-        if image is None:
-            image = bpy.data.images.load(path, check_existing=True)
-            if entry["kind"] == "playblast" and not path.endswith(".mp4"):
-                image.source = "SEQUENCE"
-        else:
-            image.reload()
+            path = os.path.normpath(entry["path"])
+            image = next((image for image in bpy.data.images
+                          if os.path.normpath(bpy.path.abspath(image.filepath)) == path), None)
+            if image is None:
+                image = bpy.data.images.load(path, check_existing=True)
+            else:
+                image.reload()
         if not show_image(context, image, frames):
             self.report({"INFO"}, f"Image '{image.name}' ({path})")
+        return {"FINISHED"}
+
+
+def _playblast_movie(entry):
+    movie = (entry.get("movie") or "") if entry else ""
+    return movie if movie and os.path.isfile(movie) else ""
+
+
+class FUMARIS_OT_entry_play(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_play"
+    bl_label = "Play"
+    bl_description = ("Play this playblast in your video player: independent of Blender's timeline, full screen "
+                      "on any monitor")
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def execute(self, context):
+        domain, entry = _entry_or_report(self, context)
+        if entry is None or entry["kind"] != "playblast":
+            return {"CANCELLED"}
+        domain.fumaris.compare_selected = entry["key"]
+        movie = _playblast_movie(entry)
+        if not movie:
+            self.report({"WARNING"}, "This playblast has no movie (it was stopped early): showing its frames")
+            return bpy.ops.fumaris.entry_image(key=entry["key"])
+        try:
+            bpy.ops.wm.path_open(filepath=movie)
+        except RuntimeError as error:
+            self.report({"ERROR"}, f"Could not open the movie: {error}")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_export_movie(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_export_movie"
+    bl_label = "Export MP4…"
+    bl_description = ("Save a copy of this playblast's movie where you choose. Playblasts are kept on disk in the "
+                      "domain's Versions folder, never inside the .blend; Delete removes them")
+
+    key: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    filepath: StringProperty(subtype="FILE_PATH", options={"SKIP_SAVE"})
+    filter_glob: StringProperty(default="*.mp4", options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def invoke(self, context, _event):
+        _domain_, entry = _entry_or_report(self, context)
+        if entry is None or not _playblast_movie(entry):
+            self.report({"WARNING"}, "This playblast has no movie to export")
+            return {"CANCELLED"}
+        base = bpy.path.clean_name(entry["name"]) or "playblast"
+        directory = os.path.dirname(bpy.data.filepath) if bpy.data.filepath else os.path.expanduser("~")
+        self.filepath = os.path.join(directory, base + ".mp4")
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        _domain_, entry = _entry_or_report(self, context)
+        movie = _playblast_movie(entry)
+        if not movie:
+            return {"CANCELLED"}
+        target = bpy.path.abspath(self.filepath)
+        if not target.lower().endswith(".mp4"):
+            target += ".mp4"
+        try:
+            os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+            shutil.copyfile(movie, target)
+        except OSError as error:
+            self.report({"ERROR"}, f"Could not save the movie: {error}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Playblast saved as {target}")
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_entry_open_folder(_DomainOperator, Operator):
+    bl_idname = "fumaris.entry_open_folder"
+    bl_label = "Open Folder"
+    bl_description = "Open the folder holding this version's files (on disk, not inside the .blend)"
+
+    key: StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return _domain(context) is not None
+
+    def execute(self, context):
+        _domain_, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        path = entry["path"] if os.path.isdir(entry["path"]) else os.path.dirname(entry["path"])
+        try:
+            bpy.ops.wm.path_open(filepath=path)
+        except RuntimeError as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
         return {"FINISHED"}
 
 
@@ -1587,6 +1736,12 @@ def draw_entry_menu(layout, domain, key):
     if entry is None:
         return
     layout.operator("fumaris.entry_note", icon="GREASEPENCIL").key = key
+    if entry["kind"] == "playblast":
+        export = layout.row()
+        export.enabled = bool(_playblast_movie(entry))
+        export.operator("fumaris.entry_export_movie", icon="EXPORT").key = key
+    if entry["kind"] in ("playblast", "vdb"):
+        layout.operator("fumaris.entry_open_folder", icon="FILE_FOLDER").key = key
     settings = layout.row()
     settings.enabled = entry["settings"]
     settings.operator("fumaris.entry_save_preset", icon="PRESET_NEW").key = key
@@ -1602,7 +1757,7 @@ def _button_context_menu(self, context):
     except (AttributeError, ReferenceError):
         return
     if identifier not in {"FUMARIS_OT_entry_select", "FUMARIS_OT_entry_show", "FUMARIS_OT_entry_pin",
-                          "FUMARIS_OT_entry_image"}:
+                          "FUMARIS_OT_entry_image", "FUMARIS_OT_entry_play"}:
         return
     domain = _domain(context)
     if domain is None or not op.key:
@@ -1617,6 +1772,8 @@ def _button_context_menu(self, context):
         layout.operator("fumaris.entry_import", text="Remove from Scene" if _entry_volumes(entry) else "Import",
                         icon="IMPORT").key = op.key
     else:
+        if entry["kind"] == "playblast":
+            layout.operator("fumaris.entry_play", icon="PLAY").key = op.key
         layout.operator("fumaris.entry_image", icon="IMAGE_DATA").key = op.key
     layout.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = op.key
     draw_entry_menu(layout, domain, op.key)
@@ -1634,26 +1791,30 @@ def _draw_entry_row(column, domain, entry, selected):
         name = split.row(align=True)
         split.label(text=version_summary(entry) if entry["kind"] == "vdb" else "",
                     icon="LOCKED" if entry["protected"] else "NONE")
-    name.operator("fumaris.entry_select", text=entry["name"], icon=icon, depress=selected).key = entry["key"]
+    # "main" alone read as the domain (Brent, 2026-11-19): say it is a VDB version.
+    text = f"VDB · {entry['name']}" if entry["kind"] == "vdb" else entry["name"]
+    name.operator("fumaris.entry_select", text=text, icon=icon, depress=selected).key = entry["key"]
     row.operator("fumaris.entry_pin", text="", icon="PINNED" if entry["pinned"] else "UNPINNED",
                  emboss=False).key = entry["key"]
     if entry["kind"] == "vdb":
         shown = entry_shown(domain, entry)
         row.operator("fumaris.entry_show", text="", icon="HIDE_OFF" if shown else "HIDE_ON",
                      depress=shown).key = entry["key"]
+    elif entry["kind"] == "playblast":
+        row.operator("fumaris.entry_play", text="", icon="PLAY").key = entry["key"]
     else:
-        row.operator("fumaris.entry_image", text="", icon="PLAY" if entry["kind"] == "playblast" else "IMAGE_DATA").key = entry["key"]
+        row.operator("fumaris.entry_image", text="", icon="IMAGE_DATA").key = entry["key"]
 
 
 def draw_compare(layout, domain, props):
     entries = list_entries(domain)
     selected = props.compare_selected
     box = layout.box()
+    # Playblasts are kept here too (also in the Bake menu): saved above the list they land in.
+    box.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE").domain_name = domain.name
     column = box.column(align=True)
     if not entries:
         column.label(text="Bake, or save while previewing (Cache Preview)", icon="INFO")
-    # Playblasts are kept here too (also in the Bake menu).
-    box.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE").domain_name = domain.name
     pinned = [entry for entry in entries if entry["pinned"]]
     others = [entry for entry in entries if not entry["pinned"]]
     for entry in pinned:
@@ -1674,8 +1835,11 @@ def draw_compare(layout, domain, props):
         imported = bool(_entry_volumes(entry))
         row.operator("fumaris.entry_import", text="Remove" if imported else "Import",
                      icon="X" if imported else "IMPORT").key = entry["key"]
+    elif entry["kind"] == "playblast":
+        row.operator("fumaris.entry_play", icon="PLAY").key = entry["key"]
+        row.operator("fumaris.entry_image", text="Image Editor", icon="IMAGE_DATA").key = entry["key"]
     else:
-        row.operator("fumaris.entry_image", icon="PLAY" if entry["kind"] == "playblast" else "IMAGE_DATA").key = entry["key"]
+        row.operator("fumaris.entry_image", icon="IMAGE_DATA").key = entry["key"]
     if ui._TIGHT:
         row = column.row(align=True)
     changes = row.row(align=True)
@@ -1708,6 +1872,9 @@ CLASSES = (
     FUMARIS_OT_entry_show,
     FUMARIS_OT_entry_import,
     FUMARIS_OT_entry_image,
+    FUMARIS_OT_entry_play,
+    FUMARIS_OT_entry_export_movie,
+    FUMARIS_OT_entry_open_folder,
     FUMARIS_OT_entry_changes,
     FUMARIS_OT_entry_load,
     FUMARIS_OT_entry_save_preset,

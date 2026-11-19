@@ -4,6 +4,11 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Changed: Versions sits right under Simulate (it was below Output), with Save Playblast at its top.
+- Changed: Save Playblast asks for a name first (playblasts of the same frames looked alike in the list). The playblast being recorded is selected from the start, and an Image Editor showing a playblast switches to the new one when it finishes, and to whichever one you select (it kept showing the previous movie).
+- Added: Play on a playblast opens it in your video player, independent of Blender's timeline (playing the live preview no longer scrubs it); Image Editor shows it along the timeline as before. Export MP4… saves a copy where you choose and Open Folder shows where it is kept: playblasts are files in the domain's Versions folder, never inside the .blend.
+- Changed: VDB versions are listed as "VDB · main" (a bare "main" read as the domain).
+
 - Fixed: dense smoke and fireballs (the Explosion quick setup most of all) rendered fine concentric rings in Cycles, one per voxel layer, where their surface crossed the voxel grid. It was Cycles' linear reading of the volume, not the simulation: Fumaris's materials now read it with cubic interpolation (Look > Smooth Voxels, on by default; about 1.5 times the render time; turn it off for faster test renders). Existing bakes get it the next time their volume is imported or a Look setting changes.
 
 - Fixed: a VRAM amount larger than the GPU's free memory put everything above it in system memory from the first frame, even for smoke that fit on the card: the first frame took seconds and every frame ran 5-10 times slower. Fumaris now starts with what fits on the GPU and goes to system memory only when the smoke needs more (40 GB set on a 16 GB card: first frame 0.3 s instead of 6.6 s, frames as fast as at 4 GB).

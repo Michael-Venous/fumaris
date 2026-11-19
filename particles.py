@@ -56,11 +56,11 @@ KIND_DEFAULTS = {
     # Glittering tracers in white smoke, like an ink plume.
     "TRACERS": dict(max_particles=1_000_000, smoke_rate=200_000.0, smoke_min=0.05, temperature_min=0.0,
                     drag=10000.0, gravity=0.0, lifetime=5.0, lifetime_random=0.3, cooling_time=0.0,
-                    size=0.006, size_random=0.5, collision="BOUNCE", bounce=0.2),
+                    size=0.006, size_random=0.5, collision="BOUNCE", bounce=0.2, brightness=6.0),
     # Embers thrown out of a fire: heavier than the gas, glowing by temperature.
     "EMBERS": dict(max_particles=200_000, smoke_rate=3_000.0, smoke_min=0.0, temperature_min=1300.0,
                    drag=3.0, gravity=1.0, lifetime=1.5, lifetime_random=0.4, cooling_time=0.6,
-                   size=0.012, size_random=0.5, collision="BOUNCE", bounce=0.3),
+                   size=0.012, size_random=0.5, collision="BOUNCE", bounce=0.3, brightness=0.1),
 }
 
 
@@ -173,10 +173,13 @@ class FumarisParticleSettings(PropertyGroup):
                                description="Each particle's size is (1 ± this) × Size")
     color: FloatVectorProperty(name="Color", subtype="COLOR", size=3, min=0.0, max=1.0, default=(1.0, 1.0, 1.0),
                                update=_look_updated, description="Colour of tracers (times the smoke's with Colour Mixing)")
-    brightness: FloatProperty(name="Brightness", default=0.1, min=0.0, soft_max=1.0, update=_look_updated,
-                              description="Glow of embers (temperature × this / 100), or of tracers")
+    brightness: FloatProperty(name="Brightness", default=6.0, min=0.0, soft_max=20.0, update=_look_updated,
+                              description="Tracers: strength of their glitter flashes. Embers: glow "
+                                          "(temperature × this / 100; about 0.1)")
     show_in_preview: BoolProperty(name="Show in Preview", default=True,
                                   description="Draw the particles over the live preview")
+    preview_amount: FloatProperty(name="Amount", default=0.25, min=0.0, max=1.0, subtype="FACTOR",
+                                  description="Share of the particles the live preview draws (one pixel each)")
 
 
 # ---------------------------------------------------------------- frames
@@ -421,6 +424,7 @@ def frame_state(domain, depsgraph, payload, frame, append_array):
         "bounds_max": [float(v) for v in high],
         "draw": ("glow" if settings.kind == "EMBERS" else "color") if settings.show_in_preview else "off",
         "draw_color": [float(v) for v in settings.color],
+        "draw_fraction": float(settings.preview_amount),
         "write_cache": False,
     }
     spawns = _source_spawns(settings, depsgraph, frame, fps, 1.0)
@@ -549,15 +553,16 @@ def build_group():
     to_id.location = (x + 100, -500)
     tree.links.new(identifier, to_id.inputs[0])
     geometry = _store(tree, geometry, "id", to_id.outputs[0], (x + 150, 0), "INT")
-    remove = nodes.new("GeometryNodeRemoveAttribute")
-    remove.location = (x + 300, 0)
-    remove.inputs["Name"].default_value = "v?"
-    if "Pattern Mode" in remove.inputs:
-        remove.inputs["Pattern Mode"].default_value = "Wildcard"
-    tree.links.new(geometry, remove.inputs["Geometry"])
+    # the velocity's components are in "velocity" now
+    for index, name in enumerate(("vx", "vy", "vz")):
+        remove = nodes.new("GeometryNodeRemoveAttribute")
+        remove.location = (x + 300, 120 * index)
+        remove.inputs["Name"].default_value = name
+        tree.links.new(geometry, remove.inputs["Geometry"])
+        geometry = remove.outputs["Geometry"]
     radius = nodes.new("GeometryNodeSetPointRadius")
     radius.location = (x + 500, 0)
-    tree.links.new(remove.outputs["Geometry"], radius.inputs["Points"])
+    tree.links.new(geometry, radius.inputs["Points"])
     tree.links.new(_math(tree, "MULTIPLY", group_in.outputs["Size"], _named(tree, "size", (x + 300, -300)), (x + 450, -300)),
                    radius.inputs["Radius"])
     material = nodes.new("GeometryNodeSetMaterial")
@@ -605,28 +610,44 @@ def build_material(kind):
         tree.links.new(scaled.outputs[0], emission.inputs["Strength"])
         tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
     else:
+        # Glitter: soft white flakes, each flashing now and then as it turns
+        # (a per-particle phase from "random", advancing with "age").
         bsdf = tree.nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf.location = (200, 0)
-        bsdf.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-        bsdf.inputs["Metallic"].default_value = 1.0
-        bsdf.inputs["Roughness"].default_value = 0.2
-        # Glitter: each flake catches the light at its own angle.
+        bsdf.location = (300, 0)
+        bsdf.inputs["Roughness"].default_value = 0.35
+        rgb = tree.nodes.new("ShaderNodeRGB")
+        rgb.location = (-250, 200)
+        rgb.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
+        rgb.label = "Color"
+        tree.links.new(rgb.outputs[0], bsdf.inputs["Base Color"])
+        tree.links.new(rgb.outputs[0], bsdf.inputs["Emission Color"])
         rand = tree.nodes.new("ShaderNodeAttribute")
         rand.attribute_name = "random"
-        rand.location = (-500, -200)
-        sparkle = tree.nodes.new("ShaderNodeMapRange")
-        sparkle.location = (-250, -200)
-        sparkle.inputs["To Min"].default_value = 0.05
-        sparkle.inputs["To Max"].default_value = 0.45
-        tree.links.new(rand.outputs["Fac"], sparkle.inputs["Value"])
-        tree.links.new(sparkle.outputs["Result"], bsdf.inputs["Roughness"])
-        emission = tree.nodes.new("ShaderNodeRGB")
-        emission.location = (-250, 150)
-        emission.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
-        emission.label = "Color"
-        tree.links.new(emission.outputs[0], bsdf.inputs["Base Color"])
-        tree.links.new(emission.outputs[0], bsdf.inputs["Emission Color"])
-        bsdf.inputs["Emission Strength"].default_value = 0.0
+        rand.location = (-900, -200)
+        age = tree.nodes.new("ShaderNodeAttribute")
+        age.attribute_name = "age"
+        age.location = (-900, -400)
+
+        def math(operation, a, b, location, label=""):
+            node = tree.nodes.new("ShaderNodeMath")
+            node.operation = operation
+            node.location = location
+            node.label = label
+            for index, value in enumerate((a, b)):
+                if isinstance(value, float):
+                    node.inputs[index].default_value = value
+                else:
+                    tree.links.new(value, node.inputs[index])
+            return node
+
+        phase = math("MULTIPLY_ADD", rand.outputs["Fac"], 44.0, (-650, -250))
+        tree.links.new(math("MULTIPLY", age.outputs["Fac"], 9.0, (-650, -450), "Twinkle").outputs[0], phase.inputs[2])
+        wave = math("SINE", phase.outputs[0], 0.0, (-450, -250))
+        unit = math("MULTIPLY_ADD", wave.outputs[0], 0.5, (-300, -250))
+        unit.inputs[2].default_value = 0.5
+        flash = math("POWER", unit.outputs[0], 24.0, (-150, -250))
+        strength = math("MULTIPLY", flash.outputs[0], 6.0, (50, -250), "Brightness")
+        tree.links.new(strength.outputs[0], bsdf.inputs["Emission Strength"])
         tree.links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
     material[VERSION_KEY] = VERSION
     material["fumaris_particles_kind"] = kind
@@ -644,9 +665,9 @@ def _apply_look(material, settings):
         rgb = next((n for n in tree.nodes if n.label == "Color"), None)
         if rgb is not None:
             rgb.outputs[0].default_value = (*settings.color, 1.0)
-        bsdf = next((n for n in tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
-        if bsdf is not None:
-            bsdf.inputs["Emission Strength"].default_value = settings.brightness if settings.brightness > 0.1 else 0.0
+        flash = next((n for n in tree.nodes if n.label == "Brightness"), None)
+        if flash is not None:
+            flash.inputs[1].default_value = settings.brightness
 
 
 def _input(modifier, name):
@@ -811,17 +832,20 @@ def draw_domain_section(layout, props, section, pair, nested_foldout, is_baking)
     look = pair(column)
     look.prop(settings, "size")
     look.prop(settings, "size_random", text="Random")
-    if settings.kind == "EMBERS":
-        column.prop(settings, "brightness")
-    else:
-        column.prop(settings, "color")
-    column.prop(settings, "show_in_preview")
+    look = pair(column)
+    if settings.kind != "EMBERS":
+        look.prop(settings, "color", text="")
+    look.prop(settings, "brightness")
+    shown = column.row(align=True)
+    shown.prop(settings, "show_in_preview")
+    amount = shown.row(align=True)
+    amount.active = settings.show_in_preview
+    amount.prop(settings, "preview_amount")
     more, opened = nested_foldout(column, settings, "show_more", "More")
     if opened:
         more.prop(settings, "cooling_time")
         more.prop(settings, "friction")
         more.prop(settings, "spawn_jitter")
-        more.prop(settings, "brightness")
     objects = particle_objects(domain)
     if objects:
         column.label(text=f"Shown by '{objects[0].name}'", icon="OUTLINER_OB_POINTCLOUD")

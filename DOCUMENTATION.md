@@ -341,6 +341,56 @@ played starts it over there, as in Blender.)
   AgX; above about 0.3 they render white. Cycles' motion blur smears them along
   their movement (they carry a `velocity` attribute).
 
+### Particles
+
+`Particles` (a section of the domain panel, with its own checkbox) adds GPU
+particles that ride the smoke. Unlike Sparks they are simulated with the smoke,
+in every simulation step and from the live velocity: they show in the live
+preview, and a bake writes them beside its VDBs (one point-cloud file per
+frame, `particles/<prefix>particles_0001.ply`). After the bake an object
+"<domain> Particles" shows the frame on screen as a point cloud that renders in
+Cycles and EEVEE.
+
+- `Kind` sets good values for each look: `Tracers` (light, follow the smoke
+  exactly, a white glitter material: an ink plume) or `Embers` (heavy, thrown
+  out of the fire by gravity and drag, cooling, glowing by temperature). Every
+  value can be changed after.
+- `Max Particles`: how many live at most. Each takes 92 bytes of GPU memory,
+  taken from the domain's simulation memory (1 million: 88 MB). When it is
+  full new particles are dropped until others die.
+- Spawning: `From Smoke` spawns `Rate` particles per simulated second, spread
+  evenly over the smoke whose density lies between `Smoke Min` and `Max` and
+  whose temperature lies between `Heat Min` and `Max` (Kelvin; 0 = no limit).
+  `Sources` is a collection whose objects emit too: meshes from their
+  `Surface` or `Volume` at `Rate` per second (with `Normal Speed` and a share of
+  their own motion, `Inherit`), or `Points`: one particle per point of a point
+  cloud or a Geometry Nodes output each frame (a point `velocity` attribute
+  sets its start speed, `size` its size).
+- Motion: `Drag` is how strongly the gas carries them per second (0 flies free,
+  10000 follows the smoke exactly); `Gravity` is the share of the domain's
+  gravity (negative: they rise); `Lifetime` in simulated seconds (0: forever)
+  with `Random`; `Colliders`: Pass, Bounce (with `Bounce` and `Friction`),
+  Stick or Kill on the domain's Fumaris colliders; `Inside Domain` removes those
+  that leave a mesh domain's box. Effectors move them through the gas they push
+  (a particle with Drag 0 does not feel them).
+- Look: `Size` (radius of the points) and `Random`; tracers' `Color` and
+  `Brightness` (the strength of their glitter flashes), embers' `Brightness`
+  (their glow). `Show in Preview` draws them over the live preview, `Amount` of
+  them (one pixel each).
+- The point cloud carries `velocity` (Cycles motion blur), `age` (seconds),
+  `temperature` (K), `smoke` (density at the particle), `size`, `random`
+  (0..1, fixed per particle), `id`, and `Col` with Colour Mixing. Its
+  `Fumaris Particles` Geometry Nodes modifier reads the files; add your own
+  nodes after it to instance objects on the points, make trails from
+  `velocity`, or fade them by `age`.
+- A bake is the same every time, and the same as the live preview of the same
+  frames. Re-baking or choosing another version points the object at that
+  bake's particles.
+- Not yet: particles that emit smoke, particles that push the smoke, particles
+  without visible smoke (a velocity-only mode), and particles in a cached
+  preview frame (they show the live simulation only). A collider thinner than
+  a velocity cell (twice the voxel size) can let fast particles through.
+
 ## Versions
 
 The `Versions` section (below Output) lists what the domain has

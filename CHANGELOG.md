@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: Particles (domain panel): GPU particles that ride the smoke, simulated with it in every step, so they show in the live preview and a bake writes them with its VDBs (a point-cloud file per frame, imported as a point cloud that renders in Cycles and works with Geometry Nodes). Tracers (glitter that follows the smoke exactly) or Embers (heavy, falling, cooling, glowing); spawn in the smoke by density and temperature, from mesh surfaces or volumes, or from point clouds and Geometry Nodes points; drag, gravity, lifetime, bounce/stick/kill on colliders. Bakes are identical run to run and to the live preview. A million particles add about 0.4 ms of GPU time per frame and 35 MB of cache per frame.
+
 - Changed: the Burst source (Add Source) throws two dozen clumps of fuel and heat out of a ball at their own speeds, sizes, delays and fuel, as the Explosion quick setup does: the burst grows uneven lobes, a few pockets burn on, and it rolls up into soot. It was one shell of points pushed straight out, so it always made a round ball. The clump source has a new Downward Spread input (0 for the Explosion: unchanged).
 
 - Changed: Versions sits right under Simulate (it was below Output), with Save Playblast at its top.

@@ -19,7 +19,8 @@ from .runtime import active_job
 # percentile) at 1 Sub-Step on an RTX 4060 Ti, so preview playback keeps 24 fps
 # (output/qs_pass 2026-11-08, output/perf4 2026-11-09). The 2026-11-18
 # Explosion peaks at ~6,400 blocks, with a p95 frame of 12.3 ms on the RTX 3090
-# Ti (10.1 before); not yet re-measured on the 4060 Ti.
+# Ti (10.1 before); not yet re-measured on the 4060 Ti. Without its large
+# Disturb (2026-11-19) it peaks at ~6,200 blocks and previews 3-7% faster.
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
     "simulation_memory": 2.0,
@@ -74,8 +75,10 @@ PRESETS = {
         # Short-lived fuel ends the flames a few source widths up instead of
         # in a tall column; more Vorticity makes them flicker (2026-11-07).
         "domain": {"shader_flame_enabled": True, "burn_time": 0.5, "vorticity": 4.0, **_PYRO_FIRE},
-        # Billows in the hot gas and crunch where it moves fast (as the
-        # Explosion; sizes relative to the source).
+        # Billows in the hot gas and crunch where it moves fast (sizes
+        # relative to the source). Kept on 2026-11-19: without the Disturb, or
+        # with Vorticity 2 or 1 instead of 4, the flames puffed about as much
+        # but rose as a smoother, taller column (preset-ab-2026-11-19).
         "disturb": {"strength": 120.0, "detail": 3, "size_per_size": 0.3,
                     "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
                               {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
@@ -126,20 +129,19 @@ PRESETS = {
         # so a big fireball still glows in its seams as it rises.
         "domain_per_size": {"air_margin": 0.25},
         "domain_per_root_size": {"cooling_time": 1.6 / math.sqrt(2.0)},
-        # Disturb layers, their largest swirls relative to the sources'
-        # largest dimension. The main one only in hot smoke (500-1500 K): the
-        # fireball rolls into round billows while the cooled smoke stays
-        # coherent (Axiom lesson-10 match, 2026-11-16). A fine one (about four
-        # voxels at the default size) only where gas moves at blast speed and
-        # carries smoke: crisp cells in the young fireball, calm smoke once
-        # the blast slows, with no keyframes (an unmasked strong fine layer
-        # churned the late smoke in the desert shot). Grain crunches the fast
-        # front.
-        "disturb": [{"strength": 220.0, "detail": 3, "size_per_size": 0.3,
-                     "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
-                               {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0],
-                                "values": [0.0, 1.0]}]},
-                    {"strength": 300.0, "detail": 3, "size_per_size": 0.125,
+        # One fine Disturb, its swirls relative to the sources' largest
+        # dimension (about four voxels at the default size), only where gas
+        # moves at blast speed and carries smoke: crisp cells in the young
+        # fireball, calm smoke once the blast slows, with no keyframes (an
+        # unmasked strong fine layer churned the late smoke in the desert
+        # shot). Grain crunches the fast front. No large Disturb (220, 0.3 x
+        # the size, in 500-1500 K smoke) since 2026-11-19: it rolled the
+        # fireball into many small, separate soot balls and streaks; without
+        # it the clumps' lobes stay a few big, soft billows with a fine crust
+        # of cells and fire in their seams, at the same width, height and soot
+        # timing and a slightly cheaper preview (cauliflower study;
+        # notes/experiments/preset-ab-2026-11-19).
+        "disturb": [{"strength": 300.0, "detail": 3, "size_per_size": 0.125,
                      "masks": [{"field": "SPEED", "blend": "MULTIPLY", "range_per_root_size": [1.2, 3.6],
                                 "values": [0.0, 1.0]},
                                {"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 0.05], "values": [0.0, 1.0]}]}],

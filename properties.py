@@ -816,7 +816,7 @@ class FumarisSettings(PropertyGroup):
     # until the toggle is next changed.
     full_resolution_velocity: BoolProperty(
         name="Full-Resolution Channels",
-        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature. Rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about twice the memory per block and more time per step; smoke also moves somewhat faster (Vorticity makes smaller swirls that slow the plume less). Off, motion runs at half the Resolution and a fire's fuel and burn with it. Either way only the fields the scene uses are stored: smoke alone stays smoke alone",
+        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature. Rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about 3-4 times the memory per block and 1.5-4 times the time per frame; at the same memory, half-resolution motion at about 1.5 times the Resolution looks as detailed. Smoke also rises faster (up to about 20%: Vorticity makes smaller swirls that slow the plume less). Off, motion runs at half the Resolution and a fire's fuel and burn with it. Either way only the fields the scene uses are stored: smoke alone stays smoke alone",
         get=_full_resolution_get,
         set=_full_resolution_set,
     )
@@ -903,7 +903,7 @@ class FumarisSettings(PropertyGroup):
     # full_resolution_velocity, which also counts the old option's value.
     full_resolution_channels: BoolProperty(
         name="Full-Resolution Channels",
-        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature. Only the fields the scene uses are stored",
+        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature (about 3-4 times the memory per block). Only the fields the scene uses are stored",
         default=False,
     )
 

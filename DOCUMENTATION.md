@@ -539,8 +539,8 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   `Everywhere`.
 - `Detail & Shaping` (folded) holds layers of artistic forces and per-cell
   rates (see Detail & Shaping below). A `Disturb` layer pushes smoke and hot
-  gas with small random swirls of its `Size` (scene units; keep it a few voxels
-  or larger), for breakup the base motion lacks: a Strength of about 50 is
+  gas with small random swirls of its `Size` (scene units; at least 128 /
+  Resolution, see Detail & Shaping), for breakup the base motion lacks: a Strength of about 50 is
   subtle and 300 strongly mixed on a fireball a few metres across. `Shred`
   stretches the motion across sharp temperature edges, tearing flames into
   tongues; values around 1–5 are typical.
@@ -564,8 +564,8 @@ Add a layer with `+`, reorder with the arrows; the checkbox turns one off.
 
 Layers that add motion:
 
-- `Disturb`: swirling pushes of a set `Size` (scene units; a few voxels or
-  larger), with `Detail` adding smaller swirls, each half the size. Strength
+- `Disturb`: swirling pushes of a set `Size` (scene units), with `Detail`
+  adding smaller swirls, each half the size. Strength
   is an acceleration: about 50 is subtle, 300 strong on a fireball a few
   metres across. Stack a large and a fine Disturb for detail at two scales.
 - `Grain`: small random kicks, one direction per block of `Size`, renewed
@@ -573,6 +573,16 @@ Layers that add motion:
   times larger (up to 3).
 - `Shred`: stretches the flow across steep temperature changes, tearing flame
   edges into strands.
+
+Disturb and Grain push the motion, which is simulated at half the Resolution
+(unless `Full-Resolution Channels` is on): one motion cell is 64 / Resolution
+scene units (0.125 at Resolution 512, 0.0625 at 1024), or 32 / Resolution
+with Full-Resolution Channels. A `Size` under about two motion cells, 128 /
+Resolution (0.25 at 512, 0.125 at 1024; 64 / Resolution with Full-Resolution
+Channels), does little: the pushes are smaller than the motion grid can hold.
+The same goes for a Disturb's `Detail` swirls, each half the size of the one
+before: those below that size add no detail. To get finer detail,
+raise Resolution rather than lowering Size.
 
 Layers that scale a rate per cell (by their masks):
 
@@ -650,8 +660,14 @@ that expands a lot before burning (a growing fireball) needs more, about
 - `Full-Resolution Channels` simulates everything at the full Resolution:
   motion (velocity and pressure) and a fire's fuel and burn, like smoke and
   temperature. Rounder, finer billows and fewer grid-aligned artifacts from
-  Vorticity, at about twice the memory per block and more time per step;
-  smoke also moves somewhat faster. A fire also gets the heat of
+  Vorticity at the same Resolution, but each block takes about 3-4 times the
+  memory (so 3-4 times the VRAM for the same smoke; a set VRAM amount holds a
+  third to a quarter of the blocks) and each frame 1.5-4 times as long; the
+  live preview runs at about half the frame rate or less. At the same memory,
+  half-resolution motion at about 1.5 times the Resolution looks as detailed,
+  with sharper smoke. It also changes the timing: buoyant plumes rise up to
+  about 20% faster and stay narrower (most at low Resolution), so a tuned
+  scene may need less buoyancy. A fire also gets the heat of
   full-resolution fuel at low Resolution (explosions and the Oxygen options
   burn a little cooler without it). Only the fields the scene uses are
   stored either way: smoke alone stays smoke alone. A line under it says
@@ -1211,11 +1227,11 @@ survives in pockets and at the base, as in footage of real fuel explosions (its
 inputs, such as Clumps, Clump Size, Speed, Upward Spread and Seed, are on its
 Geometry Nodes modifier). The clumps write smoke and fuel as Maximum, so
 overlapping clumps do not stack into stepped layers. Hot gas renders up to 10
-times denser (Hot Smoke Density), for crisp dark lobes with glowing seams. Its
-main Disturb works only in hot smoke (500-1500 K), rolling the fireball into
-round billows; a fine Disturb and Grain work only where the gas moves at about
-blast speed, crisping the young fireball while the late smoke stays calm. Disturb
-sizes, the Speed masks, Air Margin and Cooling Time follow the size of the
+times denser (Hot Smoke Density), for crisp dark lobes with glowing seams. It
+has no large Disturb, so the clumps' lobes stay a few big, soft billows rather
+than many small soot balls; a fine Disturb and Grain work only where the gas
+moves at about blast speed, crisping the young fireball with a crust of cells
+while the late smoke stays calm. Disturb sizes, the Speed masks, Air Margin and Cooling Time follow the size of the
 sources, so a larger explosion keeps the same look at the same number of
 voxels across it.
 Ground Fog emits cold smoke that is heavier than air, and adds a collider floor

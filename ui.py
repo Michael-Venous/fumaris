@@ -1501,7 +1501,7 @@ def _draw_domain(layout, scene, props):
         grid.prop(props, "auto_cell_size")
         storage = _fire_storage(props)
         if props.full_resolution_velocity:
-            _wrapped(advanced, "Motion at full resolution: about 2x the memory per block", "INFO")
+            _wrapped(advanced, "Motion at full resolution: about 3-4x the VRAM and 1.5-4x the time", "INFO")
         elif storage == "half":
             _wrapped(advanced, "Motion, fuel and burn at half resolution: 1.6x the blocks for a fire", "INFO")
         advanced.separator()

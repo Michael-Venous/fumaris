@@ -1,3 +1,5 @@
+import bpy
+
 from .diagnostics import console_log
 
 
@@ -129,6 +131,10 @@ def participant_for_object(obj, role, participant_id, collection_name):
         return {
             "id": participant_id,
             "object": obj,
+            # Undo rebuilds every object: the reference goes stale ("StructRNA
+            # of type Object has been removed") and rebind() finds the object
+            # again by this name.
+            "name": obj.name,
             "role": role,
             "kind": kind,
             "collection": collection_name,
@@ -199,3 +205,23 @@ def is_particles(props, subtype=None):
     if participant_shape(props) != "particles":
         return False
     return subtype is None or particle_subtype(props) == subtype
+
+
+def rebind(participants):
+    """The participants with stale object references (after an undo or redo,
+    which rebuild every object) replaced by the objects of the same name.
+    An object that is gone stays stale: the frame then fails with the
+    removed object's error, as before. Undo while playing stopped the live
+    preview (beta 3 review, 2026-11-19)."""
+    for item in participants or ():
+        if not isinstance(item, dict) or "object" not in item:
+            continue
+        try:
+            item["object"].name
+        except ReferenceError:
+            found = bpy.data.objects.get(item.get("name", ""))
+            if found is not None:
+                item["object"] = found
+        else:
+            item["name"] = item["object"].name   # follows a rename
+    return participants

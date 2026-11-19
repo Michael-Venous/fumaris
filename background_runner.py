@@ -289,6 +289,43 @@ def run(directory, job):
         return 1
 
 
+def _share_auto_memory(domain, job):
+    """Several bakes on one GPU under Auto VRAM: each takes its share of what
+    Auto would take (read now, with a bake's reserve) as a fixed amount, in
+    this snapshot only. Each bridge reads the free memory once, and bakes that
+    start together all saw an empty card."""
+    share = float(job.get("auto_memory_share", 1.0) or 1.0)
+    props = domain.fumaris
+    if share >= 0.999 or not props.simulation_memory_auto:
+        return
+    from .devices import discover_devices
+    from .exporters import bridge_executable
+    from .memory_auto import AUTO_RESERVE_SHARE, auto_memory_bytes
+    from .utils import process_environment
+    try:
+        executable = bridge_executable()
+        devices = discover_devices(executable, process_environment(executable))
+    except Exception as error:
+        console_log(f"Fumaris background bake: no GPU memory reading ({error}); Auto VRAM not shared")
+        return
+    wanted = (job.get("preferences") or {}).get("gpu_device_uuid", "")
+    candidates = [device for device in devices if device.get("memory_free_bytes") is not None]
+    device = next((d for d in candidates if d.get("uuid") == wanted), None) if wanted else None
+    if device is None:
+        # The bridge's own choice: a discrete GPU first, the largest.
+        rank = {"discrete": 3, "integrated": 2, "virtual": 1}
+        candidates.sort(key=lambda d: (rank.get(d.get("type", ""), 0), int(d.get("memory_device_local_bytes", 0))))
+        device = candidates[-1] if candidates else None
+    if device is None:
+        return
+    amount = auto_memory_bytes(int(device["memory_free_bytes"]), int(device.get("memory_device_local_bytes", 0)),
+                               reserve_share=AUTO_RESERVE_SHARE * 2.0) * share
+    props.simulation_memory_auto = False
+    props.simulation_memory = max(0.5, amount / float(1 << 30))
+    console_log(f"Fumaris background bake: Auto VRAM shared with {round(1.0 / share)} bakes on "
+                f"{device.get('name', 'this GPU')}: {props.simulation_memory:.1f} GB")
+
+
 def _bake(directory, job, status):
     _show_scene(job)
     context = bpy.context
@@ -296,6 +333,8 @@ def _bake(directory, job, status):
     if domain is None or domain.fumaris.smoke_object_type != "domain":
         status.write(state="failed", error=f"'{job['domain']}' is not a Fumaris domain in the snapshot")
         return 1
+
+    _share_auto_memory(domain, job)
 
     cancel = os.path.join(directory, CANCEL_FILE)
     if os.path.exists(cancel):

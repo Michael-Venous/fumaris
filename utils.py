@@ -1,6 +1,7 @@
 import os
 import sys
 import hashlib
+import uuid
 import stat
 import tempfile
 import math
@@ -216,8 +217,13 @@ def cache_identity_for_object(obj):
         for other in bpy.data.objects
     ) if identity else False
     if not identity or duplicate:
+        # Random, not a hash of the name: two .blend files in one folder (or
+        # unsaved files, which share the profile's folder) with a domain of the
+        # same name got the same cache folder, and Replace in one deleted the
+        # other's bake (beta 3 review, 2026-11-19). An identity is stored once
+        # and kept, so existing caches are still found.
         name = getattr(obj, "name_full", obj.name)
-        identity = hashlib.sha256(name.encode("utf-8")).hexdigest()[:24]
+        identity = hashlib.sha256(f"{name}|{uuid.uuid4().hex}".encode("utf-8")).hexdigest()[:24]
         props.cache_id = identity
     return identity
 

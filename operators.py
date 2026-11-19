@@ -947,7 +947,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return
         domain = bpy.data.objects.get(self._domain_name)
         self._frame_fingerprints[self._frame] = packet_digest(packet)
-        current = settings_digest(domain, self._participants, getattr(self, "_resolution_scale", 1.0))
+        from .participants import rebind
+        current = settings_digest(domain, rebind(self._participants), getattr(self, "_resolution_scale", 1.0))
         self._frame_runs[self._frame] = self._run_id
         self._frame_settings[self._frame] = current
         if self._pass_settings is None:

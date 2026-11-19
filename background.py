@@ -306,7 +306,12 @@ def _launch(job, worker):
     prefs = get_addon_preferences()
     custom_bridge = getattr(prefs, "executable_path", "") or ""
     try:
+        # Workers that bake on this job's GPU at once: under Auto VRAM each
+        # takes its share of the card (two bakes each took ~85% of it and
+        # spilled into system memory, ~8x slower; beta 3 review, 2026-11-19).
+        sharing = sum(1 for index in range(worker_count()) if gpus[index % len(gpus)] == job.gpu)
         write_json(os.path.join(job.path, JOB_FILE), {
+            "auto_memory_share": 1.0 / max(1, sharing),
             "domain": job.domain_name,
             "scene": job.scene,
             "view_layer": job.view_layer,

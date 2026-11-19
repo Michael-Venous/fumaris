@@ -413,10 +413,11 @@ class FrameRangeJob:
             else {"valid": False}
         )
         self._last_submitted_volume_preview = preview_request
+        from .participants import rebind
         packet = build_frame(
             context,
             self._frame,
-            self._participants,
+            rebind(self._participants),
             domain=domain,
             resolution_scale=getattr(self, "_resolution_scale", 1.0),
             volume_stage_dir=self._volume_staging.name,

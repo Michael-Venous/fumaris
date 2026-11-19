@@ -15,6 +15,7 @@ except ImportError:
     np = None
 
 from . import detail_stack
+from . import particles
 from .diagnostics import console_log
 from .memory_auto import AUTO_RESERVE_SHARE
 from .collection_export import collection_mesh_arrays, collection_point_arrays
@@ -146,6 +147,8 @@ def build_session(
         in {"1", "true", "yes", "on"},
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
+    # Fumaris Particles take their GPU memory from the simulation's.
+    settings["initial_domain"]["particle_memory_bytes"] = particles.memory_bytes(domain)
     # Effectors add a velocity scratch texture after the pressure solve.
     settings["initial_domain"]["effector_sources"] = any(item["kind"] == "effector" for item in participants)
     settings["initial_domain"]["density_channels"] = density_channels(domain.fumaris, participants)
@@ -340,6 +343,7 @@ def _build_frame(
                 )
             )
     _warn_extreme_motion(domain or context.object, participants, resolution_scale)
+    particle_state = particles.frame_state(owner, depsgraph, payload, frame, _append_array)
 
     return FramePacket(
         {
@@ -357,6 +361,7 @@ def _build_frame(
             "points": [],
             "effectors": effectors,
             "volumes": volumes,
+            **({"particles": particle_state} if particle_state else {}),
         },
         payload,
     )

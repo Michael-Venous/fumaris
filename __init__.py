@@ -20,6 +20,7 @@ from . import compare
 from . import timeline
 from . import background
 from . import playblast
+from . import particles
 
 
 def register():
@@ -35,9 +36,11 @@ def register():
     timeline.register()
     background.register()
     playblast.register()
+    particles.register()
 
 
 def unregister():
+    particles.unregister()
     playblast.unregister()
     background.unregister()
     timeline.unregister()

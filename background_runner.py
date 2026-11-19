@@ -73,14 +73,20 @@ def write_json(path, data):
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "w", encoding="utf-8") as stream:
         json.dump(data, stream)
-    try:
-        os.replace(temporary, path)
-    except OSError:
-        # Windows: the reader has it open right now; the next write replaces it.
+    # Windows: replacing fails while the main process has the file open to
+    # read it. Dropping the write and relying on the next one lost the final
+    # "finished" status (there is no next write), so a completed bake was
+    # reported as ended unexpectedly (2026-11-19). Retry for up to ~2 s.
+    for attempt in range(40):
         try:
-            os.remove(temporary)
+            os.replace(temporary, path)
+            return
         except OSError:
-            pass
+            time.sleep(0.05)
+    try:
+        os.remove(temporary)
+    except OSError:
+        pass
 
 
 class BackgroundBake(FrameRangeJob):

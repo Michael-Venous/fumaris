@@ -569,11 +569,33 @@ def _compact_memory(mebibytes):
 
 
 def _bake_summary(props, state):
-    return (
-        f"{state}: {props.baked_frames} frames | {_compact_time(props.bake_elapsed)} | "
-        f"VRAM {_compact_memory(props.bake_peak_vram_mb)} | "
-        f"RAM {_compact_memory(props.bake_peak_ram_mb)}"
-    )
+    """The parts of the bake's summary line; figures not measured are left
+    out (a queued bake dropped before it ran read "Stopped: 0 frames | N/A")."""
+    frames = int(props.baked_frames)
+    if frames <= 0:
+        return ["Not baked" if state == "Baked" else "Stopped before the first frame"]
+    parts = [f"{state}: {frames} frame" + ("" if frames == 1 else "s")]
+    if props.bake_elapsed > 0.0:
+        parts.append(_compact_time(props.bake_elapsed))
+    if props.bake_peak_vram_mb > 0.0:
+        parts.append(f"VRAM {_compact_memory(props.bake_peak_vram_mb)}")
+    if props.bake_peak_ram_mb > 0.0:
+        parts.append(f"RAM {_compact_memory(props.bake_peak_ram_mb)}")
+    return parts
+
+
+def _wrapped_parts(layout, parts, icon="NONE", separator=" | "):
+    """Parts joined by a separator, wrapped between parts so no line ends
+    with a separator (a wrapped summary read "Baked: 1 frames | 1.0s |")."""
+    width = max(16, _LINE_CHARS)
+    lines = []
+    for part in (part for part in parts if part):
+        if lines and len(lines[-1]) + len(separator) + len(part) <= width:
+            lines[-1] += separator + part
+        else:
+            lines.append(part)
+    for index, line in enumerate(lines or [""]):
+        layout.label(text=line, icon=icon if index == 0 else ("BLANK1" if icon != "NONE" else "NONE"))
 
 
 def _compact_count(value):
@@ -664,8 +686,10 @@ def _draw_memory_usage(layout, domain):
     # GPU memory: the simulation's reserved pool and the share smoke fills.
     if _NARROW:
         # (the whole line no longer fits: the bar cut it mid-text; it still
-        # says VRAM, so it is not read as the preview cache's RAM below)
-        text = f"VRAM {used / gib:.1f}/{allocated / gib:.1f} GB ({fraction:.0%})"
+        # says VRAM, so it is not read as the preview cache's RAM below).
+        # The amount held comes first: "VRAM 0.0/40.0 GB" read as an empty
+        # GPU while the reserved pool filled the card (beta 3 review).
+        text = f"VRAM {allocated / gib:.1f} GB, {fraction:.0%} used"
     else:
         # "reserved": the total is the pool Flow holds, the fill what smoke
         # uses of it (0.0 of 1.0 GB read as wrong while Flow held 823 MB).
@@ -686,19 +710,18 @@ def _draw_capacity_warning(layout, domain):
         box = layout.column(align=True)
         title = box.row(align=True)
         title.alert = True
-        title.label(text="GPU memory full: simulation slowed", icon="ERROR")
-        _wrapped(box, diagnostics.memory_full_advice(state))
+        title.label(text="GPU memory full", icon="ERROR")
+        _wrapped(box, "The simulation runs slowly. " + diagnostics.memory_full_advice(state))
     status = diagnostics.capacity_status(state)
     if not status:
         return
     box = layout.column(align=True)
     title = box.row(align=True)
     title.alert = True
-    if status == "full":
-        title.label(text="Capacity reached — smoke may clip", icon="ERROR")
-    else:
-        title.label(text="Capacity almost full — smoke may clip", icon="ERROR")
-    box.label(text="Increase VRAM")
+    # Short lines: "Capacity reached — smoke may clip" was cut off at the
+    # default Properties width (beta 3 review).
+    title.label(text="Capacity reached" if status == "full" else "Capacity almost full", icon="ERROR")
+    box.label(text="Smoke may clip: increase VRAM")
     box.label(text="or lower Resolution, then restart.")
     if status == "full" and state and not state.get("active"):
         box.label(text="Last run", icon="INFO")
@@ -777,7 +800,9 @@ def _draw_preview_cache_status(layout, scene, job, paused):
     first, last = cache["first"], cache["last"]
 
     def size_text(size):
-        return f"{size / 1e9:.1f} GB" if size >= 1e9 else f"{size / 1e6:.0f} MB"
+        # Binary GB, as Preferences' Preview Cache RAM and the bridge's budget
+        # count them (1e9 showed a 16 GB budget as "17.2 GB", beta 3 review).
+        return f"{size / (1 << 30):.1f} GB" if size >= (1 << 30) else f"{size / (1 << 20):.0f} MB"
 
     live = getattr(job, "_live_frame", None)
     if paused and live is not None and first <= scene.frame_current < live:
@@ -1107,8 +1132,8 @@ def _draw_domain(layout, scene, props):
             status.label(text="Baking…", icon="TIME")
         elif mode is None and props.simulation_state in {"baked", "stopped"}:
             completed = props.simulation_state == "baked"
-            _wrapped(status, _bake_summary(props, "Baked" if completed else "Stopped"),
-                     "CHECKMARK" if completed else "PAUSE")
+            _wrapped_parts(status, _bake_summary(props, "Baked" if completed else "Stopped"),
+                           "CHECKMARK" if completed else "PAUSE")
         elif is_previewing:
             replaying = getattr(job, "_replaying", False)
             if replaying:
@@ -1207,6 +1232,8 @@ def _draw_domain(layout, scene, props):
             volumes.label(text="Cycles Volumes")
             volumes.prop(cycles, "volume_biased", toggle=True,
                          text="Biased" if cycles.volume_biased else "Unbiased")
+        if scene.render.engine == "CYCLES":
+            appearance.prop(props, "shader_smooth_voxels")
         if props.volume_material is not None and not props.volume_material.get("fumaris_generated_material"):
             appearance.label(
                 text="Custom material overrides this",
@@ -1665,10 +1692,16 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
                 create.prop(context.scene, "fumaris_new_domain_name", text="", placeholder="New domain name")
             except TypeError:   # no placeholder text in this Blender
                 create.prop(context.scene, "fumaris_new_domain_name", text="")
-            create.operator("fumaris.domain_create", text="", icon="ADD")
-            create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
-            if not domains:
+            if domains:
+                create.operator("fumaris.domain_create", text="", icon="ADD")
+                create.operator_menu_enum("fumaris.quick_setup", "preset", text="", icon="MOD_FLUID")
+            else:
+                # First run: the two ways to start, named (icon-only buttons
+                # read as unexplained, beta 3 review).
                 body.label(text="No Fumaris domain in this scene", icon="INFO")
+                start = body.row(align=True)
+                start.operator("fumaris.domain_create", text="New Domain", icon="ADD")
+                start.operator_menu_enum("fumaris.quick_setup", "preset", text="Quick Setup", icon="MOD_FLUID")
             from . import background
             listing = body.column(align=True)
             for obj in domains:

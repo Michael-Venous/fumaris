@@ -420,10 +420,12 @@ versions) use half the GPU memory. Auto is on for new domains (Quick Setup,
 New Domain, or Role set to Domain); the result does not depend on the amount,
 only how much room the smoke has. Turn it off to reserve a set amount, for
 example to leave memory to other programs (Quick Setup's domains then use
-2 GB, which holds every preset with room to spare). A set amount larger than the GPU's memory
-is flagged under the field: it would spill into system memory and run slowly. The panel shows the amount Auto resolved to at the last
+2 GB, which holds every preset with room to spare). A set amount larger than the GPU's free memory
+starts with only what fits on the GPU (as much as Auto would take) and grows past it only when
+the smoke needs the room; that part goes to system memory and runs slowly ("GPU memory full").
+The field flags an amount above the GPU's size. The panel shows the amount Auto resolved to at the last
 start, with the free memory it was read from and what it left free, for
-example `Auto VRAM: 9.0 GB (10.0 GB free, 1.0 GB left free)`; the VRAM bar's
+example `Auto VRAM: 9.0 GB` over `10.0 GB free, 1.0 GB left`; the VRAM bar's
 total is that amount. Auto reads the free memory once, when the simulation
 starts: a program started afterwards (a Cycles render, a game) is not
 accounted for until you Stop and Play again. Diagnostics shows the voxel size (32 scene units divided by Resolution),
@@ -1104,6 +1106,11 @@ Glow).
   shows in the crevices next to the flames. If Cycles' unbiased volumes
   render the glow in square patches, try Render Properties > Light Paths >
   Volumes > Biased (often, not always, faster too).
+- `Smooth Voxels` (Cycles; on by default) reads the volume with cubic instead
+  of linear interpolation. With linear, dense smoke and fireballs show fine
+  concentric rings, one per voxel layer, where their surface crosses the
+  voxel grid. It costs about 1.5 times the render time: turn it off for quick
+  test renders.
 
 The live preview uses the same settings. The material reads only the density,
 temperature and glow grids (and fuel when Blue Core is on); `burn` stays
@@ -1385,11 +1392,14 @@ Steady Fire use Normal Velocity 0.25, Explosion 1.
 ### Choosing the simulation GPU
 
 Use **Simulation GPU** in the Fumaris preferences (Edit > Preferences >
-Add-ons > Fumaris). Click the refresh icon to list Vulkan GPUs, then choose a
-card. The choice applies to new Preview and Bake jobs, is shared across scenes
+Add-ons > Fumaris). The Vulkan GPUs are listed when the preferences are first
+shown (the refresh icon lists them again), then choose a card. The choice applies to new Preview and Bake jobs, is shared across scenes
 and is kept with Blender's preferences.
 
-**Automatic** prefers a discrete GPU and preserves launch environment overrides.
+**Automatic** prefers a discrete GPU and preserves launch environment overrides;
+the list names the GPU it resolves to, for example `Automatic (NVIDIA GeForce RTX 3090 Ti)`.
+An integrated GPU beside a discrete one is marked `(integrated, not recommended)`
+and is not offered under On GPUs for background bakes (a GPU already ticked stays).
 An explicit choice uses the card's UUID, so a driver changing device order does
 not redirect the simulation. An unavailable saved GPU stops the job with an
 error; refresh and choose another card or Automatic. Changing the choice does

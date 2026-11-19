@@ -98,8 +98,12 @@ def refresh_readings_async():
 
 
 def _gpu_uuid():
+    """The chosen GPU; under Automatic, a FUMARIS_GPU_DEVICE_UUID launch
+    override (the GPU the bridge then takes, as Preferences names it)."""
+    import os
     from .utils import get_addon_preferences
-    return getattr(get_addon_preferences(), "gpu_device_uuid", "") or ""
+    chosen = getattr(get_addon_preferences(), "gpu_device_uuid", "") or ""
+    return chosen or os.environ.get("FUMARIS_GPU_DEVICE_UUID", "").strip().lower()
 
 
 def budget_bytes_for_display(props, state=None):
@@ -137,19 +141,29 @@ def free_bytes_for_display(props, state=None):
     return reading.get("free_bytes") if reading else None
 
 
-def budget_text(props, state=None):
-    """'Auto VRAM: 9.0 GB (10.0 GB free, 1.0 GB left free)', or None: what
-    Auto takes and what it leaves to other programs, so a full GPU reads as
-    other programs using it, not as Fumaris asking too much."""
+def budget_lines(props, state=None):
+    """['Auto VRAM: 9.0 GB', '10.0 GB free, 1.0 GB left'], or None: what Auto
+    takes and what it leaves to other programs, so a full GPU reads as other
+    programs using it, not as Fumaris asking too much. Two short lines: one
+    line was cut off at the default Properties width (beta 3 review)."""
     budget, when = budget_bytes_for_display(props, state)
     if budget is None:
         return None
     gib = float(1 << 30)
+    head = f"Auto VRAM: {budget / gib:.1f} GB"
     free = free_bytes_for_display(props, state)
     if free is None:
-        return f"Auto VRAM: {budget / gib:.1f} GB ({when})"
+        return [head, when] if when else [head]
     left = max(0, int(free) - int(budget))
-    return f"Auto VRAM: {budget / gib:.1f} GB ({free / gib:.1f} GB free, {left / gib:.1f} GB left free)"
+    return [head, f"{free / gib:.1f} GB free, {left / gib:.1f} GB left"]
+
+
+def budget_text(props, state=None):
+    """'Auto VRAM: 9.0 GB (10.0 GB free, 1.0 GB left)', or None."""
+    lines = budget_lines(props, state)
+    if lines is None:
+        return None
+    return lines[0] + "".join(f" ({line})" for line in lines[1:])
 
 
 def draw_budget_summary(layout, props, state=None):
@@ -157,18 +171,22 @@ def draw_budget_summary(layout, props, state=None):
     budget, when = budget_bytes_for_display(props, state)
     column = layout.column(align=True)
     if getattr(props, "simulation_memory_auto", False):
-        if budget is None:
-            column.label(text="Auto VRAM: free GPU memory at start, less a reserve", icon="MEMORY")
-        else:
-            column.label(text=budget_text(props, state), icon="MEMORY")
+        lines = budget_lines(props, state) or ["Auto VRAM: what is free", "at start, less a reserve"]
+        for index, line in enumerate(lines):
+            column.label(text=line, icon="MEMORY" if index == 0 else "BLANK1")
     elif budget is not None:
-        # A set amount above what the GPU has spills into system memory.
+        # A set amount above what the GPU has: the bridge reserves what fits
+        # and spills into system memory only when the smoke needs more.
+        # Two short lines: one was cut off at the default panel width.
         reading = selected_reading(_gpu_uuid())
         total = reading.get("device_local_bytes") if reading else None
         if total and budget > total:
             row = column.row()
             row.alert = True
-            row.label(text=f"More than this GPU's {total / (1 << 30):.0f} GB: it will run slowly", icon="ERROR")
+            row.label(text=f"Above this GPU's {total / (1 << 30):.0f} GB:", icon="ERROR")
+            row = column.row()
+            row.alert = True
+            row.label(text="the rest is slow (system RAM)", icon="BLANK1")
     if budget is not None:
         column.separator()
 

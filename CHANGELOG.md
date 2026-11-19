@@ -2,6 +2,27 @@
 
 All notable customer-facing changes are recorded here.
 
+## Unreleased
+
+- Fixed: dense smoke and fireballs (the Explosion quick setup most of all) rendered fine concentric rings in Cycles, one per voxel layer, where their surface crossed the voxel grid. It was Cycles' linear reading of the volume, not the simulation: Fumaris's materials now read it with cubic interpolation (Look > Smooth Voxels, on by default; about 1.5 times the render time; turn it off for faster test renders). Existing bakes get it the next time their volume is imported or a Look setting changes.
+
+- Fixed: a VRAM amount larger than the GPU's free memory put everything above it in system memory from the first frame, even for smoke that fit on the card: the first frame took seconds and every frame ran 5-10 times slower. Fumaris now starts with what fits on the GPU and goes to system memory only when the smoke needs more (40 GB set on a 16 GB card: first frame 0.3 s instead of 6.6 s, frames as fast as at 4 GB).
+- Fixed: "GPU memory full" could stay hidden while the simulation ran from system memory: its count was reset each time the preview looped. It now shows for as long as any of the simulation is in system memory.
+- Fixed: opening another file during Bake All (or Bake in Background) stopped the bakes with a console message only, and reopening the first file did not show the frames they had kept. The new file now says which bakes stopped, and reopening the first file loads their frames.
+- Fixed: a very high Resolution (about 65536 and up with the default emitter) sat at frame 1 forever, the simulation process filling gigabytes of RAM: a mesh emitter listed every block of its padded surface before the GPU's capacity applied. The list now stops well above what any GPU holds, and the panel says the capacity is full (lower Resolution or raise VRAM). The warning under a VRAM amount above the GPU's size now fits the panel.
+- Fixed: a domain copied from another file, or two files with same-named domains, could share one cache folder; each domain's cache is now its own.
+- Fixed: undo during a live preview stopped it with "StructRNA of type Object has been removed"; the preview now carries on with the restored objects.
+- Fixed: two or more background bakes on one GPU with Auto VRAM each claimed nearly the whole card and spilled into system memory; they now share its free memory.
+- Fixed: the Auto VRAM line and the capacity warnings were cut off ("…") at Blender's default Properties width. They now use two short lines ("Auto VRAM: 9.0 GB" / "10.0 GB free, 1.0 GB left"; "Capacity reached" / "Smoke may clip: increase VRAM").
+- Fixed: the narrow VRAM bar read "VRAM 0.0/40.0 GB" while the GPU was full. It now leads with the VRAM reserved and the share smoke uses of it ("VRAM 40.0 GB, 0% used").
+- Fixed: the bake summary could end a line with a stray " |", and showed "N/A" for figures that were not measured. It now breaks between items and leaves unmeasured ones out; "1 frames" reads "1 frame".
+- Fixed: a bake that was queued and then dropped showed "Stopped: 0 frames | N/A"; it now says "Stopped before the first frame".
+- Fixed: sizes in GB were counted two ways (the preview cache and version sizes in thousands, Preferences, VRAM and RAM in 1024s), so a 16 GB cache limit showed as 17.2 GB. All now count GB the same way.
+- Fixed: imported baked volumes were all named "Fumaris Volume", "Fumaris Volume.001", … and their names could swap between domains when one was baked again. Each is now named after its domain ("Smoke Domain Volume"), and baking again replaces that domain's own volume.
+- Changed: Preferences list the GPUs as soon as they are opened, without pressing Refresh, and Automatic names the GPU it uses ("Automatic (NVIDIA GeForce RTX 3090 Ti)").
+- Changed: an integrated GPU beside a discrete one is marked "(integrated, not recommended)" in the Simulation GPU list and is no longer offered for background bakes (a GPU already ticked stays). Automatic already chose the discrete GPU; a computer with only an integrated GPU can still use it.
+- Changed: with no domain in the scene, the sidebar's buttons are named: New Domain and Quick Setup.
+
 ## 2.0.0 beta 3 — 2026-11-19
 
 A fix release for the 2.0 beta, from a tester's reports. Windows users

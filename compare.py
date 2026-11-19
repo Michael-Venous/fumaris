@@ -326,11 +326,12 @@ def list_versions(domain, *, fresh=False):
 
 
 def _size_text(size):
-    if size >= 1e9:
-        return f"{size / 1e9:.1f} GB"
-    if size >= 1e6:
-        return f"{size / 1e6:.0f} MB"
-    return f"{size / 1e3:.0f} kB" if size else "empty"
+    # Binary units, as every other GB in Fumaris (VRAM, RAM, Preferences).
+    if size >= 1 << 30:
+        return f"{size / (1 << 30):.1f} GB"
+    if size >= 1 << 20:
+        return f"{size / (1 << 20):.0f} MB"
+    return f"{size / 1024:.0f} kB" if size else "empty"
 
 
 def version_summary(version, *, size=False):

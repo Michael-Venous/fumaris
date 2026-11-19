@@ -724,9 +724,31 @@ def _detach_all():
 def _stop_before_load(_dummy=None):
     # Like the foreground job: bakes belong to the scene they were started
     # in. They stop after their frame; the timer removes their files.
-    if _jobs:
-        console_log(f"Fumaris stopped {len(_jobs)} background bake(s): another file was opened")
+    running = [job.domain_name for job in _jobs if job.state in {"queued", "starting", "running"}]
+    if running:
+        console_log(f"Fumaris stopped {len(running)} background bake(s): another file was opened")
+        # Told once the new file is open (a report now goes with the old one).
+        names = ", ".join(f"'{name}'" for name in running[:3]) + (f" and {len(running) - 3} more" if len(running) > 3 else "")
+        _after_load.append(
+            f"Opening a file stopped the background bake of {names}. Frames already baked are kept: "
+            "open the first file again to see them (Save before opening another file to keep baking)")
     _detach_all()
+
+
+_after_load = []
+
+
+@persistent
+def _report_after_load(_dummy=None):
+    if _after_load:
+        texts = list(_after_load)
+        _after_load.clear()
+        if bpy.app.background:
+            for text in texts:
+                report("WARNING", text)
+            return
+        # After the load, with the new file's windows in place.
+        bpy.app.timers.register(lambda: [report("WARNING", text) for text in texts] and None, first_interval=0.1)
 
 
 def shutdown():
@@ -1166,6 +1188,8 @@ def register():
         return
     _remove_handler_named(bpy.app.handlers.load_pre, "_stop_before_load")
     bpy.app.handlers.load_pre.append(_stop_before_load)
+    _remove_handler_named(bpy.app.handlers.load_post, "_report_after_load")
+    bpy.app.handlers.load_post.append(_report_after_load)
     atexit.register(shutdown)
     try:
         cleanup_stale()
@@ -1178,6 +1202,7 @@ def unregister():
         shutdown()
         atexit.unregister(shutdown)
         _remove_handler_named(bpy.app.handlers.load_pre, "_stop_before_load")
+        _remove_handler_named(bpy.app.handlers.load_post, "_report_after_load")
         if bpy.app.timers.is_registered(_tick):
             bpy.app.timers.unregister(_tick)
     for cls in reversed(CLASSES):

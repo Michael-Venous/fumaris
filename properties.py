@@ -565,6 +565,11 @@ class FumarisSettings(PropertyGroup):
         description="Voxel size: 32 scene units divided by this (1024 is about 3 cm), whatever the domain object's size; the simulation has no box and covers only where smoke is. Higher values give finer detail but need more GPU memory (about 8 times the voxels at twice the value) and simulation time; raise VRAM if the smoke gets cut off",
         default=256,
         min=1,
+        # No hard maximum: Resolution is an absolute voxel size and physical-
+        # scale scenes need values far above 4096 (exported up to 1e9). A
+        # value the emitter cannot be simulated at fills the pool and says so
+        # (EmitterMesh's block walk is bounded; it hung frame 1 before, beta 3
+        # review R30).
         soft_max=4096,
         soft_min=16,
     )
@@ -1962,6 +1967,15 @@ class FumarisSettings(PropertyGroup):
 
     # Hot Smoke Density (render only): the material's Look Controls; the live
     # preview does not show it.
+    shader_smooth_voxels: BoolProperty(
+        name="Smooth Voxels",
+        description="Cycles reads the volume with cubic instead of linear interpolation. Dense smoke and fireballs "
+                    "otherwise show fine concentric rings, one per voxel layer, where their surface crosses the "
+                    "voxel grid. Renders about 1.5x slower; turn off for faster test renders",
+        default=True,
+        update=_appearance_updated,
+    )
+
     shader_hot_soot: FloatProperty(
         name="Hot Soot",
         description="Pyro look: how dark hot soot turns (0 keeps hot smoke the Smoke Color, 1 is full dark soot)",

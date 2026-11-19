@@ -1,8 +1,11 @@
+import os
+import threading
+
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 
 from .utils import runtime_validation_error, executable_path, process_environment
-from .devices import discover_devices
+from .devices import automatic_device, discover_devices, not_recommended
 from .memory_auto import update_readings as update_memory_readings
 
 
@@ -10,17 +13,32 @@ _devices = []
 _items = []  # Blender keeps references to enum strings.
 _item_strings = {}  # Retain generated strings across enum callback/getter calls.
 _discovery_error = ""
+# The GPU list fills itself the first time the preferences are drawn (it was
+# empty until Refresh, beta 3 review): discovery runs on a thread and a timer
+# applies its result, so drawing never waits for it.
+_discovery_started = False
+_discovery_running = False
+_NOT_RECOMMENDED = " (integrated, not recommended)"
 
 
 def _enum_string(value):
     return _item_strings.setdefault(value, value)
 
 
+def _automatic_name():
+    device = automatic_device(_devices, os.environ)
+    return device["name"] if device else ""
+
+
 def gpu_items(self, context):
     global _items
-    _items = [("AUTO", "Automatic", "Prefer a discrete GPU; honor launch environment overrides", 0)]
+    automatic = _automatic_name()
+    # Automatic names the GPU it resolves to (beta 3 review).
+    _items = [("AUTO", _enum_string(f"Automatic ({automatic})" if automatic else "Automatic"),
+               "Prefer a discrete GPU; honor launch environment overrides", 0)]
     for device in _devices:
-        _items.append((_enum_string(device["uuid"]), _enum_string(device["name"]),
+        label = device["name"] + (_NOT_RECOMMENDED if not_recommended(device, _devices) else "")
+        _items.append((_enum_string(device["uuid"]), _enum_string(label),
                        _enum_string(device["type"] + " GPU · " + device["uuid"]), len(_items)))
     if self.gpu_device_uuid and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):
         _items.append((_enum_string(self.gpu_device_uuid), _enum_string(self.gpu_device_name or "Saved GPU"),
@@ -34,8 +52,9 @@ def get_gpu(self):
 
 def set_gpu(self, value):
     item = next(item for item in gpu_items(self, None) if item[3] == value)
+    device = next((device for device in _devices if device["uuid"] == item[0]), None)
     self.gpu_device_uuid = "" if item[0] == "AUTO" else item[0]
-    self.gpu_device_name = "" if item[0] == "AUTO" else item[1]
+    self.gpu_device_name = "" if item[0] == "AUTO" else (device["name"] if device else item[1])
     # Saved with the preferences when Blender exits (Auto-Save Preferences).
     bpy.context.preferences.is_dirty = True
 
@@ -58,8 +77,11 @@ class FumarisBakeGpu(bpy.types.PropertyGroup):
 
 def _sync_bake_gpus(prefs):
     """After Refresh: a row for every GPU found; a GPU that is gone keeps its
-    row only while it is ticked (shown as unavailable)."""
-    found = {device["uuid"]: device["name"] for device in _devices}
+    row only while it is ticked (shown as unavailable). An integrated GPU
+    beside a discrete one gets no row (unless already ticked)."""
+    found = {device["uuid"]: device["name"] for device in _devices if not not_recommended(device, _devices)}
+    ticked = {gpu.uuid for gpu in prefs.bake_gpus if gpu.use}
+    found.update({device["uuid"]: device["name"] for device in _devices if device["uuid"] in ticked})
     for index in reversed(range(len(prefs.bake_gpus))):
         gpu = prefs.bake_gpus[index]
         if gpu.uuid in found:
@@ -77,24 +99,68 @@ class FUMARIS_OT_refresh_gpus(bpy.types.Operator):
     bl_description = "List Vulkan GPUs without starting a simulation"
 
     def execute(self, context):
-        global _devices, _discovery_error
         try:
             error = runtime_validation_error()
             if error:
                 raise RuntimeError(error)
             executable = executable_path()
-            _devices = discover_devices(executable, process_environment(executable))
-            update_memory_readings(_devices)
-            _discovery_error = "" if _devices else "No selectable Vulkan GPUs found"
-            addon = context.preferences.addons.get(__package__)
-            if addon is not None:
-                _sync_bake_gpus(addon.preferences)
+            _apply_discovery(discover_devices(executable, process_environment(executable)))
         except Exception as error:
-            _devices = []
-            _discovery_error = str(error)
+            _apply_discovery([], str(error))
             self.report({'ERROR'}, _discovery_error)
             return {'CANCELLED'}
         return {'FINISHED'}
+
+
+def _apply_discovery(devices, error=""):
+    """Main thread: keep a discovery's GPUs, their memory readings, and the
+    background-bake rows."""
+    global _devices, _discovery_error
+    _devices = list(devices)
+    update_memory_readings(_devices)
+    _discovery_error = error or ("" if _devices else "No selectable Vulkan GPUs found")
+    addon = bpy.context.preferences.addons.get(__package__)
+    if addon is not None and not error:
+        _sync_bake_gpus(addon.preferences)
+    for window in getattr(bpy.context.window_manager, "windows", ()):
+        for area in window.screen.areas:
+            if area.type == "PREFERENCES":
+                area.tag_redraw()
+
+
+def discover_async():
+    """List the GPUs once in the background (the first preferences draw)."""
+    global _discovery_started, _discovery_running
+    if _discovery_started:
+        return
+    _discovery_started = True
+    if runtime_validation_error():
+        return  # the Runtime box says why; Refresh reports it
+    executable = executable_path()
+    environment = process_environment(executable)
+    result = {}
+
+    def run():
+        try:
+            result["devices"] = discover_devices(executable, environment)
+        except Exception as error:
+            result["error"] = str(error)
+
+    def apply():
+        global _discovery_running
+        if thread.is_alive():
+            return 0.2
+        _discovery_running = False
+        try:
+            _apply_discovery(result.get("devices", []), result.get("error", ""))
+        except Exception:
+            pass
+        return None
+
+    thread = threading.Thread(target=run, daemon=True)
+    _discovery_running = True
+    thread.start()
+    bpy.app.timers.register(apply, first_interval=0.2)
 
 
 class FumarisPreferences(bpy.types.AddonPreferences):
@@ -148,7 +214,11 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         row = box.row(align=True)
         row.prop(self, "simulation_gpu", text="GPU")
         row.operator("fumaris.refresh_gpus", text="", icon='FILE_REFRESH')
-        if _discovery_error:
+        if not _devices and not _discovery_error:
+            discover_async()
+        if _discovery_running:
+            box.label(text="Looking for GPUs…", icon='TIME')
+        elif _discovery_error:
             box.label(text=_discovery_error, icon='ERROR')
         elif self.gpu_device_uuid and _devices and not any(d["uuid"] == self.gpu_device_uuid for d in _devices):
             box.label(text="Saved GPU unavailable; choose another GPU or Automatic", icon='ERROR')
@@ -168,7 +238,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
         ticked = sum(1 for gpu in self.bake_gpus if gpu.use)
         if self.bake_workers == 0:
             box.label(text=f"Auto: {max(1, ticked)} at once, one per ticked GPU", icon='INFO')
-        if not self.bake_gpus:
+        if not self.bake_gpus and not _discovery_running:
             box.label(text="Press Refresh above to list the GPUs; with none ticked, bakes use the Simulation GPU", icon='INFO')
         elif not ticked:
             box.label(text="None ticked: background bakes use the Simulation GPU", icon='INFO')

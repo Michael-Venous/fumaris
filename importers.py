@@ -447,6 +447,14 @@ def apply_generated_material_settings(material, settings):
     # Experiment only (no Appearance setting): a soft cap on Pyro fire brightness.
     nodes[NODE_FIRE].inputs["Soft Cap"].default_value = float(os.environ.get("FUMARIS_EXP_PYRO_CAP", "0"))
     material.diffuse_color = values["Smoke Color"]
+    # Linear interpolation's slope jumps at every voxel face: dense volumes
+    # rendered concentric rings, one per voxel layer, wherever their surface
+    # crosses the grid (Explosion fireball, beta 3 review R31; an analytic
+    # ellipsoid shows them too). Cubic is smooth; ~1.6x the render time.
+    cycles = getattr(material, "cycles", None)
+    if cycles is not None and hasattr(cycles, "volume_interpolation"):
+        smooth = bool(_appearance_value(settings, "shader_smooth_voxels", True))
+        cycles.volume_interpolation = "CUBIC" if smooth else "LINEAR"
     material.node_tree.update_tag()
     return True
 
@@ -1836,6 +1844,7 @@ def import_sequence(
     selectable=True,
     appearance=None,
     frame_end=None,
+    name="Fumaris Volume",
 ):
     files = _sequence_files(directory, prefix)
     if frame_end is not None:
@@ -1871,7 +1880,11 @@ def import_sequence(
 
     volume_object = created[0]
     _move_out_of_participant_collections(volume_object)
-    volume_object.name = "Fumaris Volume"
+    # Named after its domain by the callers that know it: every volume
+    # called "Fumaris Volume.00N" read as swapped between domains when a
+    # re-import freed and re-took a name (beta 3 review). Volumes are found
+    # by VOLUME_MARKER, never by name.
+    volume_object.name = name
     volume_object.location = (0.0, 0.0, 0.0)
     volume_object[VOLUME_MARKER] = os.path.normpath(directory)
     volume_object[VOLUME_PREFIX_MARKER] = prefix

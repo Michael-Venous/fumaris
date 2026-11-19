@@ -1,4 +1,5 @@
-"""GPU discovery is explicit; drawing preferences never starts a subprocess."""
+"""GPU discovery never blocks drawing: the preferences start it on a thread
+the first time they are drawn, and Refresh runs it again."""
 import json
 import re
 import subprocess
@@ -39,3 +40,30 @@ def discover_devices(executable, environment):
                 and uuids.count(d["uuid"]) == 1]
     except (ValueError, KeyError, TypeError) as error:
         raise RuntimeError("Bridge does not provide a valid GPU list; update the Fumaris bridge") from error
+
+
+_PREFERENCE = {"discrete": 3, "integrated": 2, "virtual": 1}
+
+
+def automatic_device(devices, environment):
+    """The GPU the bridge picks under Automatic (simulation.cpp's
+    selectFlowDevice): a FUMARIS_GPU_DEVICE_UUID override, else the first
+    of the most preferred type (discrete, then integrated). None when it
+    cannot be told (a FUMARIS_GPU_DEVICE_INDEX override counts Vulkan
+    devices this list leaves out)."""
+    uuid = (environment.get("FUMARIS_GPU_DEVICE_UUID") or "").strip().lower()
+    if uuid:
+        return next((device for device in devices if device["uuid"] == uuid), None)
+    if environment.get("FUMARIS_GPU_DEVICE_INDEX"):
+        return None
+    best = None
+    for device in devices:
+        if best is None or _PREFERENCE.get(device["type"], 0) > _PREFERENCE.get(best["type"], 0):
+            best = device
+    return best
+
+
+def not_recommended(device, devices):
+    """An integrated GPU while a discrete one is present: slow for a
+    simulation and sharing system memory, so it is not offered first."""
+    return device["type"] == "integrated" and any(other["type"] == "discrete" for other in devices)

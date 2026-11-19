@@ -32,6 +32,7 @@ from .importers import (
     baked_frame_count,
     delete_generated_data,
     delete_temporary_writes,
+    domain_volumes,
     import_sequence,
     _frame_files,
 )
@@ -1458,6 +1459,7 @@ def _import_cache(context, domain, directory, prefix, *, frame_start=None, frame
             selectable=props.volume_selectable,
             appearance=props,
             frame_end=frame_end,
+            name=f"{domain.name} Volume",
         )
         apply_material_sync(domain, directory, default=True)
         if volume is not None and not props.viewport_visible:
@@ -2048,6 +2050,7 @@ def _recover_orphaned_bakes():
     if objects is None:
         return
     owner_pid = os.getpid() if not active_job() else None
+    unloaded = []
     for obj in objects:
         if not hasattr(obj, "fumaris"):
             continue
@@ -2068,6 +2071,8 @@ def _recover_orphaned_bakes():
                 )
                 if props.simulation_state == "baking":
                     props.simulation_state = "stopped"
+            if _kept_frames_unloaded(obj, directory):
+                unloaded.append(obj.name)
         except RuntimeError:
             # Another Blender process may still be writing this cache.
             continue
@@ -2075,6 +2080,47 @@ def _recover_orphaned_bakes():
             if props.simulation_state == "baking":
                 props.simulation_state = "stopped"
             console_log(f"Fumaris could not recover cache for {obj.name}: {error}")
+    if unloaded:
+        # After the load, with the file's windows in place.
+        bpy.app.timers.register(lambda: _load_kept_frames(unloaded), first_interval=0.0)
+
+
+def _kept_frames_unloaded(domain, directory):
+    """A bake stopped while another file was open (or Blender quit) kept its
+    frames and statistics in the domain's folder, but the file was saved
+    before it ended: no volume shows them (beta 3 review R30)."""
+    props = domain.fumaris
+    if props.simulation_state not in {"idle", "baking", "stopped"} or domain_volumes(domain):
+        return False
+    from .compare import read_bake_stats
+    try:
+        return bool(read_bake_stats(directory)) and baked_frame_count(directory, props.output_prefix or "fumaris_") > 0
+    except OSError:
+        return False
+
+
+def _load_kept_frames(names):
+    from .background import report
+    for name in names:
+        domain = bpy.data.objects.get(name)
+        if domain is None or active_job():
+            continue
+        props = domain.fumaris
+        directory = output_directory_for_object(domain)
+        prefix = props.output_prefix or "fumaris_"
+        if not _kept_frames_unloaded(domain, directory):
+            continue
+        frames = baked_frame_count(directory, prefix)
+        try:
+            _import_cache(bpy.context, domain, directory, prefix)
+        except Exception as error:
+            console_log(f"Fumaris could not load the kept frames of {name}: {error}")
+            continue
+        start, end = simulation_frame_range(domain)
+        props.simulation_state = "baked" if frames >= end - start + 1 else "stopped"
+        props.baked_frames = frames
+        report("INFO", f"Loaded {frames} baked frames of '{name}' (a bake that ended while another file was open)")
+    return None
 
 
 @persistent

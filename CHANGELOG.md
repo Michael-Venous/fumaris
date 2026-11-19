@@ -2,6 +2,11 @@
 
 All notable customer-facing changes are recorded here.
 
+## Unreleased
+
+- Changed: the Explosion quick setup follows footage of real fuel explosions (lessons of a large desert explosion shot): its width is set at once by a low, wide blast that rises later; fire turns to soot gradually, lean regions first, with flames lasting in pockets and at the base (shorter Burn Time; Explosion Clumps gain Fuel Low/High, Long Burn and Upward Spread inputs); the young fireball is hot from its first frame instead of starting as a dark puff; clumps write smoke and fuel as Maximum, so overlaps no longer stack into stepped layers; hot gas renders up to 10x denser for crisp, dark lobes with glowing seams; and a fine Disturb on fast gas only crisps the young fireball without churning the late smoke. Air Margin and Cooling Time now follow the explosion's size, so a large explosion no longer grows flat, block-shaped faces.
+- Changed: the Steady Fire and Explosion quick setups render darker fuel soot (Smoke Color 0.28, Hot Soot 0.25, Thin Gas 0.08); Grain's speed mask follows the source size.
+
 ## 2.0.0 beta 2 — 2026-11-18
 
 A large update to the 2.0 beta: faster everywhere, more simulation per GB,

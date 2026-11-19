@@ -163,6 +163,19 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     # Upward share of each clump's heading: low keeps the burst wide and low
     # (a ground explosion ballooning out), high throws it up into a column.
     _socket(tree, "Lift", "NodeSocketFloat", 0.4, 0.0)
+    # Fuel varies from clump to clump between these multiples of Fuel (spread
+    # evenly in ratio, so most clumps are lean and a few rich): lean lobes turn
+    # to soot first while rich ones keep burning (real fuel fires, 2026-11-18).
+    _socket(tree, "Fuel Low", "NodeSocketFloat", 0.4, 0.0)
+    _socket(tree, "Fuel High", "NodeSocketFloat", 1.6, 0.0)
+    # This share of the clumps keeps feeding fuel, without Expansion, for up to
+    # Long Burn Frames after its burst: fire lingers in pockets and at the base
+    # while the rest of the cloud goes black.
+    _socket(tree, "Long Burn", "NodeSocketFloat", 0.0, 0.0)
+    _socket(tree, "Long Burn Frames", "NodeSocketFloat", 48.0, 0.0)
+    # How high the clumps' directions reach: 1 = the whole upper hemisphere,
+    # lower = a flat lens that sets the width at once and rises later.
+    _socket(tree, "Upward Spread", "NodeSocketFloat", 1.0, 0.0)
     group_in, group_out, time = _io(tree)
     i = group_in.outputs
     seed = i["Seed"]
@@ -172,7 +185,13 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     # Start inside the source: a random direction, at a random depth. Upper
     # hemisphere only: clumps thrown downward ended up under the ground
     # collider, emitting fire below the floor (2026-11-17).
-    direction = _vmath(tree, "NORMALIZE", _random(tree, "FLOAT_VECTOR", (-1, -1, 0), (1, 1, 1), seed, 1, (-1000, 600)), None, (-800, 600))
+    flatten = tree.nodes.new("ShaderNodeCombineXYZ")
+    flatten.location = (-1100, 700)
+    flatten.inputs["X"].default_value = flatten.inputs["Y"].default_value = 1.0
+    _link(tree, i["Upward Spread"], flatten.inputs["Z"])
+    raw = _vmath(tree, "MULTIPLY", _random(tree, "FLOAT_VECTOR", (-1, -1, 0), (1, 1, 1), seed, 1, (-1000, 600)),
+                 flatten.outputs["Vector"], (-900, 600))
+    direction = _vmath(tree, "NORMALIZE", raw, None, (-800, 600))
     depth = _math(tree, "MULTIPLY", _random(tree, "FLOAT", 0.2, 0.7, seed, 2, (-1000, 500)), i["Radius"], (-800, 500))
     start = _vmath(tree, "SCALE", direction, depth, (-600, 600))
     # Outward and a little upward, each at its own speed.
@@ -186,8 +205,14 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     delay = _math(tree, "MULTIPLY", i["Duration"], _random(tree, "FLOAT", 0.0, 0.5, seed, 4, (-1000, 200)), (-800, 200))
     life = _math(tree, "MULTIPLY", i["Duration"], _random(tree, "FLOAT", 0.4, 1.0, seed, 5, (-1000, 100)), (-800, 100))
     since = _math(tree, "SUBTRACT", _math(tree, "SUBTRACT", time.outputs["Frame"], i["Start Frame"], (-800, 0)), delay, (-700, 0))
-    active = _math(tree, "MULTIPLY", _math(tree, "GREATER_THAN", since, -0.5, (-600, 0)),
-                   _math(tree, "LESS_THAN", since, life, (-600, -50)), (-500, 0))
+    started = _math(tree, "GREATER_THAN", since, -0.5, (-600, 0))
+    bursting = _math(tree, "LESS_THAN", since, life, (-600, -50))
+    # Long burners: a random Long Burn share, each feeding 0.6-1 x Long Burn Frames longer.
+    lingers = _math(tree, "LESS_THAN", _random(tree, "FLOAT", 0.0, 1.0, seed, 9, (-1000, -350)), i["Long Burn"], (-800, -350))
+    extra = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", lingers, i["Long Burn Frames"], (-700, -350)),
+                  _random(tree, "FLOAT", 0.6, 1.0, seed, 10, (-1000, -450)), (-600, -350))
+    feeding = _math(tree, "LESS_THAN", since, _math(tree, "ADD", life, extra, (-700, -400)), (-600, -400))
+    active = _math(tree, "MULTIPLY", started, feeding, (-500, 0))
     fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base if bpy.context.scene else 24.0
     seconds = _math(tree, "DIVIDE", _math(tree, "MAXIMUM", since, 0.0, (-600, -150)), fps, (-500, -150))
     # Drag: x = x0 + v0 (1 - exp(-k t)) / k, v = v0 exp(-k t).
@@ -199,8 +224,14 @@ def build_clumps(name="Fumaris Explosion Clumps"):
     _link(tree, position, points.inputs["Position"])
     radius = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", i["Radius"], i["Clump Size"], (0, 100)),
                    _random(tree, "FLOAT", 0.6, 1.4, seed, 6, (-200, 100)), (100, 100))
-    fuel = _math(tree, "MULTIPLY", i["Fuel"], _random(tree, "FLOAT", 0.4, 1.6, seed, 7, (-200, 0)), (100, 0))
-    expansion = _math(tree, "MULTIPLY", i["Expansion"], _random(tree, "FLOAT", 0.5, 1.5, seed, 8, (-200, -100)), (100, -100))
+    # Fuel Low x (Fuel High / Fuel Low) ^ random: even in ratio.
+    low = _math(tree, "MAXIMUM", i["Fuel Low"], 1e-4, (-400, 0))
+    ratio = _math(tree, "DIVIDE", _math(tree, "MAXIMUM", i["Fuel High"], low, (-400, -50)), low, (-300, 0))
+    spread = _math(tree, "MULTIPLY", low, _math(tree, "POWER", ratio, _random(tree, "FLOAT", 0.0, 1.0, seed, 7, (-400, 50)), (-200, 0)), (-100, 0))
+    fuel = _math(tree, "MULTIPLY", i["Fuel"], spread, (100, 0))
+    # Expansion only during the burst itself, not while a long burner lingers.
+    expansion = _math(tree, "MULTIPLY", _math(tree, "MULTIPLY", i["Expansion"], bursting, (0, -100)),
+                      _random(tree, "FLOAT", 0.5, 1.5, seed, 8, (-200, -100)), (100, -100))
     geometry = _store(tree, points.outputs["Points"], "mask", active, location=(400, 300))
     geometry = _store(tree, geometry, "radius", radius, location=(600, 300))
     geometry = _store(tree, geometry, "velocity", velocity, "FLOAT_VECTOR", (800, 300))

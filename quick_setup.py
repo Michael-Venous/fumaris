@@ -17,7 +17,9 @@ from .runtime import active_job
 # 2 GB of VRAM: the presets use at most ~8,300 blocks (the Explosion with its
 # stem at frame 120; 2 GB holds 14,000+), and frames stay under ~32 ms (95th
 # percentile) at 1 Sub-Step on an RTX 4060 Ti, so preview playback keeps 24 fps
-# (output/qs_pass 2026-11-08, output/perf4 2026-11-09).
+# (output/qs_pass 2026-11-08, output/perf4 2026-11-09). The 2026-11-18
+# Explosion peaks at ~6,400 blocks, with a p95 frame of 12.3 ms on the RTX 3090
+# Ti (10.1 before); not yet re-measured on the 4060 Ti.
 _DOMAIN_DEFAULTS = {
     "resolution": 512,
     "simulation_memory": 2.0,
@@ -38,8 +40,20 @@ def _domain_defaults():
 # cooling faster than dense cores (Wisp Cooling 3: glowing cores, dark wisps)
 # and soot that does not fade on its own (Dissipation 0). The Pyro look's own
 # defaults (Glow Heat 1500-2000 K, Full Glow 1700 K, Blackbody) match them.
+# Fuel soot is dark (desert explosion v3, 2026-11-18): a mid-dark Smoke Color
+# (0.28; real fuel smoke is darker still, but its billows then stop reading)
+# and Hot Soot 0.25, so smoke beside the fire is lit brown rather than black;
+# Thin Gas 0.08 keeps the fire in glowing seams between darker cells.
 _PYRO_FIRE = {"shader_look": "PYRO", "shader_smoke_density": 4.5, "smoke_detail": "sharp",
-              "wisp_cooling": 3.0, "dissipation": 0.0}
+              "wisp_cooling": 3.0, "dissipation": 0.0, "shader_smoke_color": (0.28, 0.255, 0.23),
+              "shader_hot_soot": 0.25, "shader_thin_gas_ratio": 0.08}
+
+# Grain on fast gas: Speed masks scale with the square root of the source size,
+# as gas speeds do (2-5 m/s for the 2 m New Source).
+_FAST_GRAIN = {"strength": 30.0, "size_per_size": 0.075,
+               "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+                         {"field": "SPEED", "blend": "MULTIPLY", "range_per_root_size": [1.414, 3.536],
+                          "values": [0.0, 1.0]}]}
 
 # Emitters are physical since 2.0: Expansion in 1/s, and Normal Velocity on a
 # closed source is a volume source (v x area), so presets use smaller values
@@ -65,9 +79,7 @@ PRESETS = {
         "disturb": {"strength": 120.0, "detail": 3, "size_per_size": 0.3,
                     "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
                               {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
-        "grain": {"strength": 30.0, "size_per_size": 0.075,
-                  "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
-                            {"field": "SPEED", "blend": "MULTIPLY", "range": [2.0, 5.0], "values": [0.0, 1.0]}]},
+        "grain": _FAST_GRAIN,
         # The source only ignites the fuel; burning makes the heat (Fuel 1
         # burns at Flame Temperature with the default Fuel Energy).
         # Almost no source smoke: soot forms as the fuel burns, so under Smoke
@@ -87,41 +99,73 @@ PRESETS = {
         # fireball races up its own height in a moment and reads as small:
         # low buoyancy and a slower Simulation Speed keep it big and heavy.
         # Oxygen Limit 0 burns the fuel in the blast (with 1 a dense fireball
-        # stays full of fuel and glows evenly for the whole shot); Burn Time
-        # 1.6 then leaves fire glowing in the seams of the soot as it cools.
+        # stays full of fuel and glows evenly for the whole shot).
+        # Fire turns to soot gradually, as in footage of real fuel bursts
+        # (Mk 77 fire bombs, desert explosion v3, 2026-11-18): a short Burn
+        # Time (0.7 s, about 1 s on screen at this Simulation Speed, as in
+        # the shot) blackens the lean clumps first while rich and long-burning
+        # ones (see Clumps) keep fire in pockets and at the base: black
+        # appears on the tops at about 1.5 s, half the cloud is black by 2 s,
+        # the last flames go out at about 4 s.
         # Our Pyro look (cauliflower/desert work): blackbody fire, warm-gas
-        # glow over 1500-2000 K, dense, lit grey-brown soot; brightness and
-        # Scatter Glow are scaled for a fireball this size in daylight AgX.
+        # glow over 1500-2000 K, dark fuel soot; brightness and Scatter Glow
+        # are scaled for a fireball this size in daylight AgX. Hot gas is up
+        # to 10x denser (500-1500 K, as Houdini's pyro shading): crisp, dark
+        # lobes with glowing seams instead of a washed-out, evenly glowing ball.
         "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 0.5, "smoke_per_burn": 2.5,
-                   "oxygen_limit": 0.0, "burn_time": 1.6, "cooling_time": 1.6, "simulation_speed": 0.75,
+                   "oxygen_limit": 0.0, "burn_time": 0.7, "simulation_speed": 0.75,
                    "shader_look": "PYRO", "pyro_brightness": 0.2,
                    "pyro_temperature_multiplier": 0.8, "pyro_scatter_glow": 2.0,
-                   "shader_smoke_color": (0.55, 0.53, 0.51), **_PYRO_FIRE},
-        # A Disturb layer; its largest swirls relative to the sources' largest
-        # dimension. Only in hot smoke (500-1500 K): the fireball rolls into
-        # round billows while the cooled smoke stays coherent; Grain crunches
-        # the fast front (Axiom lesson-10 match, 2026-11-16).
-        "disturb": {"strength": 220.0, "detail": 3, "size_per_size": 0.3,
-                    "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
-                              {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0], "values": [0.0, 1.0]}]},
-        "grain": {"strength": 30.0, "size_per_size": 0.075,
-                  "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
-                            {"field": "SPEED", "blend": "MULTIPLY", "range": [2.0, 5.0], "values": [0.0, 1.0]}]},
+                   "shader_hot_density": 10.0, **_PYRO_FIRE},
+        # Air Margin follows the blast's size (0.5 m for the 2 m New Source):
+        # in metres it stayed under a voxel when a large explosion was
+        # simulated at the same voxels per metre of blast, and the young
+        # fireball grew flat, block-shaped faces (a sparse block is 16 voxels;
+        # desert shot, 2026-11-17). Cooling Time grows as gas speeds do (1.6 s
+        # at 2 m, ~15 s at the desert shot's ~170 m, where 20 s looked right),
+        # so a big fireball still glows in its seams as it rises.
+        "domain_per_size": {"air_margin": 0.25},
+        "domain_per_root_size": {"cooling_time": 1.6 / math.sqrt(2.0)},
+        # Disturb layers, their largest swirls relative to the sources'
+        # largest dimension. The main one only in hot smoke (500-1500 K): the
+        # fireball rolls into round billows while the cooled smoke stays
+        # coherent (Axiom lesson-10 match, 2026-11-16). A fine one (about four
+        # voxels at the default size) only where gas moves at blast speed and
+        # carries smoke: crisp cells in the young fireball, calm smoke once
+        # the blast slows, with no keyframes (an unmasked strong fine layer
+        # churned the late smoke in the desert shot). Grain crunches the fast
+        # front.
+        "disturb": [{"strength": 220.0, "detail": 3, "size_per_size": 0.3,
+                     "masks": [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
+                               {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [500.0, 1500.0],
+                                "values": [0.0, 1.0]}]},
+                    {"strength": 300.0, "detail": 3, "size_per_size": 0.125,
+                     "masks": [{"field": "SPEED", "blend": "MULTIPLY", "range_per_root_size": [1.2, 3.6],
+                                "values": [0.0, 1.0]},
+                               {"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 0.05], "values": [0.0, 1.0]}]}],
+        "grain": _FAST_GRAIN,
         # Clumps: four dozen balls of fuel fly out of the source at random
         # speeds and burn for random times (Geometry Nodes, gn_sources), so the
         # fireball grows uneven lobes instead of one smooth ball (the puff
         # emitters of a Houdini/Axiom explosion). Thrown mostly sideways (Lift
-        # 0.05) with a strong swell, they balloon the fireball outward along
-        # the ground instead of up.
+        # 0.05, directions at most 0.35 up) with a strong swell, they set the
+        # fireball's width at once as a low lens that rises later, as real
+        # bursts do, instead of a ball. Fuel varies 0.15-4x from clump to
+        # clump, and 30% of them keep feeding fuel for up to 2.5 s.
         "clumps": {"count": 48, "clump_size": 0.45, "speed_per_root_size": 12.0, "drag": 2.5,
-                   "fuel": 16.0, "expansion": 28.0, "lift": 0.05},
+                   "fuel": 16.0, "expansion": 28.0, "lift": 0.05, "upward_spread": 0.35,
+                   "fuel_low": 0.15, "fuel_high": 4.0, "long_burn": 0.3, "long_burn_seconds": 2.5},
         # No forced jet: a sustained upward push sheds stacked vortex rings.
-        # The source only ignites the fuel (Temperature 1 is Flame
-        # Temperature); burning heats it. Light source smoke: soot forms as
-        # the fuel burns, so the young fireball glows instead of hiding in
-        # smoke.
-        "emitter": {"emitter_smoke": 1.5, "emitter_temperature": 0.35,
-                    "couple_rate_temperature": 30.0, "source_op_temperature": "max",
+        # The source ignites the fuel at Flame Temperature (Temperature 1)
+        # from its first frame, with little smoke of its own: soot forms as
+        # the fuel burns, so the young fireball glows instead of starting as
+        # a dark, unlit puff. Overlapping clumps write smoke and fuel as
+        # Maximum, not Add: with Add every overlap is another density level
+        # and the fire shows stepped layers.
+        "emitter": {"emitter_smoke": 0.3, "emitter_temperature": 1.0,
+                    "couple_rate_temperature": 60.0, "source_op_temperature": "max",
+                    "source_op_smoke": "max", "source_op_fuel": "max",
+                    "couple_rate_smoke": 10.0, "couple_rate_fuel": 10.0,
                     # Expansion burst: the source gas swells about 28x per
                     # second during its burst frames, a pressure blast that
                     # drives the fast, tearing front of a detonation.
@@ -306,7 +350,10 @@ def _new_clumps(collection, name, minimum, maximum, start_frame, preset):
                        ("Clumps", int(clumps["count"])), ("Radius", 0.5 * size),
                        ("Clump Size", clumps["clump_size"]), ("Speed", clumps["speed_per_root_size"] * math.sqrt(size)),
                        ("Drag", clumps["drag"]), ("Fuel", clumps["fuel"]), ("Expansion", clumps["expansion"]),
-                       ("Lift", clumps.get("lift", 0.4))):
+                       ("Lift", clumps.get("lift", 0.4)), ("Fuel Low", clumps.get("fuel_low", 0.4)),
+                       ("Fuel High", clumps.get("fuel_high", 1.6)), ("Long Burn", clumps.get("long_burn", 0.0)),
+                       ("Long Burn Frames", clumps.get("long_burn_seconds", 2.0) * _fps()),
+                       ("Upward Spread", clumps.get("upward_spread", 1.0))):
         inputs[key].default_value = value
     modifier = obj.modifiers.new(name, "NODES")
     modifier.node_group = tree
@@ -320,6 +367,26 @@ def _new_clumps(collection, name, minimum, maximum, start_frame, preset):
     _apply_settings(props, {key: value for key, value in preset["emitter"].items()
                             if key not in ("normal_velocity", "velocity")})
     return obj
+
+
+def _fps():
+    scene = bpy.context.scene
+    return scene.render.fps / scene.render.fps_base if scene else 24.0
+
+
+def _masks(masks, size):
+    """Preset masks for a source of this size: a range_per_root_size (Speed
+    masks) scales with the square root of the size, as the blast speed does."""
+    if masks is None:
+        return None   # the layer type's default masks
+    resolved = []
+    for mask in masks:
+        mask = dict(mask)
+        per_root = mask.pop("range_per_root_size", None)
+        if per_root:
+            mask["range"] = [value * math.sqrt(size) for value in per_root]
+        resolved.append(mask)
+    return resolved
 
 
 def _new_ground(collection, name, minimum, maximum):
@@ -503,17 +570,23 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         props.use_scene_frame_range = "duration" not in preset
         _apply_settings(props, _domain_defaults())
         _apply_settings(props, preset["domain"])
-        disturb = preset.get("disturb")
-        if disturb:
+        size = max(maximum - minimum)
+        # Settings that follow the sources' size (the domain defaults suit 2 m).
+        basis = max(0.1, size)
+        _apply_settings(props, {name: factor * basis for name, factor in preset.get("domain_per_size", {}).items()})
+        _apply_settings(props, {name: factor * math.sqrt(basis)
+                                for name, factor in preset.get("domain_per_root_size", {}).items()})
+        disturbs = preset.get("disturb") or ()
+        for disturb in [disturbs] if isinstance(disturbs, dict) else disturbs:
             # Disturb's size is in world units: scale it to the sources so
             # large explosions get large billows (0.1 m did nothing at 20 m).
-            detail_stack.add_layer(props, "DISTURB", masks=disturb.get("masks"), strength=disturb["strength"],
-                                   detail=disturb["detail"],
-                                   size=max(0.05, disturb["size_per_size"] * max(maximum - minimum)))
+            detail_stack.add_layer(props, "DISTURB", masks=_masks(disturb.get("masks"), basis),
+                                   strength=disturb["strength"], detail=disturb["detail"],
+                                   size=max(0.05, disturb["size_per_size"] * size))
         grain = preset.get("grain")
         if grain:
-            detail_stack.add_layer(props, "GRAIN", masks=grain.get("masks"), strength=grain["strength"],
-                                   size=max(0.02, grain["size_per_size"] * max(maximum - minimum)))
+            detail_stack.add_layer(props, "GRAIN", masks=_masks(grain.get("masks"), basis), strength=grain["strength"],
+                                   size=max(0.02, grain["size_per_size"] * size))
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:

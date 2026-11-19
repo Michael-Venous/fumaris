@@ -1196,16 +1196,28 @@ collections. The new simulation object is an axes empty, with no physical domain
 Presets start from the defaults of a new domain and change only what makes the
 effect. Rising Smoke emits continuously without fuel; Steady Fire emits smoke and
 fuel that burns out within half a second, so flames stay a few source widths tall.
-Explosion emits a burst of fuel for 8 frames, then vents warm soot that fades
-out over 80 frames (the stem), with a 120-frame range; strong buoyancy and
-Disturb lift it into a billowing mushroom cloud on that stem. Most of its fuel
-comes from **Clumps**, a hidden Geometry Nodes point source beside the source:
-two dozen balls of fuel fly out at random speeds and burn for random times, so
-the fireball grows uneven lobes instead of one smooth ball (its inputs, such as
-Clumps, Clump Size, Speed and Seed, are on its Geometry Nodes modifier). Its
-Disturb works only in hot smoke (500-1500 K), rolling the fireball into round
-billows while the stem stays coherent, and a fine Grain layer crunches the fast
-front.
+Steady Fire and Explosion use the Pyro look with dark fuel soot (Smoke Color
+0.28, Hot Soot 0.25) and fire in glowing seams between the cells (Thin Gas 0.08).
+Explosion is a ground explosion with a 120-frame range: a 14-frame blast of fuel
+and Expansion over a ground collider sets its width at once as a low lens, which
+then rises slowly into a row of cauliflower lobes rather than a mushroom on a
+stem. Most of its fuel comes from **Clumps**, a hidden Geometry Nodes point
+source beside the source: four dozen balls of fuel fly out at random speeds,
+mostly sideways, and burn for random times, so the fireball grows uneven lobes
+instead of one smooth ball. Their fuel varies from clump to clump (Fuel Low and
+Fuel High, 0.15-4x Fuel) and a share of them keeps feeding fuel after the blast
+(Long Burn, Long Burn Frames), so lean regions turn to soot first while fire
+survives in pockets and at the base, as in footage of real fuel explosions (its
+inputs, such as Clumps, Clump Size, Speed, Upward Spread and Seed, are on its
+Geometry Nodes modifier). The clumps write smoke and fuel as Maximum, so
+overlapping clumps do not stack into stepped layers. Hot gas renders up to 10
+times denser (Hot Smoke Density), for crisp dark lobes with glowing seams. Its
+main Disturb works only in hot smoke (500-1500 K), rolling the fireball into
+round billows; a fine Disturb and Grain work only where the gas moves at about
+blast speed, crisping the young fireball while the late smoke stays calm. Disturb
+sizes, the Speed masks, Air Margin and Cooling Time follow the size of the
+sources, so a larger explosion keeps the same look at the same number of
+voxels across it.
 Ground Fog emits cold smoke that is heavier than air, and adds a collider floor
 just under the source for it to spread over. Chimney Smoke blows warm smoke
 straight up at 4 m/s.
@@ -1318,7 +1330,7 @@ Current defaults are Dissipation **0.2**, Smoke Decay **0.1**, emitter Fuel
 values; older unset properties inherit the new defaults. Quick Setup keeps the
 domain's fade defaults and sets Resolution 512 and 2 GB; the Rising Smoke
 setup uses zero fuel. New emitters start at Expansion 0.2; Rising Smoke and
-Steady Fire use Normal Velocity 0.25, Explosion 2.
+Steady Fire use Normal Velocity 0.25, Explosion 1.
 
 
 ### Choosing the simulation GPU

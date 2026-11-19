@@ -182,9 +182,26 @@ class FUMARIS_OT_preview_toggle(bpy.types.Operator):
         if domain is None:
             self.report({'WARNING'}, 'Choose a Fumaris playback domain')
             return {'CANCELLED'}
-        result = bpy.ops.fumaris.preview_play(domain_name=domain.name)
-        # The inner player owns its own modal handler; this dispatcher does not.
-        return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
+        return _play(self, domain.name)
+
+
+def _play(operator, name):
+    """Start the live preview through the inner player. Its errors (no emitter,
+    no GPU, ...) reach this caller as RuntimeError: report them as the plain
+    message, not a Python traceback (a domain without emitters, 2026-11-19)."""
+    try:
+        result = bpy.ops.fumaris.preview_play(domain_name=name)
+    except RuntimeError as error:
+        lines = [line.strip() for line in str(error).splitlines()
+                 if line.strip() and not line.strip().startswith(("Location:", "File ", "Traceback"))]
+        message = lines[-1] if lines else "The live preview could not start"
+        for prefix in ("Error: ", "RuntimeError: "):
+            if message.startswith(prefix):
+                message = message[len(prefix):]
+        operator.report({'ERROR'}, message)
+        return {'CANCELLED'}
+    # The inner player owns its own modal handler; this dispatcher does not.
+    return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
 
 
 class FUMARIS_OT_preview_restart(bpy.types.Operator):
@@ -211,8 +228,7 @@ class FUMARIS_OT_preview_restart(bpy.types.Operator):
             if restart is not None and restart(context):
                 return {'FINISHED'}
             bpy.ops.fumaris.preview_stop()
-        result = bpy.ops.fumaris.preview_play(domain_name=name)
-        return {'CANCELLED'} if 'CANCELLED' in result else {'FINISHED'}
+        return _play(self, name)
 
 
 def recorded_volume(domain):

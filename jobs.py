@@ -743,9 +743,16 @@ def stop_message(message, stderr):
         if in_banner and line[:1] in ("\t", " "):
             continue
         in_banner = False
-        if line.strip() and not _GPU_LIST_LINE.match(line):
-            lines.append(line)
+        # Only what reads as the bridge's own error: routine status lines
+        # ("Auto Simulation Memory: ...") read as part of the reason
+        # (2026-11-19 review).
+        if line.strip() and not _GPU_LIST_LINE.match(line) and _ERROR_WORDS.search(line):
+            lines.append(line.strip())
     return f"{message}: {' '.join(lines)}" if lines else message
+
+
+_ERROR_WORDS = re.compile(r"error|fail|exception|cannot|could not|unable|out of memory|abort|invalid|missing|denied|not found",
+                          re.IGNORECASE)
 
 
 def recover_removed_job(operator):

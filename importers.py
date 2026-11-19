@@ -1485,7 +1485,9 @@ def _build_generated_material(material, blue_core=False):
     # unless the domain mixes colours, so a volume without the grid is unchanged.
     mixed = graph.mix("RGBA", "Colour Mixing", smoke, blend="MULTIPLY", factor=0.0, name=NODE_COLOR_MIX)
     graph.link(_rgba(colour.outputs)[0], _rgba(mixed.inputs)[0])
-    graph.link(color_grid_out, _rgba(mixed.inputs)[1])
+    # The grid's colour (the attribute's Color output; its Fac is one number,
+    # which turned every colour grey in renders up to beta 3).
+    graph.link(color_grid.outputs["Color"], _rgba(mixed.inputs)[1])
     hot = group(_hot_density_group, "Hot Smoke Density", NODE_HOT_DENSITY, smoke, width=200)
     graph.link(smoke_density.outputs[0], hot.inputs["Density"])
     graph.link(smoke_info.outputs["Temperature"], hot.inputs["Temperature"])

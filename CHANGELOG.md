@@ -2,7 +2,7 @@
 
 All notable customer-facing changes are recorded here.
 
-## 2.0.0 beta 2 — Unreleased
+## 2.0.0 beta 2 — 2026-11-18
 
 A large update to the 2.0 beta: faster everywhere, more simulation per GB,
 background baking and a reorganised panel. Still a beta: please report scenes
@@ -23,6 +23,11 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
 - Fixed: renders of baked Pyro caches spent minutes of CPU time before sampling ("Computing Volume Mesh"): the Thin Gas reference grid covered the whole smoke box in empty space. Re-bake to benefit.
 - Fixed: Pyro and Scatter Glow renders in Cycles took about 2.5 times longer than needed (3.7 times with unbiased volume sampling) and came out about 8% too dark: the coarse glow grids made Cycles march through large blocks of empty space around the smoke (where it ran out of steps), and shadow rays evaluated the whole fire shading. Bakes now write the fire's heat and glow as one grid (`pyro`) on the smoke's lattice, and shadow rays read only the smoke's density. Re-bake to benefit fully (renders get slightly brighter, as they should); older caches still render unchanged, about 1.2 times faster.
 - Fixed: OpenVDB sequence emitters kept their GPU memory after their last frame, so bakes with many of them used several GB more VRAM than Simulation Memory.
+- Fixed: very large bakes (over about 3.4 GB of smoke data read back a frame) lost the upper part of the smoke on alternate frames, or stopped. They now bake complete (a desert explosion of 900 M voxels a frame: all 100 frames).
+- New: the generated material's Appearance values are inputs of one "Fumaris Look Controls" node at the left of the graph, so a material detached from Fumaris can be tuned by hand; the graph is laid out in three rows (Smoke, Fire, Scatter Glow). Existing materials are rebuilt at the next sync and keep their Colour Ramp. New **Hot Smoke Density** (From/To, off by default) thins or thickens smoke by its heat, and **Hot Soot** (how dark hot soot turns in the Pyro look; 1 = the look before) is an Appearance setting that survives a rebuild.
+- Fixed: Stop no longer freezes Blender while the preview shuts down (2.1 s to 8 ms on a large scene).
+- Fixed: the preview cache stays within the free GPU and host memory: large previews no longer spill into system memory or stutter while caching, and the first scrub through a large cached preview takes 2 s instead of 26. A preview resumed after showing cached frames continues exactly as it would have.
+- Faster live preview drawing: 1.1 ms a frame instead of 12 at 1920×1080.
 - **Bakes about 2.8 times faster**: 200 frames of the comparison explosion
   to VDB in 21 s instead of 59 (less read back from the GPU, multithreaded
   VDB writing, Pyro and Scatter Glow grids built faster).
@@ -90,7 +95,7 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   voxel. Dense billow tops read as soot and round, popcorn-like cells glow
   between them, as in Houdini and Axiom explosions; before, dense hot smoke
   glowed as evenly as the gaps and fine billows rendered as smooth blobs. The
-  preview matches. Thin Gas now defaults to 3 (was 1). Scenes using Pyro
+  preview matches. The fixed Thin Gas (Auto off) defaults to 3 (was 1). Scenes using Pyro
   render differently: cooling smoke glows less than before (no more glowing
   cracks late in an explosion's smoke); raise Thin Gas for dense, sooty sims.
   Pyro's Scatter Glow (fire light in the smoke) follows the same mask, so each
@@ -297,9 +302,7 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   to ... Choose another Output Directory") instead of a raw "[Errno 2]" for
   a cache subfolder.
 - The sidebar's object list is headed "Objects": a long domain name cut the
-  header off (the domain is named in the controls above it). It now sits
-  below Add Objects, at the bottom of the sidebar, where it is quicker to
-  reach.
+  header off (the domain is named in the controls above it).
 - Renaming a domain no longer stops its live preview or its bake (it stopped
   with "The active Fumaris domain was deleted", and Play stayed unavailable
   until the file was reopened). A domain deleted with Blender's X stops its
@@ -316,9 +319,9 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   bake. Protect refuses an empty version, and Delete on one says there is
   nothing to delete.
 - **New domains start on Auto VRAM** (Quick Setup, New Domain, or Role set
-  to Domain): they reserve 80% of the GPU memory free at the start. Since the
-  result no longer depends on the amount, this only gives the smoke more
-  room; turn Auto off to leave memory to other programs. Domains in existing
+  to Domain), which uses the GPU memory free at the start (see Highlights).
+  Since the result no longer depends on the amount, this only gives the
+  smoke more room; turn Auto off to leave memory to other programs. Domains in existing
   files keep their setting.
 - Temperatures show their unit: Flame Temperature, Ignition Temperature and
   the Look's Full Glow, Start and Full Temperature read "2000 K" (in Celsius
@@ -342,8 +345,8 @@ Measured on an RTX 3090 Ti against beta 1, back to back:
   Detail & Shaping and its masks have shorter or stacked labels; Physical
   Buoyancy has its own labelled checkbox. Under Output the version is named
   `Version` with its tools `Lighter` and `Sparks` named where they fit; empty
-  Directory and Prefix fields show their defaults; Density and Temperature
-  show ticked and greyed when the generated material needs them. Advanced and
+  Directory and Prefix fields show their defaults; Density shows ticked and
+  greyed when the generated material needs it. Advanced and
   Diagnostics have headers like the other sections. The live preview's
   `Show` calls the Look `Smoke & Fire`, its colour settings are headed
   `Color Management`, and `Colour` labels are `Color`.

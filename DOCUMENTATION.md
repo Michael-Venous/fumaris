@@ -240,8 +240,10 @@ Under `Output`:
   selected in the viewport.
 - Enable only the VDB channels needed by your material. Each extra grid adds
   GPU readback, conversion time and disk space; velocity also adds GPU memory.
-  Without a material of your own, Density and Temperature are always written
-  (the generated material reads them), shown ticked and greyed. Empty
+  Without a material of your own, Density is always written (the generated
+  material reads it), shown ticked and greyed; Temperature is written when
+  ticked (on by default): without it the generated material shows smoke
+  only, and the Output panel says so in a scene with heat. Empty
   `Directory` and `Prefix` fields show what they fall back to.
 - `VDB Precision` sets how values are stored in the files. **Half** (the
   default) halves file size and write time and is ample for rendering;
@@ -1024,7 +1026,9 @@ read as soot and the fire shows in the thinner gas between them. This is the
 cauliflower look of Houdini and Axiom explosions; it needs enough Resolution
 (cells about ten voxels across or more) and a Grain layer to form the cells.
 Raise Thin Gas for dense, sooty sims (a smoke median of about 5 wants about
-12), lower it for more soot. For a fireball close to Houdini's pyro shading:
+12), lower it for more soot. `Hot Soot` sets how dark that hot soot turns (0
+keeps hot smoke the Smoke Color, 1, the default, is full dark soot). For a
+fireball close to Houdini's pyro shading:
 Color Blackbody with Blackbody Scale about 1.3, Full Glow about 1100 K,
 Contrast about 0.3, Scatter Glow 0 (it lights thin gas around the cloud, which
 softens the edges). It holds at any scene size, and Full Glow changes need no
@@ -1033,10 +1037,16 @@ Fumaris 2.0 or later (the heat and soft density grids, written with the glow
 grids).
 
 When `Volume Material` is unset, Fumaris creates a material driven by the
-domain's Look settings; changing them does not require a rebake.
+domain's Look settings; changing them does not require a rebake. Every value
+it uses is an input of one `Fumaris Look Controls` node at the left of the
+node graph, so a copy of the material detached from Fumaris can be tuned
+there by hand; the graph is laid out in three rows (Smoke, Fire, Scatter
+Glow).
 
 - Smoke: `Density`, `Color` and `Anisotropy` (forward scattering, 0.3 by
-  default, like real smoke).
+  default, like real smoke). `Hot Smoke Density` makes hot gas this many times
+  denser than cool smoke, rising from `Hot Smoke From` to `Hot Smoke To`
+  (1, the default, leaves it unchanged).
 - Fire glows by its temperature like soot on a camera exposed for the hottest
   gas: gas at `Full Glow` glows at full `Brightness`, hotter gas brighter,
   cooler gas falls off by `Contrast` (lower = wider, fuller flames). `Color

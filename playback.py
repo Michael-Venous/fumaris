@@ -396,10 +396,7 @@ class FUMARIS_PT_playback(bpy.types.Panel):
 class FUMARIS_OT_show_volumes_while_playing(bpy.types.Operator):
     bl_idname = 'fumaris.show_volumes_while_playing'
     bl_label = 'Show VDBs While Playing'
-    bl_description = ('Fumaris hides baked VDB volumes in the viewport while the timeline plays, because Blender '
-                      'reads every VDB frame from disk as it plays (Preferences > Hide Volumes While Playing). '
-                      'Show them now and from now on: playing goes through the VDB sequence as fast as the disk '
-                      'allows. Hide Volumes While Playing in the Fumaris preferences turns it back on')
+    bl_description = ("Show baked volumes while the timeline plays (they were hidden for speed). Turn hiding back on in Preferences")
 
     def execute(self, context):
         from .operators import _show_playback_hidden_volumes

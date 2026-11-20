@@ -359,7 +359,7 @@ played starts it over there, as in Blender.)
 
 ## Versions
 
-The `Versions` section (below Simulate) lists what the domain has
+The `Versions` section (the first section, above Simulate; also in the sidebar) lists what the domain has
 saved, in one list:
 
 - **VDB versions** (volume icon): bakes, and live previews kept with Save
@@ -1065,8 +1065,9 @@ than a direct voxel buffer. File-based OpenVDB emission does not use that path.
 
 ### Participant list
 
-`Objects` under Participants lists everything in the domain's collections.
-Click a name to select it (Shift adds to the selection), toggle Enabled, or
+Under Participants (in the Properties panel and the sidebar), each category,
+Emitters, Colliders, Effectors and Outflows, has its collection field and, when
+it holds objects, an arrow that unfolds them. Click a name to select it (Shift adds to the selection), toggle Enabled, or
 Solo one emitter, collider, effector or outflow: the others of its kind are
 disabled until you click Solo again, also while previewing. Objects the
 simulation skips are shown in red with the reason, for example an object in
@@ -1565,7 +1566,7 @@ the cache also drops its oldest frames when the system runs short of free
 memory, leaving 2 GB or an eighth of the RAM (whichever is more) for Blender and
 other programs; the status line then says System RAM is low.
 
-**Save Playblast** (at the top of Versions, in the menu beside Bake, or in the
+**Save Playblast** (in the menu beside Bake in the Properties panel and the sidebar, or in the
 Timeline header's **Fumaris** popover for the chosen domain) asks
 for a name, then simulates the whole range as fast as the GPU allows (not in real
 time) and saves what the 3D viewport shows, with the smoke and without

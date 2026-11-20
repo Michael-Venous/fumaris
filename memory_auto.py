@@ -263,7 +263,7 @@ def draw_budget_summary(layout, props, state=None):
     if getattr(props, "simulation_memory_auto", False):
         gib = float(1 << 30)
         free = free_bytes_for_display(props, state)
-        text = f"Auto VRAM {budget / gib:.1f} GB" if budget is not None else "Auto VRAM · at start"
+        text = f"Auto VRAM {budget / gib:.1f} GB" if budget is not None else "Auto VRAM: free memory at start"
         if budget is not None and free is not None:
             text += f" · {max(0, free - budget) / gib:.1f} GB left"
         layout.label(text=text)

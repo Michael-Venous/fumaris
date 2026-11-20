@@ -1054,10 +1054,7 @@ def _report_start(operator, started, errors):
 class FUMARIS_OT_bake_background(Operator):
     bl_idname = "fumaris.bake_background"
     bl_label = "Bake in Background"
-    bl_description = ("Bake this domain in a separate Blender process, from the scene as it is now: keep working, "
-                      "preview or bake other domains meanwhile. It runs hidden, without a live preview, whatever "
-                      "Preview While Baking is set to; the volume appears when it is done. "
-                      "Preferences > Baking sets how many bake at once and on which GPUs")
+    bl_description = ("Bake this domain in a separate Blender process while you keep working, without a live preview (whatever Preview While Baking is set to)")
 
     # Set by the Replace / New Bake menu. Scripts calling the operator
     # directly bake into the current version, unasked.
@@ -1129,9 +1126,7 @@ def bake_all_domains(context, scope="AUTO"):
 class FUMARIS_OT_bake_all(Operator):
     bl_idname = "fumaris.bake_all"
     bl_label = "Bake All"
-    bl_description = ("Bake every domain in the scene in the background. It runs hidden, without a live preview, "
-                      "whatever Preview While Baking is set to; each volume appears when its bake is done. "
-                      "Preferences > Baking sets how many bake at once and on which GPUs; the others wait their turn")
+    bl_description = ("Bake every domain in the background, without a live preview (whatever Preview While Baking is set to). Preferences > Baking sets how many run at once")
 
     # The sidebar's two buttons: every domain, or the selected ones. AUTO
     # (scripts): the selected ones when some are selected, else every domain.

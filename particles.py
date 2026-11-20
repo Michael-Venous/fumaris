@@ -248,9 +248,7 @@ class FumarisParticleSettings(PropertyGroup):
     show_system: BoolProperty(name="Particle System", default=False, options={"SKIP_SAVE"})
     max_particles: IntProperty(
         name="Max Particles", default=1_000_000, min=1000, max=64 * 1024 * 1024, soft_max=10_000_000,
-        description="Particles alive at most, of every Spawn Particles modifier together. Each takes 92 "
-                    "bytes of GPU memory, taken from Simulation Memory (at most half of it: more are not made, "
-                    "nor more than the GPU can address in one buffer). Spawns past it are dropped")
+        description="Most particles alive at once, across all Spawn Particles modifiers. Each takes 92 bytes of GPU memory")
     seed: IntProperty(name="Seed", default=0, min=0, description="Another number gives other random particles")
     kill_outside: BoolProperty(name="Inside Domain", default=True,
                                description="Remove particles that leave the domain object's box "

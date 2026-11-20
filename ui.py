@@ -1013,9 +1013,7 @@ class FUMARIS_MT_sidebar_bake_more(bpy.types.Menu):
 class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
     bl_idname = "fumaris.emitter_color_offer"
     bl_label = "Own Smoke Color"
-    bl_description = ("Give this emitter's smoke its own color (the smoke, not the flame). That needs the "
-                      "domain's Per-Emitter Smoke Color (about 1.4x the simulation time and a third of the "
-                      "blocks per GB); for one color everywhere, set the domain's Color instead")
+    bl_description = ("Give this emitter's smoke its own color. Turns on the domain's Per-Emitter Smoke Color")
 
     def invoke(self, context, _event):
         obj = context.object
@@ -1258,9 +1256,10 @@ def _draw_domain(layout, scene, props):
         auto = grid_row.row(align=True)
         auto.ui_units_x = 2.2
         auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
-        settings.row(align=True).prop(props, "full_resolution_velocity")
         state = diagnostics.snapshot(domain)
+        # The Auto VRAM line belongs to the VRAM row above it.
         draw_budget_summary(settings, props, state)
+        settings.row(align=True).prop(props, "full_resolution_velocity")
         if props.full_resolution_velocity:
             draw_full_resolution_forecast(settings, props, state, _fire_on_half_storage(props), alerts_only=True)
         settings.prop(props, "air_margin")

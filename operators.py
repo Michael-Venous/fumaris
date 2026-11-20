@@ -1790,10 +1790,7 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
 class FUMARIS_OT_cache_make_lighter(Operator):
     bl_idname = "fumaris.cache_make_lighter"
     bl_label = "Make Lighter Copy"
-    bl_description = ("Copy this bake into a new version at half the resolution, without the faintest smoke: "
-                      "about 8 times smaller on a large bake (less on a small one, whose files are mostly fixed "
-                      "overhead), for layout, previews and render tests. The domain then shows the copy; "
-                      "the original version is kept in Versions")
+    bl_description = ("Copy this bake at half resolution (about 8x smaller) for layout and test renders. The original is kept")
 
     cull: bpy.props.FloatProperty(
         name="Drop Below",

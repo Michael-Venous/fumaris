@@ -302,7 +302,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_influence: BoolProperty(
         name="Influence Only",
-        description="Act on the smoke already there instead of emitting: steer it toward this emitter's Velocity, heat it to at least its Temperature, and expand it (negative Expansion pulls it in, for wakes), without adding or removing smoke or fuel",
+        description="Act on existing smoke instead of emitting: steer it, heat it and expand it, without adding smoke or fuel",
         default=False,
     )
 
@@ -330,7 +330,7 @@ class FumarisSettings(PropertyGroup):
 
     emitter_burning: BoolProperty(
         name="Burning",
-        description="The emitter burns where it sits, like a gas jet or a burning surface, without emitting fuel: it heats gas toward Flame Temperature, adds smoke by the domain's Smoke Amount and expands it by Gas Expansion, all at Burn Rate",
+        description="Burn in place like a gas jet: heat the gas, add smoke and expand it, without emitting fuel",
         default=False,
     )
 
@@ -353,7 +353,7 @@ class FumarisSettings(PropertyGroup):
     # 0.2 matches the push of the older per-cell default Divergence 2 (2026-11-04).
     emitter_divergence: FloatProperty(
         name="Expansion",
-        description="How fast the emitter adds volume, per second: 1 grows the emitting region's gas by its own volume each second and pushes smoke outward; negative values pull inward. The same at any resolution and Sub-Steps",
+        description="How fast the emitter adds volume, pushing smoke outward (negative pulls inward)",
         default=0.2,
         soft_min=-10.0,
         soft_max=10.0,
@@ -370,7 +370,7 @@ class FumarisSettings(PropertyGroup):
     # Flow exposes an independent coupling rate for every emitted channel.
     couple_rate_velocity: FloatProperty(
         name="Velocity",
-        description="How strongly the emitter pushes smoke along its velocity or movement; a stationary emitter does not slow existing smoke. With Add it accelerates the air by velocity × coupling every second (a force); with Blend, Maximum and Replace, how fast the air reaches the velocity",
+        description="How strongly the emitter pushes smoke along its velocity or movement",
         default=8.0,
         min=0.0,
         soft_max=200.0,
@@ -463,7 +463,7 @@ class FumarisSettings(PropertyGroup):
 
     source_op_velocity: EnumProperty(
         name="Velocity Operation",
-        description="How this emitter writes velocity into the simulation, per axis. Add accelerates the air every second (a force); Maximum raises each axis toward the velocity but never lowers it, so it suits upward or positive-axis pushes (a negative axis is left alone); Blend pulls the air toward it; Replace sets it",
+        description="How velocity is written, per axis: Add pushes like a force, Maximum only raises, Blend pulls toward it, Replace sets it",
         items=_SOURCE_OPERATIONS,
         default="blend",
     )
@@ -506,7 +506,7 @@ class FumarisSettings(PropertyGroup):
 
     normal_velocity: FloatProperty(
         name="Normal Velocity",
-        description="Air blown out along the mesh normals (negative sucks in). On a closed mesh it is a real source that spreads evenly. An open mesh (such as a plane) cannot add air, so it acts as a fan: air passes through it at about this speed (about 90% within a second). Instances push along averaged vertex normals, which can be uneven across hard edges",
+        description="Air blown out along the mesh normals (negative sucks in). An open mesh such as a plane acts as a fan",
         default=0.0,
         soft_min=-100.0,
         soft_max=100.0,
@@ -514,7 +514,7 @@ class FumarisSettings(PropertyGroup):
 
     motion_velocity_scale: FloatProperty(
         name="Motion Velocity Scale",
-        description="Scale of source motion velocity: 1 uses the measured velocity (Blender units per second), 0 ignores it. Geometry Nodes velocity attributes must be in local units per second. Fluid response also depends on Velocity Coupling",
+        description="Scale of the source's own motion velocity: 1 uses it fully, 0 ignores it",
         default=1.0,
         min=0.0,
         soft_max=25.0,
@@ -562,7 +562,7 @@ class FumarisSettings(PropertyGroup):
 
     resolution: IntProperty(
         name="Resolution",
-        description="Voxel size: 32 scene units divided by this (1024 is about 3 cm), whatever the domain object's size; the simulation has no box and covers only where smoke is. Higher values give finer detail but need more GPU memory (about 8 times the voxels at twice the value) and simulation time; raise VRAM if the smoke gets cut off",
+        description="Detail of the simulation: voxel size is 32 / Resolution (1024 ≈ 3 cm). Higher is finer but needs more VRAM and time",
         default=256,
         min=1,
         # No hard maximum: Resolution is an absolute voxel size and physical-
@@ -598,7 +598,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_step_size: FloatProperty(
         name="Step Size",
-        description="Distance between preview ray samples, in simulation cells (1 is Cycles' Step Rate 1). Preview cost is about proportional to the number of samples: smaller is smoother and slower, larger is faster and starts to show bands",
+        description="Distance between preview ray samples, in cells. Smaller is smoother and slower",
         default=1.0, min=0.25, soft_max=2.0,
     )
 
@@ -646,7 +646,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_all_viewports: BoolProperty(
         name="All Viewports",
-        description="Show the live preview in every 3D viewport that shows the domain instead of one (the one picked with View > Show Fumaris Preview Here, else the largest in the preview's window). Adds overhead: each extra viewport renders the volume again every frame",
+        description="Show the live preview in every 3D viewport that shows the domain. Each extra viewport costs render time",
         default=False,
     )
 
@@ -677,7 +677,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_custom_sky: FloatProperty(
         name="Sky",
-        description="Custom lighting: a uniform grey sky around the smoke, like a world colour of this value. The smoke shadows it (with Self Shadows), which gives crevices and undersides their soft ambient darkening. 0 lights the smoke with the custom light only. Preview only",
+        description="Brightness of a uniform grey sky around the smoke, for soft ambient shading. Preview only",
         default=0.3, min=0.0, soft_max=2.0,
     )
 
@@ -750,7 +750,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_loop: BoolProperty(
         name="Loop",
-        description="At the end of the frame range the live preview starts over. Off: it pauses on the last frame (Resume starts over). With Cache Preview, an unchanged, whole cache replays instead of simulating; after a change the range simulates again and replaces the stale frames as it goes (the cache is not cleared)",
+        description="Start over at the end of the frame range. Off: pause on the last frame",
         default=True,
     )
 
@@ -769,7 +769,7 @@ class FumarisSettings(PropertyGroup):
 
     preview_cache: BoolProperty(
         name="Cache Preview",
-        description="Keep the frames the live preview simulates (compressed, full detail), so a paused preview can scrub and play them back and Save Sequence or Save Frame (below this toggle) can keep them as a version that renders in Cycles and compares in Presets & Compare. With Loop on, a whole cache that nothing has changed since replays instead of simulating. Uses system RAM and some preview speed; how often frames are kept is Cache Every (beside this), the RAM limit is in Preferences > Preview Cache RAM. Applies from the next Play",
+        description="Keep the preview's frames in RAM to scrub, replay and save them as a version. Applies from the next Play",
         default=False,
     )
 
@@ -777,7 +777,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_memory: FloatProperty(
         name="VRAM",
-        description="GPU memory reserved for the simulation, in GB. It sets how much space the smoke can fill before it is cut off: more memory allows larger or higher-resolution smoke. The full amount is allocated when the simulation starts and stays constant",
+        description="GPU memory for the simulation, in GB. More lets larger or finer smoke fit before it is cut off",
         default=4.0,
         min=0.1,
         # Largest float32 GiB value whose byte count fits uint64 in the bridge.
@@ -789,7 +789,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_memory_auto: BoolProperty(
         name="Auto VRAM",
-        description="Use the GPU memory that is free when the simulation starts, less 6% of the GPU's memory (12% for a bake; at least 1 GB) left for Blender, other programs and Fumaris's emitter and export buffers, instead of a fixed amount (at least 0.5 GB). Close other GPU work first for the most space. Without a free-memory reading from the driver, half the GPU memory is used",
+        description="Use the GPU memory free at start, minus a small reserve for Blender and other programs",
         default=False,
         update=auto_toggled,
     )
@@ -803,11 +803,7 @@ class FumarisSettings(PropertyGroup):
     color_mixing: BoolProperty(
         # (identifier kept as color_mixing: saved files and scripts use it)
         name="Per-Emitter Smoke Color",
-        description=("Each emitter's smoke takes the Smoke Color set in Emitted Channels. "
-                     "Where plumes meet, their colors mix. Flame color is set for the whole domain under Flame. "
-                     "The preview and baked volume use a smoke color grid. "
-                     "Costs about 1.4x the simulation time and leaves a third of the blocks per GB of VRAM. "
-                     "For one smoke color everywhere, leave this off and set Color"),
+        description=("Give each emitter's smoke its own color, mixing where plumes meet. Flame color is set for the whole domain. Costs about 1.4x the simulation time and a third of the blocks per GB"),
         default=False,
     )
 
@@ -816,7 +812,7 @@ class FumarisSettings(PropertyGroup):
     # (within 5%) keeps the transported total. Dissipation and Decay still apply.
     conserve_smoke: BoolProperty(
         name="Conserve Smoke",
-        description="Keep the smoke's total through transport: the solver's advection gains a little smoke where gas expands and loses some where it swirls (up to 10% by the end of an explosion); each step scales the moved smoke back to the amount it started with, within 5%. Dissipation, Decay and combustion still add and remove smoke as set. No visible cost",
+        description="Keep the total amount of smoke steady as it moves, so it doesn't drift up or down. No visible cost",
         default=True,
     )
 
@@ -826,7 +822,7 @@ class FumarisSettings(PropertyGroup):
     # until the toggle is next changed.
     full_resolution_velocity: BoolProperty(
         name="Full-Resolution Channels",
-        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature. Rounder, finer billows and fewer grid-aligned artifacts from Vorticity, at about 3-4 times the memory per block and 1.5-4 times the time per frame; at the same memory, half-resolution motion at about 1.5 times the Resolution looks as detailed. Smoke also rises faster (up to about 20%: Vorticity makes smaller swirls that slow the plume less). Off, motion runs at half the Resolution and a fire's fuel and burn with it. Either way only the fields the scene uses are stored: smoke alone stays smoke alone",
+        description="Run motion at full resolution, not half: rounder, finer billows for explosions. About 3-4x the VRAM and 1.5-4x the time",
         get=_full_resolution_get,
         set=_full_resolution_set,
     )
@@ -873,13 +869,13 @@ class FumarisSettings(PropertyGroup):
 
     follow_object: BoolProperty(
         name="Move With Object",
-        description="Simulate in this domain object's own space, so the simulation travels and turns with it and with whatever it is parented to. Emitters and colliders that ride along stay put in the simulation grid, which keeps fast vehicles smooth and stable with few sub-steps. The object's scale is ignored",
+        description="Simulate in this object's own space, so the simulation travels with it (for vehicles and moving rigs)",
         default=False,
     )
 
     carry_air: FloatProperty(
         name="Carry Air",
-        description="How much of the domain's motion the surrounding air shares. 0 leaves the air still in the scene, so smoke trails behind a moving domain as it would outdoors. 1 carries the air along, as inside a closed vehicle",
+        description="How much the surrounding air moves with the domain: 0 still air (smoke trails behind), 1 carried along",
         default=0.0,
         min=0.0,
         max=1.0,
@@ -913,7 +909,7 @@ class FumarisSettings(PropertyGroup):
     # full_resolution_velocity, which also counts the old option's value.
     full_resolution_channels: BoolProperty(
         name="Full-Resolution Channels",
-        description="Simulate everything at the full Resolution: motion (velocity and pressure), and a fire's fuel and burn, like smoke and temperature (about 3-4 times the memory per block). Only the fields the scene uses are stored",
+        description="Run motion at full resolution, not half: rounder, finer billows for explosions. About 3-4x the VRAM and 1.5-4x the time",
         default=False,
     )
 
@@ -1055,7 +1051,7 @@ class FumarisSettings(PropertyGroup):
 
     collider_margin: FloatProperty(
         name="Collider Margin",
-        description="How far out from its surface a moving mesh or box collider holds the air at its own velocity, so it pushes smoke ahead of it. At rest it holds only Collider Still Air (Advanced, 0.25 velocity cells), at most this; with Collider Still Air 0, all of it, which keeps smoke this far off the collider",
+        description="How far from its surface a moving collider pushes the air, so it shoves smoke ahead of it",
         default=0.3,
         min=0.0,
         soft_max=5.0,
@@ -1171,13 +1167,13 @@ class FumarisSettings(PropertyGroup):
 
     attr_temperature_coupling: StringProperty(
         name="Temperature Coupling",
-        description="Temperature coupling attribute; empty uses temperature_coupling/heat_coupling. Each point's value replaces the emitter's Temperature Coupling (it does not scale it); without the attribute the emitter's value is used",
+        description="Point attribute for Temperature Coupling; empty uses the emitter's value",
         default="",
     )
 
     attr_velocity_coupling: StringProperty(
         name="Velocity Coupling",
-        description="Velocity coupling attribute; empty uses velocity_coupling/force_strength/strength. Each point's value replaces the emitter's Velocity Coupling (it does not scale it); without the attribute the emitter's value is used",
+        description="Point attribute for Velocity Coupling; empty uses the emitter's value",
         default="",
     )
 
@@ -1269,13 +1265,13 @@ class FumarisSettings(PropertyGroup):
 
     mesh_emission_mask_attribute: StringProperty(
         name="Emission Mask Attribute",
-        description="Leave empty to emit from the whole mesh. Otherwise use a vertex group or mesh attribute with 0 to 1 weights. Geometry created by Geometry Nodes needs weights on that generated mesh; an original vertex group may not carry over",
+        description="Vertex group or attribute (0-1) that masks where the mesh emits. Empty emits from the whole mesh",
         default="",
     )
 
     mesh_velocity_attribute: StringProperty(
         name="Velocity Attribute",
-        description="Usually leave empty: velocity is then measured from how the mesh moves (object animation, armatures, deformation, Geometry Nodes). Type a name only if the mesh carries its own vector attribute, such as one stored by Geometry Nodes or an Alembic cache: object-space units per second, on points, faces or face corners. It replaces the measured motion and is scaled by Motion Velocity Scale. A missing name stops Play with an error (shown below the field). Instanced meshes need Realize Instances",
+        description="Usually empty: velocity is measured from the mesh's motion. Name a vector attribute to use its own velocity instead",
         default="",
     )
 
@@ -1504,7 +1500,7 @@ class FumarisSettings(PropertyGroup):
     # Advanced Settings
     gravity: FloatVectorProperty(
         name="Gravity",
-        description="Direction and strength of buoyancy: hot gas rises against it, heavy smoke sinks along it (Temperature and Smoke Buoyancy scale how much). It acts only through buoyancy: cold smoke ignores it unless Smoke Buoyancy is negative (heavy smoke). This is the domain's own gravity, not the Scene gravity. Wind is different: it carries all air along at a steady speed without any force",
+        description="Direction and strength of buoyancy: hot gas rises against it, heavy smoke sinks along it",
         default=(0.0, 0.0, -9.81),
         size=3,
         subtype="ACCELERATION",
@@ -1520,13 +1516,13 @@ class FumarisSettings(PropertyGroup):
 
     physical_buoyancy: BoolProperty(
         name="Physical Buoyancy",
-        description="Lift hot gas as much as real air would: gas at Flame Temperature is that many times lighter than 293 K air (about 5.8 g of lift at 2000 K), replacing Temperature Buoyancy. Flames rise faster and puff more strongly",
+        description="Lift hot gas as real air would, from Flame Temperature, instead of Temperature Buoyancy",
         default=False,
     )
 
     buoyancy_per_smoke: FloatProperty(
         name="Smoke Buoyancy",
-        description="Force per unit smoke density along Gravity: negative makes smoke heavy so it sinks and spreads along the ground even when cold, positive makes it rise like a light gas. 0 = smoke has no weight; it moves only with the air and heat",
+        description="Weight of smoke: negative sinks and spreads along the ground, positive rises like a light gas",
         default=0.0,
         soft_min=-20.0,
         soft_max=20.0,
@@ -1538,7 +1534,7 @@ class FumarisSettings(PropertyGroup):
         name="Flame Temperature",
         # Shown as "2000 K" (Celsius in a scene set to it; stored in Kelvin).
         unit="TEMPERATURE",
-        description="Hottest temperature gas reaches, in Kelvin. Sets the flame colour: about 1500 K deep orange, 2000 K yellow-orange (most fuel fires), 3000 K and above pale yellow-white. Emitter Temperature 1 means this temperature",
+        description="Hottest temperature the gas reaches, in Kelvin. Sets flame colour: ~1500 K orange, ~2000 K yellow-orange, 3000 K+ white",
         default=2000.0,
         min=1.0,
         # Temperature is stored as float16 in units of 5000 K.
@@ -1549,7 +1545,7 @@ class FumarisSettings(PropertyGroup):
 
     gas_expansion: FloatProperty(
         name="Gas Expansion",
-        description="Expansion of gas where fuel is burning, per unit of fuel burnt per second: burning gas pushes the smoke around it outward, the same at any resolution. 0 = burning does not expand the gas. Start around 0.3-1 for fuel values of 0.5-2, higher for a stronger push. Expanding gas thins its fuel and smoke as it spreads",
+        description="How much burning gas expands and pushes smoke outward. Try 0.3-1",
         default=0.3,
         min=0.0,
         soft_max=1.0,
@@ -1557,7 +1553,7 @@ class FumarisSettings(PropertyGroup):
 
     fuel_energy: FloatProperty(
         name="Fuel Energy",
-        description="Heat released by burning, per unit of fuel: 1 takes cold air to Flame Temperature, so fuel 1 burns as hot as fire gets while thinner, mixed fuel burns cooler. Raise it to make lean fuel burn hot; lower it for dimmer, smouldering fire. Burn Time sets how long fuel lasts and Cooling Time how fast heat fades; neither changes how hot it burns",
+        description="Heat released per unit of fuel. Raise for hotter lean fuel, lower for dimmer, smouldering fire",
         default=1.0,
         min=0.0,
         soft_max=4.0,
@@ -1565,7 +1561,7 @@ class FumarisSettings(PropertyGroup):
 
     oxygen_limit: FloatProperty(
         name="Oxygen Limit",
-        description="Burning needs fresh air: hot, already-burnt gas burns slower, so fire concentrates in shells where it mixes with air and temperatures vary instead of the whole fireball sitting at Flame Temperature. Fireballs that burned everywhere at once become smaller and leaner. Gas emitted at Flame Temperature burns only as it mixes. 0 = burns evenly everywhere, air or not; try 1-4 (higher limits less)",
+        description="Burning needs fresh air, so fire forms shells where it mixes instead of a uniformly hot ball. 0 off; try 1-4",
         default=1.0,
         min=0.0,
         soft_max=8.0,
@@ -1574,7 +1570,7 @@ class FumarisSettings(PropertyGroup):
     # 0.1 smooths fire speckle (Axiom's default is the same), 2026-11-07.
     temperature_diffusion: FloatProperty(
         name="Temperature Diffusion",
-        description="Heat evens out between neighbouring voxels: each 1/24 s, temperature moves this share of the way to its neighbours' average. Flame brightness rises steeply with temperature, so this smooths speckle and noise in fire and softens flame edges; large shapes keep their look. 0 = off; try 0.1-0.3",
+        description="Evens out heat between neighbouring voxels, smoothing speckled fire. 0 off; try 0.1-0.3",
         default=0.1,
         min=0.0,
         max=1.0,
@@ -1605,7 +1601,7 @@ class FumarisSettings(PropertyGroup):
 
     edge_sharpness: FloatProperty(
         name="Edge Sharpness",
-        description="How strongly each step restores detail lost to interpolation (MacCormack correction of smoke and heat). High values give crisp edges that can stair-step in close-ups when Smoke Detail is Sharp; about 0.45 keeps edges near two voxels soft",
+        description="How strongly each step restores sharp detail. High values can stair-step in close-ups",
         default=0.5,
         min=0.0,
         max=1.0,
@@ -1619,7 +1615,7 @@ class FumarisSettings(PropertyGroup):
 
     soot_radiation: FloatProperty(
         name="Soot Radiation",
-        description="Sooty gas radiates its heat away (rate per second at Flame Temperature for Smoke 1, falling with the cube of temperature and capped where soot is optically thick), so dense pockets cool and darken while thin hot gas stays bright. Breaks up flat, evenly hot fireballs. 0 = off; try 0.5-1",
+        description="Sooty gas radiates heat away, so dense pockets darken while thin hot gas stays bright. 0 off; try 0.5-1",
         default=1.0,
         min=0.0,
         soft_max=3.0,
@@ -1627,7 +1623,7 @@ class FumarisSettings(PropertyGroup):
 
     wisp_cooling: FloatProperty(
         name="Wisp Cooling",
-        description="Thin gas is mostly mixed-in air, so it loses its heat faster: gas with less than 1 smoke cools up to 1 + this many times faster than Cooling Time, so wisps and edges go dark around glowing, dense cores. 0 = one cooling rate everywhere; try 2-6",
+        description="Thin gas cools faster, so wisps and edges darken around glowing cores. 0 off; try 2-6",
         default=0.0,
         min=0.0,
         soft_max=10.0,
@@ -1635,7 +1631,7 @@ class FumarisSettings(PropertyGroup):
 
     fuel_threshold: FloatProperty(
         name="Flame Sheets",
-        description="Dense fuel burns at most as fast as this much fuel would, so rich cores smoulder while fuel that has thinned out where it mixes with air burns fully, in sheets: sooty puffs with glowing seams instead of one evenly burning ball. Compare with the emitters' Fuel. 0 = everything burns at its full rate; try 1-2 for an emitter Fuel of 8",
+        description="Caps how fast dense fuel burns, so rich cores smoulder while mixing edges burn in glowing sheets. 0 off",
         default=0.0,
         min=0.0,
         soft_max=10.0,
@@ -1681,7 +1677,7 @@ class FumarisSettings(PropertyGroup):
 
     wind: FloatVectorProperty(
         name="Wind",
-        description="Steady wind in world space: all air drifts with it, carrying smoke downwind while sources stay put, so plumes lean and trail. It costs nothing (smoke is traced from upwind, no force is added); use Wind effectors for gusts or local pushes",
+        description="Steady wind that carries all air and smoke downwind. Free; use Wind effectors for gusts",
         default=(0.0, 0.0, 0.0),
         size=3,
         subtype="VELOCITY",
@@ -1690,7 +1686,7 @@ class FumarisSettings(PropertyGroup):
 
     vorticity: FloatProperty(
         name="Vorticity",
-        description="Boost small curls and swirls in the flow; higher values add turbulent motion, while zero leaves this extra boost off. Below Resolution 512 (or a lower Preview Resolution) it is weakened in proportion, so coarse grids swirl and spread like finer ones",
+        description="Boosts small curls and swirls for more turbulent motion",
         default=2.0,
         min=0.0,
         soft_max=10.0,
@@ -1710,7 +1706,7 @@ class FumarisSettings(PropertyGroup):
 
     simulation_scale: FloatProperty(
         name="Simulation Scale",
-        description="Physical size represented by the scene: 2 makes the simulation behave twice as large, 0.5 half as large. Changes buoyancy relative to scene size; voxel size, scene dimensions and source/wind speeds in Blender units stay the same",
+        description="Physical size the scene represents: 2 behaves twice as large, 0.5 half. Changes buoyancy, not voxel size",
         default=1.0,
         min=1e-12,
         soft_min=0.1,
@@ -1719,7 +1715,7 @@ class FumarisSettings(PropertyGroup):
 
     trace_steps: IntProperty(
         name="Trace Steps",
-        description="Follow the flow back over each step in sub-steps of at most 1.5 cells, up to this many, so fast curved motion stays accurate with fewer Sub-Steps (fewer interpolations keep more fine detail). 0 = one straight step",
+        description="How many sub-steps each step's flow is traced in, so fast curved motion stays accurate. 0: one straight step",
         default=16,
         min=0,
         soft_max=16,
@@ -1734,27 +1730,27 @@ class FumarisSettings(PropertyGroup):
     # Advanced solver and collider options.
     projection_filter: FloatProperty(
         name="Projection Filter",
-        description="How strongly the pressure solve smooths out cell-to-cell (checkerboard) motion. 1 is Flow's. Lower lets fine motion through: fire flickers and puffs (about 0.25 restores natural puffing at moderate resolution) and small swirls survive, at the risk of grid-scale noise",
+        description="How much the pressure solve smooths fine motion. Lower lets fire flicker and puff, at the risk of noise",
         default=1.0, min=0.0, max=1.0, subtype="FACTOR",
     )
 
     open_collider_wall: FloatProperty(
         name="Open Collider Wall",
-        description="Thickness, in velocity cells, of the wall behind an open (non-closed) collider mesh such as a plane, so smoke cannot leak through it (a 0.1 m margin let 2.5% of the smoke through a plane at Resolution 256). The wall no longer grows with Collider Margin, so smoke rests about this far behind the plane. 0 uses Collider Margin alone",
+        description="Thickness of the wall behind an open collider mesh (a plane), in velocity cells, so smoke can't leak through",
         default=1.0, min=0.0,
         soft_max=8.0,
     )
 
     closed_collider_margin: FloatProperty(
         name="Collider Still Air",
-        description="Colliders at rest hold the air at their own velocity only this many velocity cells out from their surface (in front of open meshes), at most their Collider Margin; moving colliders hold their whole margin, so they push smoke instead of running over it. The default 0.25 lets smoke rest on walls and flow through gaps and pipes two cells wide (a fire on a closed floor rose 35-42% slower with the full margin). 0 = the full Collider Margin (before 2.0.0 beta 4)",
+        description="How far, in velocity cells, a resting collider holds the air still. Low values let smoke rest on walls and flow through gaps",
         default=0.25, min=0.0,
         soft_max=8.0,
     )
 
     advection_reflection: BoolProperty(
         name="Preserve Turbulence",
-        description="Advection-reflection: keeps swirling motion that the solver would otherwise lose to numerical damping, for livelier, longer-lasting turbulence and larger plumes. Steps run in pairs, so the Sub-Step count is rounded up to an even number (at least 2). About 3% more GPU time per block; the livelier smoke fills more space, so it fills VRAM sooner",
+        description="Keeps swirling motion longer for livelier turbulence. About 3% more GPU time; fills VRAM sooner",
         default=False,
     )
 
@@ -1775,7 +1771,7 @@ class FumarisSettings(PropertyGroup):
     # a rising column about 13 m up (2026-11-06).
     dissipation: FloatProperty(
         name="Dissipation",
-        description="How quickly smoke fades away over time, in smoke density per second; zero keeps it from fading through this setting. It removes the same amount from thin and dense smoke, so smoke spread thin (by Wind or fast spreading) clears sooner; Smoke Decay fades in proportion instead. Type a value above 1 for dense smoke that must clear quickly",
+        description="How fast smoke fades, in density per second, the same for thin and dense smoke",
         default=0.2,
         min=0.0,
         soft_max=1.0,
@@ -1793,7 +1789,7 @@ class FumarisSettings(PropertyGroup):
 
     smoke_decay: FloatProperty(
         name="Smoke Decay",
-        description="Fraction of the smoke removed per second, in proportion to its density. Flow applies whichever removes more each step, this or Dissipation, so dense smoke ignores Dissipation and fades only at this rate. Raise it when dense leftovers linger after the thin smoke is gone. Flow's built-in value is 0.3. The rate compounds, so 0.99 leaves 1% after a second (1.0 would remove all smoke every step)",
+        description="Share of the smoke removed per second, in proportion to its density. Ends at 0.99",
         default=0.1,
         min=0.0,
         max=0.99,
@@ -1972,9 +1968,7 @@ class FumarisSettings(PropertyGroup):
     # preview does not show it.
     shader_smooth_voxels: BoolProperty(
         name="Smooth Voxels",
-        description="Cycles reads the volume with cubic instead of linear interpolation. Dense smoke and fireballs "
-                    "otherwise show fine concentric rings, one per voxel layer, where their surface crosses the "
-                    "voxel grid. Renders about 1.5x slower; turn off for faster test renders",
+        description="Render the volume with cubic interpolation to avoid ring artifacts. About 1.5x render time",
         default=True,
         update=_appearance_updated,
     )
@@ -1991,9 +1985,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_hot_density: FloatProperty(
         name="Hot Smoke Density",
-        description="Hot gas is this many times denser than cool smoke (x1 at Hot Smoke From, rising to this at Hot "
-                    "Smoke To and above), as Houdini's pyro shading thickens fire. 1 is off. Render only: the live "
-                    "preview does not show it",
+        description="How much denser hot gas looks than cool smoke, for thicker fire. 1 off. Render only",
         default=1.0,
         min=0.0,
         soft_max=20.0,
@@ -2047,7 +2039,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_flame_contrast: FloatProperty(
         name="Contrast",
-        description="How fast glow falls off as gas cools below Full Glow, which sets how wide flames look. 1 matches a camera exposed for the hottest gas (thin, sparkly flames); lower values let cooler gas glow too (wider, fuller flames) without brightening the hottest gas",
+        description="How fast glow fades as gas cools: 1 thin, sparkly flames; lower for wider, fuller flames",
         default=0.5,
         min=0.05,
         soft_max=2.0,
@@ -2056,7 +2048,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_scatter_glow: FloatProperty(
         name="Scatter Glow",
-        description="Fire light scattered into the surrounding smoke, so dark billows glow from inside near flames. Cycles barely carries emission through smoke on its own; this uses the baked glow grid (see Glow Radius under Output)",
+        description="Fire light scattered into nearby smoke, so dark billows glow from inside near flames",
         default=1.0,
         min=0.0,
         soft_max=4.0,
@@ -2065,7 +2057,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_glow_spread: FloatProperty(
         name="Glow Spread",
-        description="How far Scatter Glow reaches into the smoke. 0 keeps fire light within Glow Radius of the flames; higher values blend in light spread four times farther, so the falloff gets a long, soft tail and thick smoke glows deep inside; 1 is only the wide, soft glow. Needs a bake from Fumaris 2.0 or later",
+        description="How far Scatter Glow reaches into the smoke: higher gives a longer, softer glow",
         default=0.0,
         min=0.0,
         max=1.0,
@@ -2088,7 +2080,7 @@ class FumarisSettings(PropertyGroup):
     # dense smoke (2-5% left in a few density-metres).
     shader_glow_shadowing: FloatProperty(
         name="Glow Shadowing",
-        description="How much smoke between a spot and the fire blocks Scatter Glow. 0 lights all smoke near fire alike, so dense outer billows glow too; higher values keep sooty caps dark and let fire light show only where little smoke lies in between, in the crevices next to the flames. High values can hide Scatter Glow almost entirely in dense smoke; lower this if Scatter Glow or Glow Spread seem to do nothing. About the smoke Density setting is physically consistent. Needs a bake from Fumaris 2.0 or later",
+        description="How much smoke between a spot and the fire blocks Scatter Glow: higher keeps sooty caps dark",
         default=0.5,
         min=0.0,
         soft_max=10.0,
@@ -2173,7 +2165,7 @@ class FumarisSettings(PropertyGroup):
     )
     pyro_flame_core: FloatProperty(
         name="Blue Core (Render Only)",
-        description="Pyro look: blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation, and the bake then also writes the fuel grid; the live preview does not show it. Zero turns it off",
+        description="Blue emission where fuel is still burning near the source. Needs fuel; not shown in the preview",
         default=0.0,
         min=0.0,
         max=1.0,
@@ -2218,14 +2210,14 @@ class FumarisSettings(PropertyGroup):
 
     shader_thin_gas_auto: BoolProperty(
         name="Auto",
-        description="Pyro look: set Thin Gas from each frame's smoke (Thin Gas Ratio x its typical density), so the glowing cells look the same at any Smoke Amount, scene scale or time in the effect. Off: Thin Gas is the density below",
+        description="Set Thin Gas from each frame's smoke, so the glow looks the same at any smoke amount",
         default=True,
         update=_appearance_updated,
     )
 
     shader_thin_gas_ratio: FloatProperty(
         name="Thin Gas",
-        description="Pyro look, Thin Gas Auto: Thin Gas as a share of the frame's typical (density-weighted mean) smoke density. Lower: only the thinnest skins of each billow glow, darker and more cellular; higher: more of the smoke glows",
+        description="Thin Gas as a share of the frame's typical smoke density: lower glows only the thinnest skins",
         default=0.12,
         min=0.005,
         soft_max=0.5,
@@ -2234,7 +2226,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_thin_gas: FloatProperty(
         name="Thin Gas",
-        description="Pyro look: smoke density at which fire glows as in the Temperature look. Gas thinner than this glows (up to twice as bright); denser smoke fades to dark soot over the fire (none above 1.5 x), so dense billow tops read as soot and the fire shows in the gaps between them. Raise it for dense, smoky fire so more of it glows",
+        description="Smoke density below which fire glows; denser smoke turns to dark soot over the fire",
         default=3.0,
         min=0.001,
         soft_max=20.0,
@@ -2244,7 +2236,7 @@ class FumarisSettings(PropertyGroup):
     # Off (2026-11-08): with Brightness raised it turned fuel-rich scenes lilac.
     shader_flame_core: FloatProperty(
         name="Blue Core (Render Only)",
-        description="Blue emission where fuel is still burning near the source, as in fresh flames. Needs fuel in the simulation, and the bake then also writes the fuel grid (larger files); the live preview does not show it. Zero turns it off",
+        description="Blue emission where fuel is still burning near the source. Needs fuel; not shown in the preview",
         default=0.0,
         min=0.0,
         max=1.0,
@@ -2254,7 +2246,7 @@ class FumarisSettings(PropertyGroup):
 
     shader_color_spread: FloatProperty(
         name="Color Spread",
-        description="How far fire colour moves with temperature around Full Glow. 1 is physical blackbody colour; lower values keep hot and cool gas closer to the Full Glow colour (a camera's compressed fire palette: orange body, no white-hot or deep-red extremes); higher values exaggerate the range",
+        description="How far fire colour shifts with temperature: 1 physical blackbody, lower keeps colours closer together",
         default=1.0,
         min=0.05,
         soft_max=2.0,
@@ -2282,7 +2274,7 @@ class FumarisSettings(PropertyGroup):
 
     adaptive_cfl: FloatProperty(
         name="Cells per Step",
-        description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; 8 bakes explosions in about half the time with a similar result, while 16 loses much of the smoke. 0 = off: always use Max Sub-Steps (fast colliders add none)",
+        description="Voxels the fastest smoke may cross per step before a Sub-Step is added. Lower is more accurate and slower. 0 off",
         default=8.0,
         min=0.0,
         soft_max=8.0,
@@ -2295,7 +2287,7 @@ class FumarisSettings(PropertyGroup):
     # 2 steps and close to a converged result (output/trace_final).
     num_sub_steps: IntProperty(
         name="Sub-Steps",
-        description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation. With Cells per Step above 0 it is the most allowed, and steps are added only where motion needs them; a mesh or box collider that would move farther than its Collider Margin in one step adds steps beyond it, up to 8",
+        description="Smaller steps per frame for fast motion. With Cells per Step on, the most allowed",
         default=1,
         min=1,
         soft_max=40,

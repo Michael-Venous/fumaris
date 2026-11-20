@@ -1475,9 +1475,7 @@ def entry_measures(domain, entry, frame):
 class FUMARIS_OT_entry_changes(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_changes"
     bl_label = "View Changes"
-    bl_description = ("The settings this version was made with that differ from the current ones, and for a bake, "
-                      "what it measures against the current version (smoke, heat, extent, bake time, memory); "
-                      "Load Settings from there")
+    bl_description = ("Settings that differ from the current ones and, for a bake, how it measures against the current version")
 
     key: StringProperty()
 
@@ -1766,7 +1764,7 @@ def _preview_save_blocker(context):
 class FUMARIS_OT_version_save(_DomainOperator, Operator):
     bl_idname = "fumaris.version_save"
     bl_label = "Save Sequence"
-    bl_description = "Save the frames the live preview has cached as a new version: VDB files with the settings that made them, which import, render (Cycles included) and compare like a bake. Uses the Output settings (grids, resolutions, Glow), at the preview's resolution"
+    bl_description = "Save the live preview's cached frames as a new version that imports, renders and compares like a bake"
 
     # Not remembered between clicks: Save Sequence after Save Frame saved
     # one frame (Blender reuses an operator's last property values).
@@ -1958,8 +1956,10 @@ def _draw_domain_versions(list_layout, details_layout, domain, *, grouped=False)
     entries = list_entries(domain)
     selected = domain.fumaris.compare_selected
     column = list_layout.column(align=True)
-    if not entries:
-        column.label(text="No saved versions" if grouped else "Bake, or save while previewing (Cache Preview)", icon="INFO")
+    if not entries and grouped:
+        # (The single-domain list stays empty: its "Bake, or save while
+        # previewing" hint was cut off at default width, user 2026-11-20.)
+        column.label(text="No saved versions", icon="INFO")
     pinned = [entry for entry in entries if entry["pinned"]]
     others = [entry for entry in entries if not entry["pinned"]]
     for entry in pinned:

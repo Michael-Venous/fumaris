@@ -244,11 +244,7 @@ def _encode_movie(frames_dir, names, width, height, fps, fps_base, movie_path):
 class FUMARIS_OT_playblast(Operator):
     bl_idname = "fumaris.playblast"
     bl_label = "Save Playblast"
-    bl_description = ("Simulate the whole range as fast as possible and save the viewport with the live smoke "
-                      "to a movie (and its PNG frames) in Versions, with the current settings. "
-                      "Records the 3D viewport it is started from (else the largest) as it is shown, without "
-                      "overlays; looking through a camera, the camera's frame at the render resolution. "
-                      "Esc stops it")
+    bl_description = ("Simulate the frame range and save the viewport with the live smoke as a movie in Versions. Esc stops it")
     bl_options = {"REGISTER"}
 
     domain_name: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})

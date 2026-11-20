@@ -1565,7 +1565,8 @@ the cache also drops its oldest frames when the system runs short of free
 memory, leaving 2 GB or an eighth of the RAM (whichever is more) for Blender and
 other programs; the status line then says System RAM is low.
 
-**Save Playblast** (at the top of Versions, and in the menu beside Bake) asks
+**Save Playblast** (at the top of Versions, in the menu beside Bake, or in the
+Timeline header's **Fumaris** popover for the chosen domain) asks
 for a name, then simulates the whole range as fast as the GPU allows (not in real
 time) and saves what the 3D viewport shows, with the smoke and without
 overlays, as a movie and its PNG frames in Versions, beside the snapshots, with
@@ -1583,7 +1584,8 @@ compares its settings with the current ones; the More menu renames, saves a
 copy (**Export MP4…**) and opens its folder; it can be pinned or deleted like a
 snapshot. Playblasts are files on disk in the domain's Versions folder, never
 inside the .blend. A stopped playblast keeps the frames made so far (without a
-movie). Objects hide the smoke behind them when Scene Occlusion is on. It keeps
+movie). PNGs are saved in the background as the next frame is captured. Objects
+hide the smoke behind them when Scene Occlusion is on. It keeps
 no preview cache, so it suits shots longer than the cache's RAM; Esc stops it.
 
 Each domain in the sidebar's Domains list has an eye: off hides the domain, its

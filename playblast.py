@@ -11,8 +11,11 @@ viewport's display-encoded colours). Blender's own movie writer then makes the
 MP4, so nothing beyond Blender is needed. Nothing is kept in the preview cache.
 """
 import os
+import struct
 import tempfile
 import time
+import zlib
+from concurrent.futures import ThreadPoolExecutor
 
 import bpy
 from bpy.types import Operator
@@ -122,6 +125,68 @@ class _View:
 
 PLAYBLAST_SUFFIX = "_playblast"
 MOVIE_NAME = "playblast.mp4"
+PNG_END = b"\x00\x00\x00\x00IEND\xaeB\x60\x82"
+
+
+def _png_header(path):
+    """Keep Blender's RGB PNG header, including its colour profile and metadata."""
+    with open(path, "rb") as file:
+        header = bytearray(file.read(8))
+        while True:
+            chunk = file.read(8)
+            if len(chunk) != 8:
+                raise RuntimeError("Incomplete playblast PNG")
+            size, kind = struct.unpack(">I4s", chunk)
+            if kind == b"IDAT":
+                return bytes(header)
+            header.extend(chunk)
+            header.extend(file.read(size + 4))
+
+
+def _save_png(path, header, frame):
+    """Write an RGB frame off the main thread. Publish only complete files."""
+    # PNG Sub filter: each byte is stored relative to the same channel of
+    # the preceding pixel. Blender's framebuffer rows start at the bottom.
+    top_down = frame[::-1]
+    scanlines = np.empty((frame.shape[0], 1 + 3 * frame.shape[1]), dtype=np.uint8)
+    scanlines[:, 0] = 1
+    scanlines[:, 1:4] = top_down[:, 0]
+    np.subtract(top_down[:, 1:], top_down[:, :-1], out=scanlines[:, 4:].reshape(frame.shape[0], -1, 3))
+    data = zlib.compress(scanlines, level=1)
+    temporary = path + ".tmp"
+    try:
+        with open(temporary, "wb") as file:
+            file.write(header)
+            file.write(struct.pack(">I4s", len(data), b"IDAT"))
+            file.write(data)
+            file.write(struct.pack(">I", zlib.crc32(data, zlib.crc32(b"IDAT"))))
+            file.write(PNG_END)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.remove(temporary)
+
+
+def _composite_frame(background, preview, payload):
+    frame = background[..., :3]
+    width, height = int(preview.get("width", 0)), int(preview.get("height", 0))
+    if not payload or width * height * 4 != len(payload):
+        return frame.copy()
+    image = np.frombuffer(payload, dtype=np.uint8).reshape(height, width, 4)[::-1]
+    target_height, target_width = frame.shape[:2]
+    if (width, height) != (target_width, target_height):
+        rows = ((np.arange(target_height) + 0.5) * (height / target_height)).astype(np.intp)
+        columns = ((np.arange(target_width) + 0.5) * (width / target_width)).astype(np.intp)
+        image = image[rows[:, None], columns[None, :]]
+    # Both inputs are 8-bit display colours. Round B * (255 - A) / 255 to
+    # the nearest byte before adding premultiplied smoke. Since 255 is odd,
+    # there is no half-way case. The glow can exceed its alpha.
+    value = np.multiply(frame, 255 - image[..., 3:4], dtype=np.uint16)
+    value += 127
+    value //= 255
+    value += image[..., :3]
+    np.minimum(value, 255, out=value)
+    return value.astype(np.uint8)
 
 
 def new_playblast_directory(domain):
@@ -261,7 +326,9 @@ class FUMARIS_OT_playblast(Operator):
         self._accepted = False
         self._frame = self._start
         self._waiting = False
-        self._image = bpy.data.images.new("Fumaris Playblast", self._width, self._height, alpha=False)
+        self._png_writer = ThreadPoolExecutor(max_workers=1)
+        self._png_task = None
+        self._png_header = None
         self._started = time.monotonic()
         self._timer = context.window_manager.event_timer_add(0.001, window=context.window)
         context.window_manager.modal_handler_add(self)
@@ -270,7 +337,7 @@ class FUMARIS_OT_playblast(Operator):
 
     # Viewport -----------------------------------------------------------------
 
-    def _draw_viewport(self, context):
+    def _draw_viewport(self, context, read_depth):
         """The viewport as shown (no overlays), display-encoded RGBA, and its depth."""
         import gpu
         space, region = self._space, self._region
@@ -285,12 +352,12 @@ class FUMARIS_OT_playblast(Operator):
                                   view, projection, do_color_management=True)
             with offscreen.bind():
                 framebuffer = gpu.state.active_framebuffer_get()
-                color = framebuffer.read_color(0, 0, self._width, self._height, 4, 0, "FLOAT")
-                color.dimensions = self._width * self._height * 4
-                colors = np.array(color, dtype=np.float32).reshape(self._height, self._width, 4)
-                depth = framebuffer.read_depth(0, 0, self._width, self._height)
-                depth.dimensions = self._width * self._height
-                depths = np.array(depth, dtype=np.float32).reshape(self._height, self._width)
+                color = framebuffer.read_color(0, 0, self._width, self._height, 4, 0, "UBYTE")
+                colors = np.frombuffer(color, dtype=np.uint8).reshape(self._height, self._width, 4)
+                depths = None
+                if read_depth:
+                    depth = framebuffer.read_depth(0, 0, self._width, self._height)
+                    depths = np.frombuffer(depth, dtype=np.float32).reshape(self._height, self._width)
         finally:
             offscreen.free()
             space.overlay.show_overlays = overlays
@@ -307,7 +374,7 @@ class FUMARIS_OT_playblast(Operator):
         request["width"], request["height"] = width, height
         request.pop(protocol.SCENE_DEPTH_KEY, None)
         request.pop("depth_serial", None)
-        if getattr(domain.fumaris, "preview_occlusion", False):
+        if depths is not None:
             self._depth_serial += 1
             request["depth_serial"] = self._depth_serial
             request[protocol.SCENE_DEPTH_KEY] = preview.sample_scene_depth(
@@ -315,24 +382,26 @@ class FUMARIS_OT_playblast(Operator):
         return request
 
     def _write_frame(self, background, data, payload):
-        smoke = data.get("preview") or {}
-        width, height = int(smoke.get("width", 0)), int(smoke.get("height", 0))
-        frame = background[..., :3].copy()
-        if payload and width * height * 4 == len(payload):
-            image = np.frombuffer(payload, dtype=np.uint8).reshape(height, width, 4)[::-1].astype(np.float32) / 255.0
-            if (width, height) != (self._width, self._height):
-                rows = ((np.arange(self._height) + 0.5) * (height / self._height)).astype(np.intp)
-                columns = ((np.arange(self._width) + 0.5) * (width / self._width)).astype(np.intp)
-                image = image[rows[:, None], columns[None, :]]
-            # Premultiplied smoke (glow may exceed its alpha) over the viewport.
-            frame = np.minimum(image[..., :3] + frame * (1.0 - image[..., 3:4]), 1.0)
-        pixels = np.concatenate([frame, np.ones((self._height, self._width, 1), np.float32)], axis=2)
-        self._image.pixels.foreach_set(pixels.ravel())
+        frame = _composite_frame(background, data.get("preview") or {}, payload)
+        self._flush_png()
         name = f"frame_{len(self._names) + 1:05d}.png"
-        self._image.filepath_raw = os.path.join(self._directory, name)
-        self._image.file_format = "PNG"
-        self._image.save()
-        self._names.append(name)
+        path = os.path.join(self._directory, name)
+        if self._png_header is None:
+            from .compare import save_png
+            pixels = np.ones((*frame.shape[:2], 4), dtype=np.float32)
+            pixels[..., :3] = frame / np.float32(255)
+            save_png(pixels, path)
+            self._png_header = _png_header(path)
+            self._names.append(name)
+        else:
+            self._png_task = (name, self._png_writer.submit(_save_png, path, self._png_header, frame))
+
+    def _flush_png(self):
+        if self._png_task is not None:
+            name, task = self._png_task
+            self._png_task = None
+            task.result()
+            self._names.append(name)
 
     # Modal --------------------------------------------------------------------
 
@@ -362,7 +431,7 @@ class FUMARIS_OT_playblast(Operator):
                 return self._complete(context)
             scene = context.scene
             scene.frame_set(self._frame)
-            self._background, depths = self._draw_viewport(context)
+            self._background, depths = self._draw_viewport(context, domain.fumaris.preview_occlusion)
             request = self._request(context, domain, depths)
             self._worker.send_frame(exporters.build_frame(
                 context, self._frame, self._participants, domain=domain,
@@ -424,10 +493,16 @@ class FUMARIS_OT_playblast(Operator):
             finally:
                 worker.close(timeout=5)
             self._worker = None
-        image = getattr(self, "_image", None)
-        if image is not None:
-            bpy.data.images.remove(image)
-            self._image = None
+        if self._png_writer is not None:
+            try:
+                self._flush_png()
+            except Exception as error:
+                if not cancelled:
+                    raise
+                self.report({"WARNING"}, f"Could not save the last playblast frame: {error}")
+            finally:
+                self._png_writer.shutdown()
+                self._png_writer = None
         context.workspace.status_text_set(None)
         context.scene.frame_set(self._original_frame)
         if cancelled and self._names:

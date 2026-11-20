@@ -454,10 +454,13 @@ def sample_scene_depth(depth, width, height, perspective=True):
     """A viewport depth buffer (bottom row first, any size) as the bridge's
     scene depth: width x height, top row first, far = 1."""
     region_height, region_width = depth.shape
-    rows = ((np.arange(height) + 0.5) * (region_height / height)).astype(np.intp)
-    columns = ((np.arange(width) + 0.5) * (region_width / width)).astype(np.intp)
     # Blender's rows run bottom to top; the preview image is top row first.
-    sampled = np.ascontiguousarray(depth[::-1][rows[:, None], columns[None, :]])
+    if (width, height) == (region_width, region_height):
+        sampled = np.ascontiguousarray(depth[::-1])
+    else:
+        rows = ((np.arange(height) + 0.5) * (region_height / height)).astype(np.intp)
+        columns = ((np.arange(width) + 0.5) * (region_width / width)).astype(np.intp)
+        sampled = np.ascontiguousarray(depth[::-1][rows[:, None], columns[None, :]])
     if sampled.max() < 0.5 and perspective:
         # Standard depth keeps even nearby geometry close to 1. A buffer that
         # never gets there is reversed (far = 0); the bridge expects far = 1.

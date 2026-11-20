@@ -4,6 +4,9 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: Save Playblast in the Timeline header's Fumaris popover records the chosen domain from the largest 3D viewport.
+- Changed: Save Playblast overlaps lossless PNG writing with the next frame and skips reading depth when Scene Occlusion is off.
+
 - Added: All domains in Versions groups the scene's bakes, snapshots and playblasts by domain. Use the eye beside each VDB version to set up which bakes play together without switching domains.
 
 - Changed: Full-Resolution Channels uses less GPU memory. The solver reuses the full-resolution density texture where possible and computes the smoke's motion paths directly on a stationary full-resolution grid (Cauliflower at Resolution 1100: 10.09 to 7.75 GiB on an RTX 4060 Ti). New full-resolution bakes can differ in the exact shape of individual folds. Existing bake files still play, and half-resolution motion is unchanged.

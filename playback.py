@@ -385,6 +385,11 @@ class FUMARIS_PT_playback(bpy.types.Panel):
         row.enabled = not blocking_job()
         row.prop(context.scene, 'fumaris_preview_domain', text='Domain')
         draw_controls(self.layout, context)
+        if getattr(context.area, 'type', None) == 'DOPESHEET_EDITOR':
+            chosen = context.scene.fumaris_preview_domain
+            domain = chosen if chosen in scene_domains(context) else resolve_domain(context)
+            if domain is not None:
+                self.layout.operator('fumaris.playblast', icon='FILE_MOVIE').domain_name = domain.name
         self.layout.label(text='Edit shortcuts in Fumaris preferences', icon='PREFERENCES')
 
 

@@ -1384,12 +1384,7 @@ def _draw_domain(layout, scene, props):
         mask.active = props.vorticity > 0.0
         mask.prop(props, "vorticity_mask", text="")
 
-    # Same card, but their own dropdowns (not nested in Smoke Behavior).
-    # Detail & Shaping stack: Disturb, Grain and Shred layers, and layers that
-    # scale Vorticity, Dissipation, Cooling or burn off soot, each with masks.
-    if _section(behavior_box, props, "show_domain_detail_stack", "Detail & Shaping", "FORCE_TURBULENCE"):
-        detail_stack.draw(behavior_box.column(align=True), props.id_data)
-
+    # Same card, but its own dropdown (not nested in Smoke Behavior).
     if _section(behavior_box, props, "show_domain_combustion", "Combustion", "LIGHT_SUN"):
         combustion = behavior_box.column(align=True)
         combustion.prop(props, "flame_temperature")
@@ -1424,8 +1419,15 @@ def _draw_domain(layout, scene, props):
             field.prop(props, "oxygen_use", text="Use")
             field.prop(props, "oxygen_mixing", text="Mixing")
 
-    from .particles import draw_domain_section
-    draw_domain_section(layout, props, _section, _pair, _nested_foldout, is_baking)
+    # Modifiers: one stack for detail (Disturb, Grain, Shred), rates
+    # (Vorticity, Dissipation, Cooling, Soot Burn-off) and particles, each
+    # with masks. Folded by default; its count shows while folded.
+    modifiers_box = layout.box().column(align=True)
+    modifiers_box.enabled = not is_baking
+    count = detail_stack.header_count(props)
+    if _section(modifiers_box, props, "show_domain_detail_stack", f"Modifiers ({count})" if count else "Modifiers",
+                "MODIFIER"):
+        detail_stack.draw(modifiers_box.column(align=True), props.id_data)
 
     participants_box = layout.box()
     participants_box.enabled = not is_baking

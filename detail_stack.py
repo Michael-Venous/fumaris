@@ -1,23 +1,35 @@
-"""Detail & Shaping stack: an ordered list of layers that add detail to the flow
-(Disturb, Grain, Shred) or scale a rate per cell (Vorticity, Dissipation,
-Cooling, Soot Burn-off), each with up to six field masks combined by blend.
+"""The domain's Modifiers stack: an ordered list of modifiers that add detail
+to the flow (Disturb, Grain, Shred), scale a rate per cell (Vorticity,
+Dissipation, Cooling, Soot Burn-off) or spawn particles (Spawn Particles,
+particles.py), each with up to six field masks combined by blend.
 
 Masks are map ranges: the field from From Min to From Max gives a factor from
-To Min to To Max (clamped). A layer acts only where its masks allow; new layers
-start with the masks that make them useful (Disturb and Grain: smoke or heat).
+To Min to To Max (clamped). A modifier acts only where its masks allow (a
+Spawn Particles modifier spawns there, denser where the factor is larger); new
+modifiers start with the masks that make them useful (Disturb and Grain: smoke
+or heat; Tracers: visible smoke; Embers: burning gas).
 
-Replaces Turbulence Detail, Control Ramps and Soot Burn-off (2.0).
+The stack is stored as the domain's `detail_layers` (its name from when it was
+"Detail & Shaping", kept so files load unchanged). Design notes:
+notes/reference/modifier-stack.md.
+
+Replaces Turbulence Detail, Control Ramps and Soot Burn-off (2.0), and the
+separate Particles section (Particles v1).
 """
 import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
-                       FloatVectorProperty, IntProperty, StringProperty)
-from bpy.types import Operator, PropertyGroup, UIList
+                       FloatVectorProperty, IntProperty, PointerProperty, StringProperty)
+from bpy.types import Menu, Operator, PropertyGroup, UIList
+
+from . import particles
+from .particles import FumarisSpawnSettings
 
 MASKS_PER_LAYER = 6
 # Disturb and Grain act where there is smoke, or heat (full at this many kelvin).
 GATE_KELVIN = 2500.0
 VELOCITY_LAYER_LIMIT = 8
 SHAPE_LAYER_LIMIT = 4
+PARTICLE_LAYER_LIMIT = particles.MAX_GROUPS
 
 # identifier, label, description, icon, protocol name, default strength
 LAYER_TYPES = (
@@ -45,10 +57,21 @@ LAYER_TYPES = (
      "Smoke thins (burns off) at this rate per second where the masks allow: by default where "
      "gas is hot and air is left, as soot oxidises. Forms nothing, adds no heat",
      "FORCE_FORCE", "soot_burn", 1.0),
+    ("PARTICLES", "Spawn Particles",
+     "GPU particles that ride the smoke (tracers, embers): they spawn where the masks allow, "
+     "denser where they give more, and from objects; baked beside the VDBs as a point cloud",
+     "PARTICLES", "particles", 0.0),
 )
 _LAYER = {item[0]: item for item in LAYER_TYPES}
 VELOCITY_TYPES = {"DISTURB", "GRAIN", "SHRED", "VORTICITY"}
 SCALE_TYPES = {"VORTICITY", "DISSIPATION", "COOLING"}
+SHAPE_TYPES = {"DISSIPATION", "COOLING", "SOOT_BURN"}
+# The Add menu, by purpose: (heading, [(type, kind or "")]).
+ADD_MENU = (
+    ("Detail", [("DISTURB", ""), ("GRAIN", ""), ("SHRED", "")]),
+    ("Rates", [("VORTICITY", ""), ("DISSIPATION", ""), ("COOLING", ""), ("SOOT_BURN", "")]),
+    ("Particles", [("PARTICLES", "TRACERS"), ("PARTICLES", "EMBERS")]),
+)
 
 MASK_FIELDS = (
     ("TEMPERATURE", "Temperature", "Gas temperature in kelvin", "temperature"),
@@ -135,9 +158,13 @@ class FumarisDetailLayer(PropertyGroup):
                                     "three times the block size (up to 3). 1 = one size")
     masks: CollectionProperty(type=FumarisFieldMask)
     masks_index: IntProperty(name="Active Mask", default=0)
+    # Spawn Particles: the modifier's particles (particles.py).
+    particles: PointerProperty(type=FumarisSpawnSettings)
 
 
 def label(layer):
+    if layer.layer_type == "PARTICLES":
+        return particles.label(layer)
     return _LAYER[layer.layer_type][1]
 
 
@@ -146,12 +173,16 @@ def is_velocity(layer_type):
 
 
 def counts(props):
+    """Motion, smoke-and-heat and particle modifiers in the stack."""
     velocity = sum(1 for layer in props.detail_layers if is_velocity(layer.layer_type))
-    return velocity, len(props.detail_layers) - velocity
+    spawn = sum(1 for layer in props.detail_layers if layer.layer_type == "PARTICLES")
+    return velocity, len(props.detail_layers) - velocity - spawn, spawn
 
 
 def can_add(props, layer_type):
-    velocity, shape = counts(props)
+    velocity, shape, spawn = counts(props)
+    if layer_type == "PARTICLES":
+        return spawn < PARTICLE_LAYER_LIMIT
     return velocity < VELOCITY_LAYER_LIMIT if is_velocity(layer_type) else shape < SHAPE_LAYER_LIMIT
 
 
@@ -180,14 +211,20 @@ def default_masks(layer_type, flame_kelvin):
     return []
 
 
-def add_layer(props, layer_type, masks=None, **values):
+def add_layer(props, layer_type, masks=None, kind="TRACERS", **values):
     layer = props.detail_layers.add()
     layer.layer_type = layer_type
     layer.strength = _LAYER[layer_type][5]
     if layer_type == "GRAIN":
         layer.size = 0.2
+    if layer_type == "PARTICLES":
+        particles.init_spawn(props, layer, kind, masks=masks is None)
+        masks = masks or []
     for key, value in values.items():
-        setattr(layer, key, value)
+        if layer_type == "PARTICLES" and hasattr(layer.particles, key) and not hasattr(FumarisDetailLayer, key):
+            setattr(layer.particles, key, value)
+        else:
+            setattr(layer, key, value)
     if masks is None:
         masks = default_masks(layer_type, float(getattr(props, "flame_temperature", 2000.0)))
     for mask in masks:
@@ -205,19 +242,25 @@ def add_mask(layer, **values):
     return mask
 
 
+def export_masks(layer):
+    """A modifier's enabled masks as the bridge reads them (FieldMask)."""
+    return [{
+        "field": _FIELD[mask.field][3],
+        "blend": _BLEND[mask.blend][3],
+        "range": [float(mask.range[0]), float(mask.range[1])],
+        "values": [float(mask.values[0]), float(mask.values[1])],
+        "noise_size": float(mask.noise_size),
+    } for mask in layer.masks if mask.enabled][:MASKS_PER_LAYER]
+
+
 def export_layers(props):
-    """The enabled layers and masks as the bridge reads them ("detail_layers")."""
+    """The enabled Detail & Shaping layers and masks as the bridge reads them
+    ("detail_layers"); Spawn Particles modifiers go with the frame's particles."""
     layers = []
     for layer in getattr(props, "detail_layers", ()):
-        if not layer.enabled:
+        if not layer.enabled or layer.layer_type == "PARTICLES":
             continue
-        masks = [{
-            "field": _FIELD[mask.field][3],
-            "blend": _BLEND[mask.blend][3],
-            "range": [float(mask.range[0]), float(mask.range[1])],
-            "values": [float(mask.values[0]), float(mask.values[1])],
-            "noise_size": float(mask.noise_size),
-        } for mask in layer.masks if mask.enabled][:MASKS_PER_LAYER]
+        masks = export_masks(layer)
         layers.append({
             "type": _LAYER[layer.layer_type][4],
             "strength": float(layer.strength),
@@ -230,16 +273,28 @@ def export_layers(props):
 
 _LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail")
 _MASK_KEYS = ("enabled", "field", "blend", "range", "values", "noise_size")
+_SPAWN_KEYS = ("uid", "kind", "spawn_smoke", "spawn_objects", "rate", "spawn_jitter", "source_mode", "source_rate",
+               "source_speed", "source_inherit", "mask_objects", "drag", "gravity", "lifetime", "lifetime_random",
+               "cooling_time", "collision", "bounce", "friction", "size", "size_random", "color", "brightness",
+               "show_in_preview")
 
 
 def _plain(value):
     return [float(v) for v in value] if hasattr(value, "__len__") and not isinstance(value, str) else value
 
 
+def _spawn_dict(spawn):
+    data = {key: _plain(getattr(spawn, key)) for key in _SPAWN_KEYS}
+    data["source_collection"] = spawn.source_collection.name if spawn.source_collection else ""
+    return data
+
+
 def to_list(props):
-    """Every layer, enabled or not, for presets and takes."""
+    """Every layer, enabled or not, for presets and takes (a Spawn Particles
+    modifier with its particle settings; a source collection by name)."""
     return [{**{key: _plain(getattr(layer, key)) for key in _LAYER_KEYS},
-             "masks": [{key: _plain(getattr(mask, key)) for key in _MASK_KEYS} for mask in layer.masks]}
+             "masks": [{key: _plain(getattr(mask, key)) for key in _MASK_KEYS} for mask in layer.masks],
+             **({"particles": _spawn_dict(layer.particles)} if layer.layer_type == "PARTICLES" else {})}
             for layer in props.detail_layers]
 
 
@@ -252,6 +307,18 @@ def from_list(props, layers):
         for key in _LAYER_KEYS:
             if key in entry:
                 setattr(layer, key, entry[key])
+        spawn = entry.get("particles")
+        if layer.layer_type == "PARTICLES" and isinstance(spawn, dict):
+            for key in _SPAWN_KEYS:
+                if key in spawn:
+                    try:
+                        if key == "kind":
+                            layer.particles["kind"] = 1 if spawn[key] == "EMBERS" else 0   # no defaults
+                        else:
+                            setattr(layer.particles, key, spawn[key])
+                    except (TypeError, ValueError):
+                        pass
+            layer.particles.source_collection = bpy.data.collections.get(spawn.get("source_collection") or "")
         for mask_entry in entry.get("masks", ())[:MASKS_PER_LAYER]:
             mask = layer.masks.add()
             for key in _MASK_KEYS:
@@ -276,15 +343,22 @@ def _domain(context, name):
 
 class FUMARIS_OT_detail_layer_add(Operator):
     bl_idname = "fumaris.detail_layer_add"
-    bl_label = "Add Layer"
-    bl_description = "Add a Detail & Shaping layer"
+    bl_label = "Add Modifier"
+    bl_description = "Add a modifier to the domain's stack"
     bl_options = {"REGISTER", "UNDO"}
 
     layer_type: EnumProperty(name="Type", items=_type_items())
+    kind: EnumProperty(name="Kind", items=[("TRACERS", "Tracers", ""), ("EMBERS", "Embers", "")],
+                       default="TRACERS", options={"SKIP_SAVE"})
     domain_name: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
 
     @classmethod
     def description(cls, _context, properties):
+        if properties.layer_type == "PARTICLES":
+            return ("Tracers: light particles that follow the smoke exactly, spawned in the visible smoke"
+                    if properties.kind == "TRACERS" else
+                    "Embers: heavy hot particles thrown out of the fire, falling and cooling, spawned in "
+                    "burning gas")
         return _LAYER[properties.layer_type][2]
 
     def execute(self, context):
@@ -293,18 +367,19 @@ class FUMARIS_OT_detail_layer_add(Operator):
             return {"CANCELLED"}
         props = domain.fumaris
         if not can_add(props, self.layer_type):
-            self.report({"WARNING"}, f"At most {VELOCITY_LAYER_LIMIT} motion layers (Disturb, Grain, Shred, "
-                                     f"Vorticity) and {SHAPE_LAYER_LIMIT} smoke and heat layers")
+            self.report({"WARNING"}, f"At most {VELOCITY_LAYER_LIMIT} motion modifiers (Disturb, Grain, Shred, "
+                                     f"Vorticity), {SHAPE_LAYER_LIMIT} smoke and heat modifiers and "
+                                     f"{PARTICLE_LAYER_LIMIT} Spawn Particles")
             return {"CANCELLED"}
-        add_layer(props, self.layer_type)
+        add_layer(props, self.layer_type, kind=self.kind)
         props.detail_layers_index = len(props.detail_layers) - 1
         return {"FINISHED"}
 
 
 class FUMARIS_OT_detail_layer_remove(Operator):
     bl_idname = "fumaris.detail_layer_remove"
-    bl_label = "Remove Layer"
-    bl_description = "Remove the active Detail & Shaping layer"
+    bl_label = "Remove Modifier"
+    bl_description = "Remove the active modifier"
     bl_options = {"REGISTER", "UNDO"}
 
     domain_name: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
@@ -321,8 +396,8 @@ class FUMARIS_OT_detail_layer_remove(Operator):
 
 class FUMARIS_OT_detail_layer_move(Operator):
     bl_idname = "fumaris.detail_layer_move"
-    bl_label = "Move Layer"
-    bl_description = "Move the active layer up or down. Motion layers apply in this order"
+    bl_label = "Move Modifier"
+    bl_description = "Move the active modifier up or down. Motion modifiers apply in this order"
     bl_options = {"REGISTER", "UNDO"}
 
     direction: EnumProperty(items=(("UP", "Up", ""), ("DOWN", "Down", "")))
@@ -353,7 +428,7 @@ def _active_layer(context, name):
 class FUMARIS_OT_field_mask_add(Operator):
     bl_idname = "fumaris.field_mask_add"
     bl_label = "Add Mask"
-    bl_description = "Add a mask to the active layer (up to 4); masks combine in order by their blend"
+    bl_description = "Add a mask to the active modifier (up to 6); masks combine in order by their blend"
     bl_options = {"REGISTER", "UNDO"}
 
     domain_name: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
@@ -363,7 +438,7 @@ class FUMARIS_OT_field_mask_add(Operator):
         if layer is None:
             return {"CANCELLED"}
         if len(layer.masks) >= MASKS_PER_LAYER:
-            self.report({"WARNING"}, f"At most {MASKS_PER_LAYER} masks per layer")
+            self.report({"WARNING"}, f"At most {MASKS_PER_LAYER} masks per modifier")
             return {"CANCELLED"}
         add_mask(layer)
         layer.masks_index = len(layer.masks) - 1
@@ -422,6 +497,31 @@ def _narrow():
     return ui._NARROW
 
 
+class FUMARIS_MT_modifier_add(Menu):
+    """The Add menu, grouped by purpose."""
+    bl_idname = "FUMARIS_MT_modifier_add"
+    bl_label = "Add Modifier"
+
+    def draw(self, context):
+        layout = self.layout
+        domain = getattr(context, "fumaris_domain", None) or getattr(context, "object", None)
+        name = domain.name if domain is not None else ""
+        row = layout.row()
+        for heading, entries in ADD_MENU:
+            column = row.column()
+            column.label(text=heading)
+            for layer_type, kind in entries:
+                text = _LAYER[layer_type][1]
+                icon = _LAYER[layer_type][3]
+                if kind:
+                    text = f"Spawn {particles.KIND_LABELS[kind]}"
+                    icon = "LIGHT_SUN" if kind == "EMBERS" else "PARTICLES"
+                op = column.operator("fumaris.detail_layer_add", text=text, icon=icon)
+                op.layer_type, op.domain_name = layer_type, name
+                if kind:
+                    op.kind = kind
+
+
 class FUMARIS_UL_detail_layers(UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_property, _index):
         row = layout.row(align=True)
@@ -431,13 +531,21 @@ class FUMARIS_UL_detail_layers(UIList):
         narrow = _narrow()
         gap = " · " if narrow else "  ·  "
         text = label(item)
-        if item.layer_type not in SCALE_TYPES:
-            text += f" {item.strength:g}" if narrow else f"  {item.strength:g}"
-        if item.layer_type in {"DISTURB", "GRAIN"}:
-            text += f"{gap}{item.size:g} m"
+        icon = _LAYER[item.layer_type][3]
+        if item.layer_type == "PARTICLES":
+            parts = particles.summary(item, narrow)
+            if parts:
+                text += (" " if narrow else "  ") + gap.join(parts)
+            if item.particles.kind == "EMBERS":
+                icon = "LIGHT_SUN"
+        else:
+            if item.layer_type not in SCALE_TYPES:
+                text += f" {item.strength:g}" if narrow else f"  {item.strength:g}"
+            if item.layer_type in {"DISTURB", "GRAIN"}:
+                text += f"{gap}{item.size:g} m"
         if len(item.masks) and not narrow:  # the mask list sits right below
             text += f"{gap}{len(item.masks)} mask" + ("s" if len(item.masks) > 1 else "")
-        sub.label(text=text, icon=_LAYER[item.layer_type][3])
+        sub.label(text=text, icon=icon)
 
 
 class FUMARIS_UL_field_masks(UIList):
@@ -457,13 +565,20 @@ class FUMARIS_UL_field_masks(UIList):
                        f"{item.range[0]:g}-{item.range[1]:g}{units} → {item.values[0]:g}-{item.values[1]:g}")
 
 
+def header_count(props):
+    """The section header's count of modifiers (shown folded too)."""
+    return len(props.detail_layers)
+
+
 def draw(layout, domain):
-    """The stack and the active layer's settings and masks."""
+    """The stack and the active modifier's settings and masks; under them the
+    particle system when a Spawn Particles modifier is in the stack."""
     props = domain.fumaris
     row = layout.row()
     row.template_list("FUMARIS_UL_detail_layers", "", props, "detail_layers", props, "detail_layers_index", rows=3)
     side = row.column(align=True)
-    side.operator_menu_enum("fumaris.detail_layer_add", "layer_type", text="", icon="ADD")
+    side.context_pointer_set("fumaris_domain", domain)
+    side.menu("FUMARIS_MT_modifier_add", text="", icon="ADD")
     side.operator("fumaris.detail_layer_remove", text="", icon="REMOVE").domain_name = domain.name
     side.separator()
     up = side.operator("fumaris.detail_layer_move", text="", icon="TRIA_UP")
@@ -471,7 +586,8 @@ def draw(layout, domain):
     down = side.operator("fumaris.detail_layer_move", text="", icon="TRIA_DOWN")
     down.direction, down.domain_name = "DOWN", domain.name
     if not len(props.detail_layers):
-        layout.label(text="Add Disturb or Grain with +", icon="INFO")
+        from . import ui
+        ui._wrapped(layout, "Add detail (Disturb, Grain), rates or particles with +", "INFO")
         return
     layer = props.detail_layers[min(props.detail_layers_index, len(props.detail_layers) - 1)]
     box = layout.column(align=True)
@@ -484,9 +600,22 @@ def draw(layout, domain):
         box.prop(layer, "detail", text="Detail" if kind == "DISTURB" else "Layers")
     elif kind in {"SHRED", "SOOT_BURN"}:
         box.prop(layer, "strength", text="Rate" if kind == "SOOT_BURN" else "Strength")
+    elif kind == "PARTICLES":
+        particles.draw_modifier(box, layer, domain)
     else:
         box.label(text=f"Scales {label(layer)} by the masks below", icon="INFO")
-    layout.label(text="Masks")
+    _draw_masks(layout, layer, domain)
+    if particles.spawn_layers(props, enabled_only=False):
+        layout.separator(factor=0.5)
+        particles.draw_system(layout, domain)
+
+
+def _draw_masks(layout, layer, domain):
+    kind = layer.layer_type
+    spawn = kind == "PARTICLES"
+    layout.label(text="Spawn Masks" if spawn else "Masks")
+    if spawn and not layer.particles.spawn_smoke and not layer.particles.mask_objects:
+        layout.label(text="Used when spawning in smoke", icon="INFO")
     row = layout.row()
     row.template_list("FUMARIS_UL_field_masks", "", layer, "masks", layer, "masks_index", rows=2)
     side = row.column(align=True)
@@ -498,8 +627,10 @@ def draw(layout, domain):
     down = side.operator("fumaris.field_mask_move", text="", icon="TRIA_DOWN")
     down.direction, down.domain_name = "DOWN", domain.name
     if not len(layer.masks):
-        layout.label(text="No masks: this layer acts everywhere" if kind not in SCALE_TYPES
-                     else "No masks: this layer changes nothing", icon="INFO")
+        text = ("No masks: spawns evenly in all smoke" if spawn else
+                "No masks: this modifier changes nothing" if kind in SCALE_TYPES else
+                "No masks: this modifier acts everywhere")
+        layout.label(text=text, icon="INFO")
         return
     mask = layer.masks[min(layer.masks_index, len(layer.masks) - 1)]
     # A map range: the field from From Min to From Max gives To Min to To Max.
@@ -528,8 +659,9 @@ def draw(layout, domain):
     row.prop(mask, "values", index=1, text="To Max")
 
 
-PROPERTY_CLASSES = (FumarisFieldMask, FumarisDetailLayer)
+PROPERTY_CLASSES = (FumarisFieldMask, *particles.PROPERTY_CLASSES, FumarisDetailLayer)
 CLASSES = (
+    FUMARIS_MT_modifier_add,
     FUMARIS_OT_detail_layer_add, FUMARIS_OT_detail_layer_remove, FUMARIS_OT_detail_layer_move,
     FUMARIS_OT_field_mask_add, FUMARIS_OT_field_mask_remove, FUMARIS_OT_field_mask_move,
     FUMARIS_UL_detail_layers, FUMARIS_UL_field_masks,

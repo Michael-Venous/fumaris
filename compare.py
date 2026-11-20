@@ -546,8 +546,8 @@ def settings_differences(a, b, props=None):
         if not _same(sa.get(key), sb.get(key)):
             lines.append((_label(props, key), _format(sa.get(key, "-")), _format(sb.get(key, "-"))))
     if a.get("detail_layers", []) != b.get("detail_layers", []):
-        lines.append(("Detail & Shaping layers",
-                      f"{len(a.get('detail_layers', []))} layers", f"{len(b.get('detail_layers', []))} layers"))
+        lines.append(("Modifiers",
+                      f"{len(a.get('detail_layers', []))} modifiers", f"{len(b.get('detail_layers', []))} modifiers"))
     pa, pb = a.get("participants", {}), b.get("participants", {})
     for name in sorted(set(pa) | set(pb)):
         if name not in pa or name not in pb:

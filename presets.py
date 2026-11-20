@@ -12,6 +12,7 @@ import re
 import bpy
 
 from . import detail_stack
+from . import particles
 from .cache import _rna_values
 
 # Settings that belong to sources rather than the domain (one property group
@@ -69,6 +70,7 @@ def capture(props):
     data = {"version": 2, "role": role, "settings": values}
     if role == "domain":
         data["detail_layers"] = detail_stack.to_list(props)
+        data["particle_system"] = particles.system_to_dict(props.id_data)
     return data
 
 
@@ -87,7 +89,8 @@ def save_preset_data(snapshot, name):
     """A domain preset from a version's stored settings (cache.write_settings_snapshot)."""
     settings = {key: value for key, value in snapshot.get("settings", {}).items() if _belongs(key, "domain")}
     data = {"version": 2, "role": "domain", "settings": settings,
-            "detail_layers": snapshot.get("detail_layers", [])}
+            "detail_layers": snapshot.get("detail_layers", []),
+            "particle_system": snapshot.get("particle_system", {})}
     return _write(data, name)
 
 
@@ -139,6 +142,7 @@ def apply_data(props, data):
             applied += 1
     if role == "domain":
         detail_stack.from_list(props, data.get("detail_layers", []))
+        particles.system_from_dict(props.id_data, data.get("particle_system"))
         applied += 1
     return applied
 

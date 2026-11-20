@@ -1,30 +1,37 @@
-"""Fumaris Particles: GPU tracers that ride the smoke (F12).
+"""Fumaris Particles: GPU tracers that ride the smoke (F12), as domain modifiers.
+
+A "Spawn Particles" modifier in the domain's Modifiers stack (detail_stack.py)
+is one kind of particle: where it spawns (in the smoke, spread by the
+modifier's masks, the same field masks the Detail & Shaping modifiers use;
+and/or from a collection of objects), how it moves (drag, gravity, lifetime,
+colliders) and how it looks (size, colour, material). A domain holds up to
+four, e.g. tracers in cool smoke and embers from the fire; each particle
+carries its modifier's index (its spawn group). What all of them share is the
+domain's particle system (FumarisParticleSettings on the domain object: Max
+Particles, Seed, Inside Domain, the preview's share), drawn under the stack.
 
 The solver moves them in every simulation step from the live velocity, so they
 show in the live preview (drawn into its image) and a bake writes them next to
 its VDBs: particles/<prefix>particles_####.ply, one binary PLY point cloud per
-frame. A "<domain> Particles" object reads the frame the scene shows with a
-Geometry Nodes Import PLY node (no Python handler: renders and render farms
-see it like any modifier), turns it into a point cloud for Cycles and leaves
-every attribute to Geometry Nodes (instancing, trails, sparkle).
+frame, with a "group" attribute (the modifier's index in the bake). Each
+modifier gets a "<domain> <Kind>" object that reads the frame the scene shows
+with a Geometry Nodes Import PLY node, keeps its group's points (no Python
+handler: renders and render farms see it like any modifier), turns them into a
+point cloud for Cycles and leaves every attribute to Geometry Nodes.
 
-Spawning: in the smoke (smoke and temperature in a range, a rate per second,
-spread evenly), and from a collection of source objects: mesh surface or
-volume at a rate, or every point of a point cloud / Geometry Nodes output.
-Motion: drag toward the gas velocity (0 flies free, 10000 follows exactly),
-gravity, colliders (bounce, stick, kill), lifetime, the domain's box.
 Attributes of the imported points: velocity (Cycles motion blur), age (s),
-temperature (K), smoke (density at the particle), size, random (0..1), id;
-Col (smoke colour) with Colour Mixing.
+temperature (K), smoke (density at the particle), size, random (0..1), id,
+group; Col (smoke colour) with Colour Mixing.
 
-Not yet: particles that emit smoke, two-way coupling, a velocity-only mode
-without visible smoke (notes/experiments/particles-2026-11-19/README.md).
+Files with Particles v1 (one system on the domain object) are migrated on load
+(migrate_domain): the same particles, now one modifier.
 """
 import math
 import os
 import zlib
 
 import bpy
+from bpy.app.handlers import persistent
 from bpy.props import (BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty,
                        PointerProperty)
 from bpy.types import PropertyGroup
@@ -35,15 +42,21 @@ except ImportError:   # Blender always has numpy; tests without it skip sources
     np = None
 
 GROUP_NAME = "Fumaris Particles"
-VERSION = 1
+VERSION = 2          # node group: 2 keeps one spawn group's points ("Group")
 VERSION_KEY = "fumaris_particles_version"
 DOMAIN_MARKER = "fumaris_particles_domain"   # on a particle object: its domain
+UID_MARKER = "fumaris_particles_uid"         # on a particle object: its modifier
 MATERIAL_NAMES = {"TRACERS": "Fumaris Tracer", "EMBERS": "Fumaris Ember"}
+KIND_LABELS = {"TRACERS": "Tracers", "EMBERS": "Embers"}
+# Spawn Particles modifiers per domain (spawn groups the bridge carries).
+MAX_GROUPS = 4
+# Particles v1 settings moved into modifiers (FumarisParticleSettings.migrated).
+MIGRATED = 2
 # Bytes of GPU memory per particle (Particles.h: state, free flag, list, export record).
 DEVICE_BYTES_PER_PARTICLE = 92
 # Scales of the PLY's fixed-point properties (src/particles.cpp).
 FILE_SCALES = {"age": 0.01, "smoke": 0.001, "size": 0.001, "random": 1.0 / 255.0}
-# Spawn points from source objects per frame: more is slow in Python.
+# Spawn points from source objects per frame.
 MAX_SOURCE_POINTS = 2_000_000
 
 # The previous frame's world matrix of each source object (velocity, motion).
@@ -54,26 +67,73 @@ _SOURCE_MATRICES = {}
 
 KIND_DEFAULTS = {
     # Glittering tracers in white smoke, like an ink plume.
-    "TRACERS": dict(max_particles=1_000_000, smoke_rate=200_000.0, smoke_min=0.05, temperature_min=0.0,
-                    drag=10000.0, gravity=0.0, lifetime=5.0, lifetime_random=0.3, cooling_time=0.0,
-                    size=0.006, size_random=0.5, collision="BOUNCE", bounce=0.2, brightness=6.0),
+    "TRACERS": dict(rate=200_000.0, drag=10000.0, gravity=0.0, lifetime=5.0, lifetime_random=0.3,
+                    cooling_time=0.0, size=0.006, size_random=0.5, collision="BOUNCE", bounce=0.2,
+                    brightness=6.0),
     # Embers thrown out of a fire: heavier than the gas, glowing by temperature.
-    "EMBERS": dict(max_particles=200_000, smoke_rate=3_000.0, smoke_min=0.0, temperature_min=1300.0,
-                   drag=3.0, gravity=1.0, lifetime=1.5, lifetime_random=0.4, cooling_time=0.6,
-                   size=0.012, size_random=0.5, collision="BOUNCE", bounce=0.3, brightness=0.1),
+    "EMBERS": dict(rate=3_000.0, drag=3.0, gravity=1.0, lifetime=1.5, lifetime_random=0.4,
+                   cooling_time=0.6, size=0.012, size_random=0.5, collision="BOUNCE", bounce=0.3,
+                   brightness=0.1),
 }
+# Max Particles a domain starts with for its first modifier of a kind.
+KIND_MAX_PARTICLES = {"TRACERS": 1_000_000, "EMBERS": 200_000}
 
 
-def apply_kind_defaults(settings, kind=None):
-    kind = kind or settings.kind
-    values = dict(KIND_DEFAULTS[kind])
+def default_masks(kind, flame_kelvin):
+    """Where a new modifier of this kind spawns in the smoke (editable masks)."""
     if kind == "EMBERS":
-        domain = settings.id_data
-        flame = float(getattr(getattr(domain, "fumaris", None), "flame_temperature", 2000.0) or 2000.0)
-        # As Sparks: burning gas peaks near 0.85 of Flame Temperature.
-        values["temperature_min"] = 0.65 * flame
-    for name, value in values.items():
-        setattr(settings, name, value)
+        # In burning gas, as Sparks: it peaks near 0.85 of Flame Temperature.
+        return [{"field": "TEMPERATURE", "range": [0.6 * flame_kelvin, 0.7 * flame_kelvin], "values": [0.0, 1.0]}]
+    # Tracers: evenly in the visible smoke, fading in from thin wisps.
+    return [{"field": "SMOKE", "range": [0.05, 0.1], "values": [0.0, 1.0]}]
+
+
+def _flame(domain):
+    return float(getattr(getattr(domain, "fumaris", None), "flame_temperature", 2000.0) or 2000.0)
+
+
+def _mask_list(layer):
+    return [{"field": m.field, "blend": m.blend, "range": [round(m.range[0], 4), round(m.range[1], 4)],
+             "values": [round(m.values[0], 4), round(m.values[1], 4)]} for m in layer.masks]
+
+
+def _plain_masks(masks):
+    from . import detail_stack
+    out = []
+    for mask in masks:
+        entry = {"field": mask["field"], "blend": mask.get("blend", "MULTIPLY"),
+                 "range": [round(float(v), 4) for v in mask.get("range", detail_stack.FIELD_DEFAULT_RANGES.get(mask["field"], (0.0, 1.0)))],
+                 "values": [round(float(v), 4) for v in mask.get("values", (0.0, 1.0))]}
+        out.append(entry)
+    return out
+
+
+def apply_kind_defaults(spawn, kind=None):
+    """A kind's motion and look on a modifier; its masks too while they are
+    still the other kind's defaults (edited masks stay)."""
+    kind = kind or spawn.kind
+    for name, value in KIND_DEFAULTS[kind].items():
+        setattr(spawn, name, value)
+    layer = owner_layer(spawn)
+    if layer is None:
+        return
+    domain = spawn.id_data
+    flame = _flame(domain)
+    other = "TRACERS" if kind == "EMBERS" else "EMBERS"
+    if not len(layer.masks) or _mask_list(layer) == _plain_masks(default_masks(other, flame)):
+        from . import detail_stack
+        layer.masks.clear()
+        for mask in default_masks(kind, flame):
+            detail_stack.add_mask(layer, **mask)
+
+
+def owner_layer(spawn):
+    """The Modifiers stack entry a modifier's particle settings belong to."""
+    domain = spawn.id_data
+    for layer in getattr(getattr(domain, "fumaris", None), "detail_layers", ()):
+        if layer.particles == spawn:
+            return layer
+    return None
 
 
 def _kind_updated(self, _context):
@@ -85,38 +145,28 @@ def _look_updated(self, _context):
     _sync_objects(self.id_data)
 
 
-class FumarisParticleSettings(PropertyGroup):
-    enabled: BoolProperty(
-        name="Particles", default=False,
-        description="Simulate GPU particles that ride the smoke: in the live preview and in bakes, "
-                    "written beside the VDBs and imported as a point cloud")
-    show_panel: BoolProperty(name="Particles", default=False, options={"SKIP_SAVE"})
-    show_more: BoolProperty(name="More", default=False, options={"SKIP_SAVE"})
+class FumarisSpawnSettings(PropertyGroup):
+    """One Spawn Particles modifier (a Modifiers stack entry's particles)."""
+    uid: IntProperty(name="Identifier", default=0, min=0, options={"HIDDEN"},
+                     description="Ties the modifier to the objects that show its particles")
     kind: EnumProperty(
         name="Kind",
-        items=[("TRACERS", "Tracers", "Light particles that follow the smoke exactly (glitter in an ink plume)"),
-               ("EMBERS", "Embers", "Heavy hot particles thrown out of the fire, falling and cooling")],
+        items=[("TRACERS", "Tracers", "Light particles that follow the smoke exactly (glitter in an ink plume)",
+                "PARTICLES", 0),
+               ("EMBERS", "Embers", "Heavy hot particles thrown out of the fire, falling and cooling",
+                "LIGHT_SUN", 1)],
         default="TRACERS", update=_kind_updated,
         description="Sets good defaults for the kind of particles; each value can be changed after")
-    max_particles: IntProperty(
-        name="Max Particles", default=1_000_000, min=1000, max=64 * 1024 * 1024, soft_max=10_000_000,
-        description="Particles alive at most. Each takes 92 bytes of GPU memory, taken from Simulation Memory. "
-                    "Spawns past it are dropped")
-    seed: IntProperty(name="Seed", default=0, min=0, description="Another number gives other random particles")
-    # spawning in the smoke
-    spawn_smoke: BoolProperty(name="From Smoke", default=True,
-                              description="Spawn particles in the smoke, spread evenly over the cells in range")
-    smoke_rate: FloatProperty(
+    spawn_smoke: BoolProperty(
+        name="Smoke", default=True,
+        description="Spawn in the smoke, spread over it by the masks below (denser where they give more)")
+    spawn_objects: BoolProperty(
+        name="Objects", default=False,
+        description="Spawn from a collection of objects: mesh surfaces or volumes, point clouds, "
+                    "Geometry Nodes points")
+    rate: FloatProperty(
         name="Rate", default=200_000.0, min=0.0, soft_max=2_000_000.0, step=1000, precision=0,
-        description="New particles per simulated second, spread evenly over the smoke in range")
-    smoke_min: FloatProperty(name="Smoke Min", default=0.05, min=0.0, soft_max=2.0,
-                             description="Spawn only where the smoke density is at least this")
-    smoke_max: FloatProperty(name="Smoke Max", default=0.0, min=0.0, soft_max=10.0,
-                             description="Spawn only where the smoke density is at most this (0: no limit)")
-    temperature_min: FloatProperty(name="Temperature Min", default=0.0, min=0.0, soft_max=4000.0,
-                                   description="Spawn only in gas at least this hot, in Kelvin (0: any)")
-    temperature_max: FloatProperty(name="Temperature Max", default=0.0, min=0.0, soft_max=4000.0,
-                                   description="Spawn only in gas at most this hot, in Kelvin (0: no limit)")
+        description="New particles per simulated second in the smoke, spread over it by the masks")
     spawn_jitter: FloatProperty(name="Spread", default=0.0, min=0.0, soft_max=4.0,
                                 description="Extra random distance of a new particle from its cell, in cells")
     # spawning from objects
@@ -137,6 +187,10 @@ class FumarisParticleSettings(PropertyGroup):
                                 description="Initial speed along the surface normal")
     source_inherit: FloatProperty(name="Inherit Velocity", default=1.0, min=0.0, soft_max=1.0,
                                   description="Share of the source object's own motion new particles keep")
+    mask_objects: BoolProperty(
+        name="Mask Objects", default=False,
+        description="The masks also thin out the particles from objects: each is kept with the masks' "
+                    "factor where it starts (0 to 1)")
     # motion
     drag: FloatProperty(
         name="Drag", default=10000.0, min=0.0, max=10000.0, soft_max=100.0,
@@ -163,9 +217,6 @@ class FumarisParticleSettings(PropertyGroup):
                           description="Share of the speed into the collider kept, away from it")
     friction: FloatProperty(name="Friction", default=0.1, min=0.0, max=1.0, subtype="FACTOR",
                             description="Share of the speed along the collider lost at each bounce")
-    kill_outside: BoolProperty(name="Inside Domain", default=True,
-                               description="Remove particles that leave the domain object's box "
-                                           "(a domain that is an empty has none)")
     # look
     size: FloatProperty(name="Size", default=0.006, min=0.0, soft_max=0.1, precision=4, unit="LENGTH",
                         update=_look_updated, description="Radius of the rendered points")
@@ -176,24 +227,161 @@ class FumarisParticleSettings(PropertyGroup):
     brightness: FloatProperty(name="Brightness", default=6.0, min=0.0, soft_max=20.0, update=_look_updated,
                               description="Tracers: strength of their glitter flashes. Embers: glow "
                                           "(temperature × this / 100; about 0.1)")
+    material: PointerProperty(
+        name="Material", type=bpy.types.Material, update=_look_updated,
+        description="Material of this modifier's points (made from the kind's when empty; Color and "
+                    "Brightness change the made one)")
+    show_in_preview: BoolProperty(name="Show in Preview", default=True,
+                                  description="Draw these particles over the live preview")
+    show_more: BoolProperty(name="More", default=False, options={"SKIP_SAVE"})
+
+
+class FumarisParticleSettings(PropertyGroup):
+    """The domain's particle system, shared by its Spawn Particles modifiers;
+    and the Particles v1 settings files from before the modifiers still hold
+    (read once, by migrate_domain)."""
+    show_system: BoolProperty(name="Particle System", default=False, options={"SKIP_SAVE"})
+    max_particles: IntProperty(
+        name="Max Particles", default=1_000_000, min=1000, max=64 * 1024 * 1024, soft_max=10_000_000,
+        description="Particles alive at most, of every Spawn Particles modifier together. Each takes 92 "
+                    "bytes of GPU memory, taken from Simulation Memory. Spawns past it are dropped")
+    seed: IntProperty(name="Seed", default=0, min=0, description="Another number gives other random particles")
+    kill_outside: BoolProperty(name="Inside Domain", default=True,
+                               description="Remove particles that leave the domain object's box "
+                                           "(a domain that is an empty has none)")
     show_in_preview: BoolProperty(name="Show in Preview", default=True,
                                   description="Draw the particles over the live preview")
     preview_amount: FloatProperty(name="Amount", default=0.25, min=0.0, max=1.0, subtype="FACTOR",
                                   description="Share of the particles the live preview draws (one pixel each)")
+    migrated: IntProperty(name="Migrated", default=0, options={"HIDDEN"},
+                          description="Particles v1 settings moved into Spawn Particles modifiers")
+    # Particles v1 (before the Modifiers stack): read by migrate_domain only.
+    enabled: BoolProperty(name="Particles (v1)", default=False, options={"HIDDEN"})
+    kind: EnumProperty(items=[("TRACERS", "Tracers", ""), ("EMBERS", "Embers", "")], default="TRACERS",
+                       options={"HIDDEN"})
+    spawn_smoke: BoolProperty(default=True, options={"HIDDEN"})
+    smoke_rate: FloatProperty(default=200_000.0, options={"HIDDEN"})
+    smoke_min: FloatProperty(default=0.05, options={"HIDDEN"})
+    smoke_max: FloatProperty(default=0.0, options={"HIDDEN"})
+    temperature_min: FloatProperty(default=0.0, options={"HIDDEN"})
+    temperature_max: FloatProperty(default=0.0, options={"HIDDEN"})
+    spawn_jitter: FloatProperty(default=0.0, options={"HIDDEN"})
+    source_collection: PointerProperty(type=bpy.types.Collection, options={"HIDDEN"})
+    source_mode: EnumProperty(items=[("SURFACE", "Surface", ""), ("VOLUME", "Volume", ""), ("POINTS", "Points", "")],
+                              default="SURFACE", options={"HIDDEN"})
+    source_rate: FloatProperty(default=2000.0, options={"HIDDEN"})
+    source_speed: FloatProperty(default=0.0, options={"HIDDEN"})
+    source_inherit: FloatProperty(default=1.0, options={"HIDDEN"})
+    drag: FloatProperty(default=10000.0, options={"HIDDEN"})
+    gravity: FloatProperty(default=0.0, options={"HIDDEN"})
+    lifetime: FloatProperty(default=5.0, options={"HIDDEN"})
+    lifetime_random: FloatProperty(default=0.3, options={"HIDDEN"})
+    cooling_time: FloatProperty(default=0.0, options={"HIDDEN"})
+    collision: EnumProperty(items=[("NONE", "Pass", ""), ("BOUNCE", "Bounce", ""), ("STICK", "Stick", ""),
+                                   ("KILL", "Kill", "")], default="BOUNCE", options={"HIDDEN"})
+    bounce: FloatProperty(default=0.2, options={"HIDDEN"})
+    friction: FloatProperty(default=0.1, options={"HIDDEN"})
+    size: FloatProperty(default=0.006, options={"HIDDEN"})
+    size_random: FloatProperty(default=0.5, options={"HIDDEN"})
+    color: FloatVectorProperty(subtype="COLOR", size=3, default=(1.0, 1.0, 1.0), options={"HIDDEN"})
+    brightness: FloatProperty(default=6.0, options={"HIDDEN"})
 
 
-# ---------------------------------------------------------------- frames
+# ------------------------------------------------------------ the modifiers
 
 def settings_of(domain):
     return getattr(domain, "fumaris_particles", None)
 
 
+def is_spawn(layer):
+    return layer.layer_type == "PARTICLES"
+
+
+def spawn_layers(props, enabled_only=True):
+    """The domain's Spawn Particles modifiers in stack order (the first
+    MAX_GROUPS enabled ones are sent: their index is the spawn group)."""
+    layers = [layer for layer in getattr(props, "detail_layers", ()) if is_spawn(layer)]
+    if enabled_only:
+        layers = [layer for layer in layers if layer.enabled][:MAX_GROUPS]
+    return layers
+
+
+def active(domain):
+    props = getattr(domain, "fumaris", None)
+    return bool(props is not None and spawn_layers(props))
+
+
+def new_uid(props):
+    return 1 + max((layer.particles.uid for layer in getattr(props, "detail_layers", ()) if is_spawn(layer)),
+                   default=0)
+
+
+def init_spawn(props, layer, kind="TRACERS", masks=True):
+    """A new Spawn Particles modifier: its kind's defaults, masks, an identifier."""
+    spawn = layer.particles
+    spawn.uid = new_uid(props)
+    spawn["kind"] = 1 if kind == "EMBERS" else 0   # no update: the defaults follow
+    for name, value in KIND_DEFAULTS[kind].items():
+        setattr(spawn, name, value)
+    if masks:
+        from . import detail_stack
+        for mask in default_masks(kind, _flame(props.id_data)):
+            detail_stack.add_mask(layer, **mask)
+    system = settings_of(props.id_data)
+    if system is not None and len(spawn_layers(props, enabled_only=False)) == 1:
+        # The domain's first particles: a budget that suits their kind.
+        system.max_particles = KIND_MAX_PARTICLES[kind]
+    return spawn
+
+
+def label(layer):
+    spawn = layer.particles
+    return KIND_LABELS.get(spawn.kind, "Particles")
+
+
+def summary(layer, narrow=False):
+    """The list row's text after the label: rate and source."""
+    spawn = layer.particles
+    parts = []
+    if spawn.spawn_smoke:
+        rate = spawn.rate
+        parts.append(f"{rate / 1000:g}k/s" if rate >= 1000 else f"{rate:g}/s")
+    if spawn.spawn_objects:
+        parts.append(spawn.source_collection.name if spawn.source_collection and not narrow else "objects")
+    return parts
+
+
+_SYSTEM_KEYS = ("max_particles", "seed", "kill_outside", "show_in_preview", "preview_amount")
+
+
+def system_to_dict(domain):
+    """The particle system's settings for presets and versions."""
+    settings = settings_of(domain)
+    return {key: getattr(settings, key) for key in _SYSTEM_KEYS} if settings is not None else {}
+
+
+def system_from_dict(domain, data):
+    """Restores system_to_dict's settings; the number changed."""
+    settings = settings_of(domain)
+    changed = 0
+    for key, value in (data or {}).items():
+        if key in _SYSTEM_KEYS and settings is not None and getattr(settings, key) != value:
+            try:
+                setattr(settings, key, value)
+                changed += 1
+            except (TypeError, ValueError):
+                pass
+    return changed
+
+
 def memory_bytes(domain):
     settings = settings_of(domain)
-    if settings is None or not settings.enabled:
+    if settings is None or not active(domain):
         return 0
     return int(settings.max_particles) * DEVICE_BYTES_PER_PARTICLE
 
+
+# ---------------------------------------------------------------- frames
 
 def _domain_bounds(domain, depsgraph):
     evaluated = domain.evaluated_get(depsgraph)
@@ -250,27 +438,83 @@ def _surface_samples(verts, tris, count, rng):
     return points, normals
 
 
+def _triangle_bins(verts, tris, bins):
+    """Triangles by the XY cells (bins x bins over the mesh's box) their
+    footprint covers, as CSR (starts, triangle indices): the candidates a
+    vertical ray from a point in a cell can cross."""
+    low, high = verts[:, :2].min(axis=0), verts[:, :2].max(axis=0)
+    extent = np.maximum(high - low, 1e-9)
+    xy = verts[tris][:, :, :2]                      # (T, 3, 2)
+    lo = np.floor((xy.min(axis=1) - low) / extent * bins).astype(np.int64).clip(0, bins - 1)
+    hi = np.floor((xy.max(axis=1) - low) / extent * bins).astype(np.int64).clip(0, bins - 1)
+    span = hi - lo + 1
+    counts = span[:, 0] * span[:, 1]
+    tri_of = np.repeat(np.arange(len(tris)), counts)
+    # the k-th cell of each triangle's footprint
+    first = np.repeat(np.cumsum(counts) - counts, counts)
+    k = np.arange(len(tri_of)) - first
+    width = span[tri_of, 0]
+    cell = (lo[tri_of, 1] + k // width) * bins + lo[tri_of, 0] + k % width
+    order = np.argsort(cell, kind="stable")
+    starts = np.searchsorted(cell[order], np.arange(bins * bins + 1))
+    return low, extent, starts, tri_of[order]
+
+
+def _inside(points, verts, tris, binned, bins):
+    """Whether each point is inside the closed mesh: the parity of the faces a
+    ray straight up from it crosses (vectorized over points and faces)."""
+    low, extent, starts, members = binned
+    cell = np.floor((points[:, :2] - low) / extent * bins).astype(np.int64)
+    outside = np.any((cell < 0) | (cell >= bins), axis=1)
+    cell = cell.clip(0, bins - 1)
+    flat = cell[:, 1] * bins + cell[:, 0]
+    begin, end = starts[flat], starts[flat + 1]
+    counts = np.where(outside, 0, end - begin)
+    owner = np.repeat(np.arange(len(points)), counts)
+    offset = np.arange(len(owner)) - np.repeat(np.cumsum(counts) - counts, counts)
+    tri = members[np.repeat(begin, counts) + offset]
+    a, b, c = verts[tris[tri, 0]], verts[tris[tri, 1]], verts[tris[tri, 2]]
+    p = points[owner]
+    # barycentric coordinates of p's xy in the face's xy projection
+    v0, v1, v2 = b[:, :2] - a[:, :2], c[:, :2] - a[:, :2], p[:, :2] - a[:, :2]
+    det = v0[:, 0] * v1[:, 1] - v0[:, 1] * v1[:, 0]
+    good = np.abs(det) > 1e-18
+    det = np.where(good, det, 1.0)
+    u = (v2[:, 0] * v1[:, 1] - v2[:, 1] * v1[:, 0]) / det
+    v = (v0[:, 0] * v2[:, 1] - v0[:, 1] * v2[:, 0]) / det
+    hit = good & (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
+    z = a[:, 2] + u * (b[:, 2] - a[:, 2]) + v * (c[:, 2] - a[:, 2])
+    hit &= z > p[:, 2]
+    crossings = np.bincount(owner[hit], minlength=len(points))
+    return (crossings % 2 == 1) & ~outside
+
+
 def _volume_samples(verts, tris, count, rng):
-    """Points inside a closed mesh: candidates in its box kept when the
-    nearest face looks away from them (mathutils BVH, one point at a time)."""
-    from mathutils import Vector
-    from mathutils.bvhtree import BVHTree
-    tree = BVHTree.FromPolygons([Vector(v) for v in verts], [tuple(t) for t in tris])
+    """Points inside a closed mesh: candidates in its box kept when a ray
+    straight up crosses its faces an odd number of times. Vectorized (faces
+    binned by their XY footprint): about 10 ms per 100,000 candidates."""
     low, high = verts.min(axis=0), verts.max(axis=0)
+    bins = int(min(128, max(4, math.sqrt(len(tris)) // 2)))
+    binned = _triangle_bins(verts, tris, bins)
     kept = []
-    tries = 0
-    while len(kept) < count and tries < 8:
-        tries += 1
-        candidates = low + rng.random((max(64, 2 * (count - len(kept))), 3)) * (high - low)
-        for point in candidates:
-            location, normal, _index, _distance = tree.find_nearest(Vector(point))
-            if location is not None and (Vector(point) - location).dot(normal) < 0.0:
-                kept.append(point)
-                if len(kept) >= count:
-                    break
-    if not kept:
+    found = 0
+    fill = 0.5
+    for _attempt in range(8):
+        wanted = count - found
+        if wanted <= 0:
+            break
+        batch = int(min(4 * MAX_SOURCE_POINTS, max(64, 1.3 * wanted / max(fill, 0.02))))
+        candidates = low + rng.random((batch, 3)) * (high - low)
+        inside = np.zeros(batch, dtype=bool)
+        for start in range(0, batch, 200_000):
+            inside[start:start + 200_000] = _inside(candidates[start:start + 200_000], verts, tris, binned, bins)
+        fill = max(inside.mean(), 1e-3)
+        chosen = candidates[inside][:wanted]
+        kept.append(chosen)
+        found += len(chosen)
+    if not found:
         return None
-    return np.array(kept, dtype=np.float64)
+    return np.concatenate(kept)
 
 
 def _evaluated_points(obj, depsgraph):
@@ -313,24 +557,25 @@ def _evaluated_points(obj, depsgraph):
     return np.concatenate(positions), np.concatenate(velocities), np.concatenate(sizes)
 
 
-def _source_objects(settings):
-    collection = settings.source_collection
+def _source_objects(spawn):
+    collection = spawn.source_collection
     if collection is None:
         return []
     return sorted({obj for obj in collection.all_objects if obj.type in {"MESH", "POINTCLOUD", "CURVES", "EMPTY"}},
                   key=lambda obj: obj.name)
 
 
-def _source_spawns(settings, depsgraph, frame, fps, scene_speed):
-    """This frame's spawn points from the source collection: positions,
-    velocities (scene units per second), times (0..1 in the frame), sizes."""
+def _source_spawns(spawn, seed, depsgraph, frame, fps):
+    """This frame's spawn points of one modifier from its source collection:
+    positions, velocities (scene units per second), times (0..1 in the
+    frame), sizes."""
     if np is None:
         return None
-    objects = _source_objects(settings)
+    objects = _source_objects(spawn)
     if not objects:
         return None
     parts = []
-    meshes = [obj for obj in objects if obj.type == "MESH"] if settings.source_mode != "POINTS" else []
+    meshes = [obj for obj in objects if obj.type == "MESH"] if spawn.source_mode != "POINTS" else []
     # Surface and Volume: the rate is shared by the meshes by their area.
     shares = {}
     triangles = {}
@@ -344,17 +589,21 @@ def _source_spawns(settings, depsgraph, frame, fps, scene_speed):
         a, b, c = verts[tris[:, 0]], verts[tris[:, 1]], verts[tris[:, 2]]
         shares[obj.name] = float(np.linalg.norm(np.cross(b - a, c - a), axis=1).sum())
     total_share = sum(shares.values()) or 1.0
+    # Two modifiers on one collection draw other points (the first keeps v1's).
+    salt = "" if spawn.uid <= 1 else f"#{spawn.uid}"
     for obj in objects:
-        rng = _rng(settings.seed, frame, obj.name)
         name = obj.name
+        rng = _rng(seed, frame, name + salt)
+        key = (spawn.uid, name)
         if name in triangles:
             verts, tris, matrix = triangles[name]
-            count = _count_this_frame(settings.source_rate, frame, fps, shares[name] / total_share)
+            count = _count_this_frame(spawn.source_rate, frame, fps, shares[name] / total_share)
             count = min(count, MAX_SOURCE_POINTS)
             if count <= 0:
+                _SOURCE_MATRICES[key] = (frame, matrix)
                 continue
             normals = None
-            if settings.source_mode == "VOLUME":
+            if spawn.source_mode == "VOLUME":
                 local = _volume_samples(verts, tris, count, rng)
             else:
                 local, normals = _surface_samples(verts, tris, count, rng)
@@ -364,18 +613,18 @@ def _source_spawns(settings, depsgraph, frame, fps, scene_speed):
             world = local @ matrix[:3, :3].T + matrix[:3, 3]
             times = rng.random(count)
             velocity = np.zeros((count, 3))
-            previous = _SOURCE_MATRICES.get(name)
+            previous = _SOURCE_MATRICES.get(key)
             if previous is not None and previous[0] == frame - 1:
                 before = local @ previous[1][:3, :3].T + previous[1][:3, 3]
-                velocity += settings.source_inherit * (world - before) * fps
+                velocity += spawn.source_inherit * (world - before) * fps
                 # where the surface was at each particle's moment in the frame
                 world = before + (world - before) * times[:, None]
-            if normals is not None and settings.source_speed != 0.0:
+            if normals is not None and spawn.source_speed != 0.0:
                 world_normals = normals @ np.linalg.inv(matrix[:3, :3])
                 world_normals /= np.maximum(np.linalg.norm(world_normals, axis=1), 1e-12)[:, None]
-                velocity += settings.source_speed * world_normals
+                velocity += spawn.source_speed * world_normals
             parts.append((world, velocity, times, np.ones(count)))
-        elif obj.type != "MESH" or settings.source_mode == "POINTS":
+        elif obj.type != "MESH" or spawn.source_mode == "POINTS":
             found = _evaluated_points(obj, depsgraph)
             if found is None:
                 continue
@@ -383,58 +632,138 @@ def _source_spawns(settings, depsgraph, frame, fps, scene_speed):
             if len(world) > MAX_SOURCE_POINTS:
                 world, velocity, sizes = world[:MAX_SOURCE_POINTS], velocity[:MAX_SOURCE_POINTS], sizes[:MAX_SOURCE_POINTS]
             parts.append((world, velocity, rng.random(len(world)), sizes))
-        _SOURCE_MATRICES[name] = (frame, _matrix_np(obj.evaluated_get(depsgraph).matrix_world))
+        _SOURCE_MATRICES[key] = (frame, _matrix_np(obj.evaluated_get(depsgraph).matrix_world))
     if not parts:
         return None
     return tuple(np.concatenate([part[i] for part in parts]) for i in range(4))
 
 
+def group_state(layer, system):
+    """One Spawn Particles modifier as the bridge reads it (ParticleGroup)."""
+    from . import detail_stack
+    spawn = layer.particles
+    drawn = system.show_in_preview and spawn.show_in_preview
+    return {
+        "rate": float(spawn.rate) if spawn.spawn_smoke else 0.0,
+        "masks": detail_stack.export_masks(layer),
+        "mask_points": bool(spawn.mask_objects),
+        "spawn_jitter": float(spawn.spawn_jitter),
+        "drag": float(spawn.drag),
+        "gravity": float(spawn.gravity),
+        "lifetime": float(spawn.lifetime),
+        "lifetime_random": float(spawn.lifetime_random),
+        "size_random": float(spawn.size_random),
+        "cooling_time": float(spawn.cooling_time),
+        "collision": spawn.collision.lower(),
+        "bounce": float(spawn.bounce),
+        "friction": float(spawn.friction),
+        "draw": ("glow" if spawn.kind == "EMBERS" else "color") if drawn else "off",
+        "draw_color": [float(v) for v in spawn.color],
+    }
+
+
 def frame_state(domain, depsgraph, payload, frame, append_array):
-    """The frame packet's "particles" section, or None when they are off."""
+    """The frame packet's "particles" section, or None without Spawn Particles modifiers."""
     settings = settings_of(domain)
-    if settings is None or not settings.enabled:
+    props = getattr(domain, "fumaris", None)
+    if settings is None or props is None:
+        return None
+    layers = spawn_layers(props)
+    if not layers:
         return None
     scene = bpy.context.scene
     fps = scene.render.fps / scene.render.fps_base
     low, high = _domain_bounds(domain, depsgraph)
     # An empty domain (unbounded sparse grid) has no box to keep them in.
     boxed = domain.type == "MESH" and all(h - l > 1e-6 for l, h in zip(low, high))
-    kelvin_max = settings.temperature_max if settings.temperature_max > 0.0 else 1e30
     state = {
         "enabled": True,
         "max_particles": int(settings.max_particles),
         "seed": int(settings.seed),
-        "smoke_rate": float(settings.smoke_rate) if settings.spawn_smoke else 0.0,
-        "smoke_min": float(settings.smoke_min),
-        "smoke_max": float(settings.smoke_max) if settings.smoke_max > 0.0 else 1e30,
-        "temperature_min": float(settings.temperature_min),
-        "temperature_max": float(kelvin_max),
-        "spawn_jitter": float(settings.spawn_jitter),
-        "drag": float(settings.drag),
-        "gravity": float(settings.gravity),
-        "lifetime": float(settings.lifetime),
-        "lifetime_random": float(settings.lifetime_random),
-        "size_random": float(settings.size_random),
-        "cooling_time": float(settings.cooling_time),
-        "collision": settings.collision.lower(),
-        "bounce": float(settings.bounce),
-        "friction": float(settings.friction),
+        "groups": [group_state(layer, settings) for layer in layers],
         "kill_outside": bool(settings.kill_outside) and boxed,
         "bounds_min": [float(v) for v in low],
         "bounds_max": [float(v) for v in high],
-        "draw": ("glow" if settings.kind == "EMBERS" else "color") if settings.show_in_preview else "off",
-        "draw_color": [float(v) for v in settings.color],
         "draw_fraction": float(settings.preview_amount),
         "write_cache": False,
     }
-    spawns = _source_spawns(settings, depsgraph, frame, fps, 1.0)
-    if spawns is not None:
-        positions, velocities, times, sizes = spawns
+    parts = []
+    for index, layer in enumerate(layers):
+        if not layer.particles.spawn_objects:
+            continue
+        spawns = _source_spawns(layer.particles, settings.seed, depsgraph, frame, fps)
+        if spawns is not None:
+            parts.append(spawns + (np.full(len(spawns[0]), index, dtype=np.uint32),))
+    if parts:
+        positions, velocities, times, sizes, groups = (np.concatenate([part[i] for part in parts]) for i in range(5))
         state["spawn_positions"] = append_array(payload, np.ascontiguousarray(positions, dtype=np.float32).ravel())
         state["spawn_velocities"] = append_array(payload, np.ascontiguousarray(velocities, dtype=np.float32).ravel())
         state["spawn_times"] = append_array(payload, np.ascontiguousarray(times, dtype=np.float32))
         state["spawn_sizes"] = append_array(payload, np.ascontiguousarray(sizes, dtype=np.float32))
+        if len(parts) > 1 or parts[0][4][:1].any():
+            state["spawn_groups"] = append_array(payload, np.ascontiguousarray(groups, dtype=np.uint32))
     return state
+
+
+# ---------------------------------------------------------------- migration
+
+def _range_masks(field, low, high, epsilon):
+    """Masks that keep low <= value <= high (0: no limit) as v1's ranges did."""
+    masks = []
+    if low > 0.0:
+        masks.append({"field": field, "range": [low - epsilon, low], "values": [0.0, 1.0]})
+    if high > 0.0:
+        masks.append({"field": field, "range": [high, high + epsilon], "values": [1.0, 0.0]})
+    return masks
+
+
+def migrate_domain(domain):
+    """Particles v1 (one system on the domain object) into a Spawn Particles
+    modifier: the same spawning (its smoke and temperature ranges as masks
+    that keep the same cells), motion and look, and its point-cloud object.
+    Returns the modifier, or None when there was nothing to move."""
+    settings = settings_of(domain)
+    props = getattr(domain, "fumaris", None)
+    if settings is None or props is None or settings.migrated >= MIGRATED:
+        return None
+    settings.migrated = MIGRATED
+    if not settings.enabled:
+        return None
+    from . import detail_stack
+    layer = props.detail_layers.add()
+    layer.layer_type = "PARTICLES"
+    spawn = layer.particles
+    spawn.uid = new_uid(props)
+    spawn["kind"] = 1 if settings.kind == "EMBERS" else 0
+    for name in ("spawn_jitter", "source_collection", "source_mode", "source_rate", "source_speed",
+                 "source_inherit", "drag", "gravity", "lifetime", "lifetime_random", "cooling_time",
+                 "collision", "bounce", "friction", "size", "size_random", "color", "brightness"):
+        setattr(spawn, name, getattr(settings, name))
+    spawn.spawn_smoke = bool(settings.spawn_smoke)
+    spawn.rate = settings.smoke_rate
+    spawn.spawn_objects = settings.source_collection is not None
+    for mask in (_range_masks("SMOKE", settings.smoke_min, settings.smoke_max, 1e-6) +
+                 _range_masks("TEMPERATURE", settings.temperature_min, settings.temperature_max, 1e-3)):
+        detail_stack.add_mask(layer, **mask)
+    props.detail_layers_index = len(props.detail_layers) - 1
+    for obj in particle_objects(domain):
+        obj[UID_MARKER] = spawn.uid
+        _update_object(obj, domain, layer)
+    return layer
+
+
+def migrate_all():
+    for obj in bpy.data.objects:
+        if getattr(obj, "fumaris", None) is not None and obj.fumaris.smoke_object_type == "domain":
+            try:
+                migrate_domain(obj)
+            except Exception as error:   # never break loading a file
+                print(f"Fumaris particles: could not move {obj.name}'s particles into a modifier: {error}")
+
+
+@persistent
+def _migrate_after_load(_dummy=None):
+    migrate_all()
 
 
 # ---------------------------------------------------------------- import
@@ -493,8 +822,47 @@ def _store(tree, geometry, name, value, location, data_type="FLOAT"):
     return node.outputs["Geometry"]
 
 
+def _socket(tree, name, kind, default=None, minimum=None, description=""):
+    item = tree.interface.new_socket(name, in_out="INPUT", socket_type=kind, description=description)
+    if default is not None:
+        item.default_value = default
+    if minimum is not None and hasattr(item, "min_value"):
+        item.min_value = minimum
+    return item
+
+
+def _math(tree, operation, a, b, location):
+    node = tree.nodes.new("ShaderNodeMath")
+    node.operation = operation
+    node.location = location
+    for index, value in enumerate((a, b)):
+        if isinstance(value, (int, float)):
+            node.inputs[index].default_value = value
+        else:
+            tree.links.new(value, node.inputs[index])
+    return node.outputs[0]
+
+
+def _named(tree, name, location, data_type="FLOAT"):
+    node = tree.nodes.new("GeometryNodeInputNamedAttribute")
+    node.data_type = data_type
+    node.inputs["Name"].default_value = name
+    node.location = location
+    return node.outputs["Attribute"]
+
+
+def _store(tree, geometry, name, value, location, data_type="FLOAT"):
+    node = tree.nodes.new("GeometryNodeStoreNamedAttribute")
+    node.data_type = data_type
+    node.inputs["Name"].default_value = name
+    node.location = location
+    tree.links.new(geometry, node.inputs["Geometry"])
+    tree.links.new(value, node.inputs["Value"])
+    return node.outputs["Geometry"]
+
+
 def build_group():
-    """The shared node group: the shown frame's PLY as a point cloud."""
+    """The shared node group: the shown frame's PLY, one spawn group's points, as a point cloud."""
     tree = next((group for group in bpy.data.node_groups
                  if group.bl_idname == "GeometryNodeTree" and group.get(VERSION_KEY) == VERSION), None)
     if tree is not None:
@@ -505,13 +873,16 @@ def build_group():
             description="Folder of the particle cache (the bake's particles folder). Fumaris keeps it on the bake the domain shows")
     _socket(tree, "Prefix", "NodeSocketString", "fumaris_", description="File name prefix of the bake")
     _socket(tree, "Frame Offset", "NodeSocketInt", 0, description="Shows the cache this many frames later")
+    _socket(tree, "Group", "NodeSocketInt", 0, 0,
+            "Spawn group shown: the Spawn Particles modifier's place among the bake's (0 the first). "
+            "Fumaris keeps it on the modifier's")
     _socket(tree, "Size", "NodeSocketFloat", 0.006, 0.0, "Radius of the points (times each particle's size)")
     _socket(tree, "Material", "NodeSocketMaterial", description="Material of the points")
     nodes = tree.nodes
     group_in = nodes.new("NodeGroupInput")
     group_in.location = (-1200, 0)
     group_out = nodes.new("NodeGroupOutput")
-    group_out.location = (1600, 0)
+    group_out.location = (1900, 0)
 
     time = nodes.new("GeometryNodeInputSceneTime")
     time.location = (-1200, -300)
@@ -532,27 +903,41 @@ def build_group():
     read = nodes.new("GeometryNodeImportPLY")
     read.location = (-300, 0)
     tree.links.new(path.outputs["String"], read.inputs["Path"])
+    # Only this modifier's particles (a cache without "group" is all group 0).
+    other = nodes.new("FunctionNodeCompare")
+    other.location = (-300, -350)
+    other.data_type = "FLOAT"
+    other.operation = "NOT_EQUAL"
+    other.inputs["Epsilon"].default_value = 0.5
+    tree.links.new(_named(tree, "group", (-500, -350)), other.inputs["A"])
+    tree.links.new(group_in.outputs["Group"], other.inputs["B"])
+    keep = nodes.new("GeometryNodeDeleteGeometry")
+    keep.location = (-150, 0)
+    keep.domain = "POINT"
+    tree.links.new(read.outputs[0], keep.inputs["Geometry"])
+    tree.links.new(other.outputs["Result"], keep.inputs["Selection"])
     points = nodes.new("GeometryNodeMeshToPoints")
-    points.location = (-100, 0)
-    tree.links.new(read.outputs[0], points.inputs["Mesh"])
+    points.location = (0, 0)
+    tree.links.new(keep.outputs["Geometry"], points.inputs["Mesh"])
     geometry = points.outputs["Points"]
 
     velocity = nodes.new("ShaderNodeCombineXYZ")
-    velocity.location = (0, -400)
+    velocity.location = (100, -400)
     for axis, name in zip("XYZ", ("vx", "vy", "vz")):
-        tree.links.new(_named(tree, name, (-200, -400 - 120 * "XYZ".index(axis))), velocity.inputs[axis])
+        tree.links.new(_named(tree, name, (-100, -400 - 120 * "XYZ".index(axis))), velocity.inputs[axis])
     # Cycles blurs points along "velocity" (scene units per second).
-    geometry = _store(tree, geometry, "velocity", velocity.outputs["Vector"], (150, 0), "FLOAT_VECTOR")
-    x = 300
+    geometry = _store(tree, geometry, "velocity", velocity.outputs["Vector"], (250, 0), "FLOAT_VECTOR")
+    x = 400
     for name, scale in FILE_SCALES.items():
         geometry = _store(tree, geometry, name, _math(tree, "MULTIPLY", _named(tree, name, (x - 150, -700)), scale, (x, -700)),
                           (x, 0))
         x += 150
-    identifier = _named(tree, "id", (x, -500))
-    to_id = nodes.new("FunctionNodeFloatToInt")
-    to_id.location = (x + 100, -500)
-    tree.links.new(identifier, to_id.inputs[0])
-    geometry = _store(tree, geometry, "id", to_id.outputs[0], (x + 150, 0), "INT")
+    for name in ("id", "group"):
+        to_int = nodes.new("FunctionNodeFloatToInt")
+        to_int.location = (x + 100, -500)
+        tree.links.new(_named(tree, name, (x, -500)), to_int.inputs[0])
+        geometry = _store(tree, geometry, name, to_int.outputs[0], (x + 150, 0), "INT")
+        x += 200
     # the velocity's components are in "velocity" now
     for index, name in enumerate(("vx", "vy", "vz")):
         remove = nodes.new("GeometryNodeRemoveAttribute")
@@ -654,20 +1039,20 @@ def build_material(kind):
     return material
 
 
-def _apply_look(material, settings):
-    """The domain's Color and Brightness on its material (a copy per domain)."""
+def _apply_look(material, spawn):
+    """A modifier's Color and Brightness on the material made for it."""
     tree = material.node_tree
-    if settings.kind == "EMBERS":
+    if spawn.kind == "EMBERS":
         node = next((n for n in tree.nodes if n.label == "Brightness"), None)
         if node is not None:
-            node.inputs[1].default_value = settings.brightness
+            node.inputs[1].default_value = spawn.brightness
     else:
         rgb = next((n for n in tree.nodes if n.label == "Color"), None)
         if rgb is not None:
-            rgb.outputs[0].default_value = (*settings.color, 1.0)
+            rgb.outputs[0].default_value = (*spawn.color, 1.0)
         flash = next((n for n in tree.nodes if n.label == "Brightness"), None)
         if flash is not None:
-            flash.inputs[1].default_value = settings.brightness
+            flash.inputs[1].default_value = spawn.brightness
 
 
 def _input(modifier, name):
@@ -683,8 +1068,11 @@ def _set_input(modifier, name, value):
         item.value = value
 
 
-def particle_objects(domain):
-    return [obj for obj in bpy.data.objects if obj.get(DOMAIN_MARKER) == domain]
+def particle_objects(domain, uid=None):
+    found = [obj for obj in bpy.data.objects if obj.get(DOMAIN_MARKER) == domain]
+    if uid is not None:
+        found = [obj for obj in found if int(obj.get(UID_MARKER, 1)) == uid]
+    return found
 
 
 def _modifier(obj):
@@ -692,165 +1080,232 @@ def _modifier(obj):
                  and m.node_group.get(VERSION_KEY)), None)
 
 
-def _material_for(domain, settings):
-    """The domain's own copy of its kind's material."""
-    name = f"{domain.name} {MATERIAL_NAMES[settings.kind]}"
-    material = bpy.data.materials.get(name)
-    if material is None or material.get("fumaris_particles_kind") != settings.kind:
-        material = build_material(settings.kind).copy()
-        material.name = name
-    _apply_look(material, settings)
+def _layer_by_uid(domain, uid):
+    for layer in spawn_layers(domain.fumaris, enabled_only=False):
+        if layer.particles.uid == uid:
+            return layer
+    return None
+
+
+def _material_for(domain, layer):
+    """The modifier's material: the user's own, or one made from its kind's
+    (a copy per modifier, carrying its Color and Brightness)."""
+    spawn = layer.particles
+    material = spawn.material
+    if material is not None and material.get("fumaris_particles_kind") is None:
+        return material
+    if material is None or material.get("fumaris_particles_kind") != spawn.kind:
+        name = f"{domain.name} {MATERIAL_NAMES[spawn.kind]}"
+        existing = bpy.data.materials.get(name)
+        taken = {other.particles.material for other in spawn_layers(domain.fumaris, enabled_only=False)
+                 if other.particles.uid != spawn.uid}
+        if existing is not None and existing.get("fumaris_particles_kind") == spawn.kind and existing not in taken:
+            material = existing   # Particles v1's copy for this domain
+        else:
+            material = build_material(spawn.kind).copy()
+            material.name = name
+        spawn.material = material
+    _apply_look(material, spawn)
     return material
 
 
+def _update_object(obj, domain, layer, group=None):
+    """The object's node group (the current version) and the modifier's look on it."""
+    modifier = _modifier(obj)
+    if modifier is None:
+        return
+    if modifier.node_group.get(VERSION_KEY) != VERSION:
+        # an object from an older add-on: the new group, the same inputs
+        values = {name: getattr(_input(modifier, name), "value", None)
+                  for name in ("Directory", "Prefix", "Frame Offset")}
+        modifier.node_group = build_group()
+        for name, value in values.items():
+            if value is not None:
+                _set_input(modifier, name, value)
+    spawn = layer.particles
+    _set_input(modifier, "Size", float(spawn.size))
+    _set_input(modifier, "Material", _material_for(domain, layer))
+    if group is not None:
+        _set_input(modifier, "Group", int(group))
+    obj.update_tag()
+
+
 def _sync_objects(domain):
-    settings = settings_of(domain)
-    if settings is None:
+    props = getattr(domain, "fumaris", None)
+    if props is None:
         return
     for obj in particle_objects(domain):
-        modifier = _modifier(obj)
-        if modifier is None:
-            continue
-        _set_input(modifier, "Size", float(settings.size))
-        _set_input(modifier, "Material", _material_for(domain, settings))
-        obj.update_tag()
+        layer = _layer_by_uid(domain, int(obj.get(UID_MARKER, 1)))
+        if layer is not None:
+            _update_object(obj, domain, layer)
 
 
-def add_particle_object(context, domain, directory):
-    """The point-cloud object reading the domain's particle cache in `directory`."""
-    settings = settings_of(domain)
+def add_particle_object(context, domain, directory, layer=None, group=0):
+    """The point-cloud object reading one modifier's particles from the
+    domain's particle cache in `directory`."""
+    layers = spawn_layers(domain.fumaris, enabled_only=False)
+    layer = layer or (layers[0] if layers else None)
+    if layer is None:
+        return None
     tree = build_group()
-    mesh = bpy.data.meshes.new(f"{domain.name} Particles")
-    obj = bpy.data.objects.new(f"{domain.name} Particles", mesh)
+    name = f"{domain.name} {label(layer)}"
+    mesh = bpy.data.meshes.new(name)
+    obj = bpy.data.objects.new(name, mesh)
     collections = [c for c in domain.users_collection if c.name in context.scene.collection.children_recursive or
                    c == context.scene.collection]
     (collections[0] if collections else context.scene.collection).objects.link(obj)
     modifier = obj.modifiers.new(GROUP_NAME, "NODES")
     modifier.node_group = tree
     obj[DOMAIN_MARKER] = domain
+    obj[UID_MARKER] = layer.particles.uid
     _set_input(modifier, "Directory", cache_directory(directory))
     _set_input(modifier, "Prefix", domain.fumaris.output_prefix or "fumaris_")
-    _set_input(modifier, "Size", float(settings.size) if settings else 0.006)
-    _set_input(modifier, "Material", _material_for(domain, settings))
+    _update_object(obj, domain, layer, group)
     return obj
+
+
+def baked_groups(domain, directory):
+    """The uids of the Spawn Particles modifiers a bake simulated, in group
+    order: from the bake's settings snapshot, else the current stack."""
+    from .cache import read_settings_snapshot
+    try:
+        data = read_settings_snapshot(directory) or {}
+    except Exception:
+        data = {}
+    entries = data.get("detail_layers")
+    if entries is None:
+        return [layer.particles.uid for layer in spawn_layers(domain.fumaris)]
+    uids = [int(entry.get("particles", {}).get("uid", 1)) for entry in entries
+            if entry.get("layer_type") == "PARTICLES" and entry.get("enabled", True)]
+    if not uids and settings_of(domain) is not None and settings_of(domain).enabled:
+        uids = [1]   # a Particles v1 bake: one group, migrated as the first modifier
+    return uids[:MAX_GROUPS]
 
 
 def follow_bakes(context=None):
     """Every domain with particles reads the particle cache of the bake it
-    shows: its particle object is pointed there, made when the bake has one."""
+    shows: each modifier's object is pointed there and at its group, made
+    when the bake has particles of it."""
     from .utils import peek_output_directory_for_object
     context = context or bpy.context
     for domain in [obj for obj in bpy.data.objects if getattr(obj, "fumaris", None) is not None
                    and obj.fumaris.smoke_object_type == "domain"]:
         directory = peek_output_directory_for_object(domain)
-        objects = particle_objects(domain)
-        if not directory:
+        if not directory or settings_of(domain) is None:
             continue
         directory = os.path.normpath(directory)
         has_files = bool(frame_files(directory, domain.fumaris.output_prefix or "fumaris_"))
-        if not objects and has_files and settings_of(domain) is not None:
+        groups = baked_groups(domain, directory) if has_files else []
+        for group, uid in enumerate(groups):
+            layer = _layer_by_uid(domain, uid)
+            if layer is None or particle_objects(domain, uid):
+                continue
             try:
-                objects = [add_particle_object(context, domain, directory)]
+                add_particle_object(context, domain, directory, layer, group)
             except Exception as error:   # never break an import
                 print(f"Fumaris particles: could not add the particle object: {error}")
-                continue
-        for obj in objects:
+        for obj in particle_objects(domain):
             modifier = _modifier(obj)
-            if modifier is not None:
-                _set_input(modifier, "Directory", cache_directory(directory))
-                _set_input(modifier, "Prefix", domain.fumaris.output_prefix or "fumaris_")
-                obj.update_tag()
+            if modifier is None:
+                continue
+            uid = int(obj.get(UID_MARKER, 1))
+            layer = _layer_by_uid(domain, uid)
+            if layer is not None:
+                # not in this bake: a group no particle has
+                _update_object(obj, domain, layer, groups.index(uid) if uid in groups else 255)
+            _set_input(modifier, "Directory", cache_directory(directory))
+            _set_input(modifier, "Prefix", domain.fumaris.output_prefix or "fumaris_")
+            obj.update_tag()
 
 
 # ---------------------------------------------------------------- panel
 
-def draw_domain_section(layout, props, section, pair, nested_foldout, is_baking):
-    """The domain panel's Particles section (ui._draw_domain)."""
-    domain = props.id_data
-    settings = settings_of(domain)
-    if settings is None:
-        return
-    box = layout.box()
-    box.enabled = not is_baking
-    row = box.row(align=True)
-    row.alignment = "LEFT"
-    row.prop(settings, "show_panel", text="", icon="TRIA_DOWN" if settings.show_panel else "TRIA_RIGHT", emboss=False)
-    row.prop(settings, "enabled", text="")
-    row.label(text="Particles", icon="PARTICLES")
-    if not settings.show_panel:
-        return
-    column = box.column(align=True)
-    column.active = settings.enabled
-    column.row(align=True).prop(settings, "kind", expand=True)
+def draw_modifier(layout, layer, domain):
+    """The active Spawn Particles modifier's settings (detail_stack.draw)."""
+    from . import ui
+    pair, nested_foldout = ui._pair, ui._nested_foldout
+    spawn = layer.particles
+    column = layout.column(align=True)
+    column.row(align=True).prop(spawn, "kind", expand=True)
     column.separator(factor=0.5)
-    limits = pair(column)
-    limits.prop(settings, "max_particles")
-    limits.prop(settings, "seed")
-    column.label(text=f"GPU memory: {memory_bytes(domain) / 2**20:.0f} MB" if settings.enabled else
-                 f"GPU memory when on: {settings.max_particles * DEVICE_BYTES_PER_PARTICLE / 2**20:.0f} MB")
-
-    column.separator()
-    smoke = column.row(align=True)
-    smoke.prop(settings, "spawn_smoke")
-    rate = smoke.row(align=True)
-    rate.active = settings.spawn_smoke
-    rate.prop(settings, "smoke_rate")
-    if settings.spawn_smoke:
-        ranges = pair(column)
-        ranges.prop(settings, "smoke_min", text="Smoke Min")
-        ranges.prop(settings, "smoke_max", text="Max")
-        heat = pair(column)
-        heat.prop(settings, "temperature_min", text="Heat Min (K)")
-        heat.prop(settings, "temperature_max", text="Max")
-    column.separator(factor=0.5)
-    column.prop(settings, "source_collection")
-    if settings.source_collection is not None:
-        source = pair(column)
-        source.prop(settings, "source_mode", text="")
-        sub = source.row(align=True)
-        sub.active = settings.source_mode != "POINTS"
-        sub.prop(settings, "source_rate", text="Rate")
-        speeds = pair(column)
-        speeds.prop(settings, "source_speed")
-        speeds.prop(settings, "source_inherit", text="Inherit")
-
+    sources = column.row(align=True)
+    sources.label(text="Spawn From")
+    sources.prop(spawn, "spawn_smoke", toggle=True)
+    sources.prop(spawn, "spawn_objects", toggle=True)
+    if spawn.spawn_smoke:
+        column.prop(spawn, "rate")
+    if spawn.spawn_objects:
+        column.separator(factor=0.5)
+        column.prop(spawn, "source_collection")
+        if spawn.source_collection is not None:
+            source = pair(column)
+            source.prop(spawn, "source_mode", text="")
+            sub = source.row(align=True)
+            sub.active = spawn.source_mode != "POINTS"
+            sub.prop(spawn, "source_rate", text="Rate")
+            speeds = pair(column)
+            speeds.prop(spawn, "source_speed")
+            speeds.prop(spawn, "source_inherit", text="Inherit")
     column.separator()
     motion = pair(column)
-    motion.prop(settings, "drag")
-    motion.prop(settings, "gravity")
+    motion.prop(spawn, "drag")
+    motion.prop(spawn, "gravity")
     life = pair(column)
-    life.prop(settings, "lifetime")
-    life.prop(settings, "lifetime_random", text="Random")
+    life.prop(spawn, "lifetime")
+    life.prop(spawn, "lifetime_random", text="Random")
     hits = pair(column)
-    hits.prop(settings, "collision", text="")
+    hits.prop(spawn, "collision", text="")
     bounce = hits.row(align=True)
-    bounce.active = settings.collision == "BOUNCE"
-    bounce.prop(settings, "bounce")
-    column.prop(settings, "kill_outside")
-
+    bounce.active = spawn.collision == "BOUNCE"
+    bounce.prop(spawn, "bounce")
     column.separator()
     look = pair(column)
-    look.prop(settings, "size")
-    look.prop(settings, "size_random", text="Random")
+    look.prop(spawn, "size")
+    look.prop(spawn, "size_random", text="Random")
     look = pair(column)
-    if settings.kind != "EMBERS":
-        look.prop(settings, "color", text="")
-    look.prop(settings, "brightness")
-    shown = column.row(align=True)
-    shown.prop(settings, "show_in_preview")
-    amount = shown.row(align=True)
-    amount.active = settings.show_in_preview
-    amount.prop(settings, "preview_amount")
-    more, opened = nested_foldout(column, settings, "show_more", "More")
+    if spawn.kind != "EMBERS":
+        look.prop(spawn, "color", text="")
+    look.prop(spawn, "brightness")
+    column.prop(spawn, "show_in_preview")
+    more, opened = nested_foldout(column, spawn, "show_more", "More")
     if opened:
-        more.prop(settings, "cooling_time")
-        more.prop(settings, "friction")
-        more.prop(settings, "spawn_jitter")
-    objects = particle_objects(domain)
+        more.prop(spawn, "material")
+        more.prop(spawn, "cooling_time")
+        more.prop(spawn, "friction")
+        more.prop(spawn, "spawn_jitter")
+        mask_objects = more.row(align=True)
+        mask_objects.active = spawn.spawn_objects
+        mask_objects.prop(spawn, "mask_objects")
+    objects = particle_objects(domain, spawn.uid)
     if objects:
         column.label(text=f"Shown by '{objects[0].name}'", icon="OUTLINER_OB_POINTCLOUD")
 
 
+def draw_system(layout, domain):
+    """The particle system every Spawn Particles modifier shares (under the stack)."""
+    from . import ui
+    settings = settings_of(domain)
+    if settings is None:
+        return
+    count = len(spawn_layers(domain.fumaris))
+    title = "Particle System" if ui._NARROW else f"Particle System · shared by {count} modifier" + ("s" if count != 1 else "")
+    body, opened = ui._nested_foldout(layout, settings, "show_system", title)
+    if not opened:
+        return
+    limits = ui._pair(body)
+    limits.prop(settings, "max_particles")
+    limits.prop(settings, "seed")
+    body.label(text=f"GPU memory: {settings.max_particles * DEVICE_BYTES_PER_PARTICLE / 2**20:.0f} MB")
+    body.prop(settings, "kill_outside")
+    shown = body.row(align=True)
+    shown.prop(settings, "show_in_preview")
+    amount = shown.row(align=True)
+    amount.active = settings.show_in_preview
+    amount.prop(settings, "preview_amount")
+    ui._wrapped(body, "A bake writes them to particles/ beside its VDBs", "INFO")
+
+
+PROPERTY_CLASSES = (FumarisSpawnSettings,)
 CLASSES = (FumarisParticleSettings,)
 
 
@@ -858,9 +1313,15 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Object.fumaris_particles = PointerProperty(type=FumarisParticleSettings)
+    if _migrate_after_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_migrate_after_load)
+    # A file already open when the add-on is enabled.
+    bpy.app.timers.register(lambda: (migrate_all(), None)[1], first_interval=0.0)
 
 
 def unregister():
+    if _migrate_after_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_migrate_after_load)
     if hasattr(bpy.types.Object, "fumaris_particles"):
         del bpy.types.Object.fumaris_particles
     for cls in reversed(CLASSES):

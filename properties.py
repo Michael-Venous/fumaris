@@ -2268,11 +2268,12 @@ class FumarisSettings(PropertyGroup):
     )
 
 
-    # Detail & Shaping stack (detail_stack.py): replaces Turbulence Detail,
-    # Control Ramps and Soot Burn-off, whose properties remain only as inputs.
+    # Modifiers stack (detail_stack.py; "Detail & Shaping" before particles
+    # joined it): replaces Turbulence Detail, Control Ramps and Soot Burn-off,
+    # whose properties remain only as inputs, and the Particles v1 section.
     detail_layers: CollectionProperty(type=FumarisDetailLayer)
     detail_layers_index: IntProperty(name="Active Layer", default=0)
-    show_domain_detail_stack: BoolProperty(name="Detail & Shaping", default=False)
+    show_domain_detail_stack: BoolProperty(name="Modifiers", default=False)
 
 
 

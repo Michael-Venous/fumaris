@@ -12,7 +12,7 @@ HEADER = struct.Struct("<4sHHIQ")
 # mean. Equal to kProtocolVersion in the bridge (src/protocol.h) and bumped
 # with every schema change. The bridge sends its own in READY and checks this
 # one in SESSION_BEGIN and SESSION_RESET; a bridge before version 2 sent none.
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 SESSION_BEGIN = 1
 FRAME = 2

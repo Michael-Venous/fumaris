@@ -265,13 +265,14 @@ def write_settings_snapshot(directory, domain, participants=()):
 
 def settings_snapshot_data(domain, participants=()):
     """The domain's and its participants' settings, as a settings snapshot holds them."""
-    from . import detail_stack
+    from . import detail_stack, particles
     data = {
         "version": 1,
         "written": time.strftime("%Y-%m-%d %H:%M:%S"),
         "domain": domain.name,
         "settings": _rna_values(domain.fumaris),
         "detail_layers": detail_stack.to_list(domain.fumaris),
+        "particle_system": particles.system_to_dict(domain),
         "participants": {},
     }
     for participant in participants:
@@ -336,6 +337,8 @@ def apply_settings_snapshot(domain, data, objects):
     if detail_stack.to_list(domain.fumaris) != layers:
         detail_stack.from_list(domain.fumaris, layers)
         changed += 1
+    from . import particles
+    changed += particles.system_from_dict(domain, data.get("particle_system"))
     restored, missing = 0, []
     for name, values in data.get("participants", {}).items():
         obj = objects.get(name)

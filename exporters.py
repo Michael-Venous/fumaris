@@ -147,7 +147,9 @@ def build_session(
         in {"1", "true", "yes", "on"},
         "initial_domain": _domain_state(domain.fumaris, resolution_scale),
     }
-    # Fumaris Particles take their GPU memory from the simulation's.
+    # Fumaris Particles take their GPU memory from the simulation's (a file
+    # with Particles v1 settings gets its Spawn Particles modifier first).
+    particles.migrate_domain(domain)
     settings["initial_domain"]["particle_memory_bytes"] = particles.memory_bytes(domain)
     # Effectors add a velocity scratch texture after the pressure solve.
     settings["initial_domain"]["effector_sources"] = any(item["kind"] == "effector" for item in participants)
@@ -462,7 +464,8 @@ def _domain_state(props, resolution_scale=1.0):
         "buoyancy_per_smoke": props.buoyancy_per_smoke,
         "vorticity": props.vorticity,
         "vorticity_mask": props.vorticity_mask,
-        # Detail & Shaping stack (detail_stack.py).
+        # Modifiers stack (detail_stack.py): its Detail & Shaping layers; Spawn
+        # Particles modifiers go with the frame (particles.frame_state).
         "detail_layers": detail_stack.export_layers(props),
         "wisp_cooling": props.wisp_cooling,
         "fuel_threshold": props.fuel_threshold,

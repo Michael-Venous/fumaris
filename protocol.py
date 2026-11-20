@@ -3,8 +3,16 @@ import struct
 
 
 MAGIC = b"FMIP"
+# Envelope (framing) version: magic, this, the message type and the header
+# and payload sizes. Unchanged, so builds of any protocol version can read
+# each other's messages and report a mismatch.
 VERSION = 1
 HEADER = struct.Struct("<4sHHIQ")
+# The message schema's version: the fields each message carries and what they
+# mean. Equal to kProtocolVersion in the bridge (src/protocol.h) and bumped
+# with every schema change. The bridge sends its own in READY and checks this
+# one in SESSION_BEGIN and SESSION_RESET; a bridge before version 2 sent none.
+PROTOCOL_VERSION = 2
 
 SESSION_BEGIN = 1
 FRAME = 2
@@ -78,6 +86,33 @@ def pack_preview_payload(preview, payload):
 
 class ProtocolError(RuntimeError):
     pass
+
+
+class ProtocolMismatchError(ProtocolError):
+    """The add-on and the bridge are from builds of different protocol versions."""
+
+
+def mismatch_message(addon_version, bridge_version):
+    # The bridge's protocolMismatchMessage() says the same to older add-ons.
+    return (
+        "The Fumaris add-on and its simulation program are from different versions "
+        f"(add-on protocol {addon_version}, simulation program protocol {bridge_version}): "
+        "the installation is incomplete. Close Blender, reinstall Fumaris from its ZIP file, "
+        "and start Blender again."
+    )
+
+
+def check_ready(data):
+    """READY from the bridge: raise ProtocolMismatchError unless it speaks this
+    add-on's protocol version (a bridge before version 2 sent none)."""
+    version = data.get("protocol_version", 1) if isinstance(data, dict) else 1
+    try:
+        # The bridge writes every JSON value as a string (Boost.PropertyTree).
+        version = int(version)
+    except (TypeError, ValueError):
+        version = 0
+    if version != PROTOCOL_VERSION:
+        raise ProtocolMismatchError(mismatch_message(PROTOCOL_VERSION, version))
 
 
 def split_scene_depth(preview):

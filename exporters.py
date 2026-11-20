@@ -37,7 +37,7 @@ from .participants import (
     participants as _participants,
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
-from .protocol import DISPLAY_LUT_KEY, pack_preview_payload, split_scene_depth
+from .protocol import DISPLAY_LUT_KEY, PROTOCOL_VERSION, pack_preview_payload, split_scene_depth
 from .utils import (
     executable_path,
     flame_value,
@@ -119,7 +119,7 @@ def build_session(
         _log_participants(domain, participants)
 
     settings = {
-        "schema_version": 1,
+        "protocol_version": PROTOCOL_VERSION,
         "start_frame": sim_start if start_frame is None else start_frame,
         "end_frame": sim_end if end_frame is None else end_frame,
         "fps": scene.render.fps / scene.render.fps_base,

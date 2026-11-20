@@ -4,6 +4,7 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: the add-on and its simulation program check that they are from the same version. After an incomplete update (a simulation still running or a file locked while Fumaris was replaced), a preview or bake stops with "The Fumaris add-on and its simulation program are from different versions ... reinstall Fumaris from its ZIP file" instead of failing on a missing setting or simulating with settings it misread.
 - Added: with Cache Preview, Stop keeps the cached frames: the simulation's GPU memory is released (Explosion at Resolution 768: 2.6 -> 1.5 GB), and scrubbing, timeline playback and Save Sequence keep working as while paused; frames outside the cache show nothing. The panel says "Stopped: cached frames kept" with the RAM they use. Play starts the preview again from the first frame; Release Cache (the Stop button now), a change to the simulation settings, starting a bake or another preview, or loading a file frees them. A stopped preview no longer blocks Bake, Quick Setup or Add Objects.
 - Changed: mesh sources and colliders that do not move or change reuse their surface search between steps and frames: small scenes simulate faster (Rising Smoke at 512: 4.6 -> 3.2 ms a frame, Steady Fire 1.6 -> 1.3 ms of GPU). Results are identical.
 - Changed: the preview cache stores the smoke's detail only where the simulation keeps it: live frames with Cache Preview on are about 7% faster and cached frames show about 10% faster (Explosion at Resolution 768). Cached frames look the same.

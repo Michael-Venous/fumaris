@@ -46,7 +46,7 @@ _PREFERENCE = {"discrete": 3, "integrated": 2, "virtual": 1}
 
 
 def automatic_device(devices, environment):
-    """The GPU the bridge picks under Automatic (simulation.cpp's
+    """The GPU the bridge picks under Automatic (flow_device.cpp's
     selectFlowDevice): a FUMARIS_GPU_DEVICE_UUID override, else the first
     of the most preferred type (discrete, then integrated). None when it
     cannot be told (a FUMARIS_GPU_DEVICE_INDEX override counts Vulkan

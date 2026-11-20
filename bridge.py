@@ -33,10 +33,12 @@ from .protocol import (
     PREVIEW_CACHE_EXPORT,
     PREVIEW_RELEASE,
     PREVIEW_RENDER,
+    READY,
     SESSION_BEGIN,
     SESSION_COMPLETE,
     SESSION_END,
     SESSION_RESET,
+    check_ready,
     read_message,
     pack_preview_payload,
     reset_packed_display_lut,
@@ -334,6 +336,10 @@ class BridgeWorker:
                     print(f"WORKER got {response[0]} frame={response[1].get('frame') if isinstance(response[1], dict) else None} payload={len(response[2])}", file=sys.stderr, flush=True)
                 if response[0] == FAILED:
                     raise RuntimeError(response[1].get("message", "Bridge failed"))
+                if response[0] == READY:
+                    # A bridge of another protocol version (a partial update)
+                    # would misread the session: stop with the reason.
+                    check_ready(response[1])
                 self.responses.put(response)
                 if response[0] in {SESSION_COMPLETE, CANCELLED} and not self._keep_alive:
                     return

@@ -44,6 +44,28 @@ def _install(source, destination, temporary):
     os.replace(temporary, destination)
 
 
+def _matches_backup(backup, destination):
+    try:
+        backup_stat = backup.stat()
+        destination_stat = destination.stat()
+    except FileNotFoundError:
+        return False
+    if backup_stat.st_ino and os.path.samestat(backup_stat, destination_stat):
+        return True
+    if backup_stat.st_size != destination_stat.st_size:
+        return False
+    # On filesystems without hard links a rollback must also skip an
+    # original that still matches its backup. An open Windows reader may
+    # permit reading that file while denying both publish and replacement.
+    with backup.open("rb") as previous, destination.open("rb") as current:
+        while True:
+            chunk = previous.read(1 << 20)
+            if chunk != current.read(1 << 20):
+                return False
+            if not chunk:
+                return True
+
+
 def _rollback(target, work):
     journal = work / JOURNAL
     metadata = json.loads(journal.read_text(encoding="utf-8"))
@@ -53,7 +75,7 @@ def _rollback(target, work):
     for name in sorted(old):
         backup = _path(work / "backup", name, prefix)
         destination = _path(target, name, prefix)
-        if not destination.exists() or not os.path.samefile(backup, destination):
+        if not _matches_backup(backup, destination):
             _install(backup, destination, temporary)
     for name in sorted(new - old):
         try:

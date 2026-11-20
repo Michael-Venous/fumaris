@@ -214,7 +214,10 @@ bake.
 - The first bake needs no choice. Once a bake exists, Bake asks: **Replace**
   the selected pinned bake in Versions (or, with none selected, the one the
   domain shows), or **New Bake**, which keeps the others. Rebaking replaces, so
-  nothing piles up unless you choose New Bake.
+  nothing piles up unless you choose New Bake. Replace keeps the previous bake
+  until the new one finishes: if the new bake fails or is stopped, the previous
+  one stays, and the frames the new one completed are kept as a separate
+  partial version.
 - A bake is pinned in Versions. Pin a preview save there to make it a bake
   that Bake can replace.
 - Play works after a bake: the bake stays in Versions (its eye shows it again)
@@ -232,6 +235,10 @@ Under `Output`:
   directory (system temporary storage if unavailable). An explicit absolute
   output directory is respected. After saving, project-relative output is
   resolved beside the `.blend`; earlier caches stay at their original location.
+  A copy of the file saved beside it (Save As) reads the same bakes, and the
+  first time it bakes or changes one it gets its own cache with copies of them,
+  so the copy never writes over the original's bakes (that needs the free space
+  for the copies).
 - `Version` names the bake the domain shows. Below it: `Lighter` (make a
   lighter copy), `Sparks`, the lock (`Protect`) and the bin (`Delete`). While
   it is locked, Bake and Delete refuse it and the Simulate box says so. The lock is a small file in the bake's
@@ -595,7 +602,8 @@ view, either works; scene space keeps the resting trail perfectly sharp.
 - `Dissipation` fades smoke over time, by that much density per second. The
   slider stops at 1; type a larger value for dense smoke that must clear fast.
 - `Smoke Decay` removes a fraction of the smoke per second, in proportion to
-  its density.
+  its density. It compounds over the second, so it ends at 0.99 (1% left after
+  a second).
 - `Velocity Damping` removes a fraction of the motion per second. The default
   **0.01** is close to free air; raise it to calm turbulence and shorten how
   far smoke travels.

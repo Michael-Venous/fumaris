@@ -626,7 +626,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
     index_section = _reuse_section() if reuse_geometry else _append_array(payload, indices)
     velocity_section = _append_array(payload, velocities) if velocities else None
     weight_section = (
-        _append_array(payload, emission_weights) if emission_weights else None
+        (_reuse_section() if reuse_geometry else _append_array(payload, emission_weights))
+        if emission_weights else None
     )
     minimum, maximum = _mesh_distances(props, participant["role"])
     channels = (
@@ -679,7 +680,8 @@ def _mesh_state(participant, depsgraph, payload, frame):
     if props.participant_type == "collection_mesh" and participant.get("collection_mesh_layout_changed"):
         state["motion_substeps"] = 1
     if weight_section:
-        state["emission_weights"] = {**weight_section, "version": _data_version(frame)}
+        # With the positions' version: a static masked mesh reuses both (P23).
+        state["emission_weights"] = {**weight_section, "version": _data_version(position_version)}
     return state
 
 

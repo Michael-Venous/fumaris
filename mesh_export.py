@@ -1,4 +1,5 @@
 from array import array
+import zlib
 
 from mathutils import Matrix, Vector
 
@@ -140,14 +141,17 @@ def _evaluated_mesh(obj, depsgraph, props, matrix, surface_out=None):
 
 
 def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame):
+    """A static mesh's arrays are evaluated once and then reused (the bridge
+    keeps them by version): positions, triangles and, with an Emission Mask,
+    the per-corner weights (P23). The last item says they are reused."""
     key = _static_mesh_cache_key(
         obj, depsgraph, props, participant.get("closed_surface") is not None)
     if key is not None and participant.get("static_mesh_key") == key:
         cached = participant.get("static_mesh")
         if cached is not None:
-            positions, indices = cached
+            positions, indices, emission_weights = cached
             version = int(participant.get("static_mesh_version", frame))
-            return positions, indices, array("f"), array("f"), version, version, True
+            return positions, indices, array("f"), emission_weights, version, version, True
 
     surface_out = {}
     positions, indices, velocities, emission_weights = _evaluated_mesh(
@@ -165,7 +169,7 @@ def _cached_or_evaluated_mesh(participant, obj, depsgraph, props, matrix, frame)
         obj, depsgraph, props, participant["closed_surface"] is not None)
     if key is not None:
         participant["static_mesh_key"] = key
-        participant["static_mesh"] = (positions, indices)
+        participant["static_mesh"] = (positions, indices, emission_weights)
         participant["static_mesh_version"] = frame
         position_version = frame
         topology_version = frame
@@ -224,19 +228,20 @@ def _shared_mesh_arrays(obj, depsgraph, props, matrix, shared, used):
 def _static_mesh_cache_key(obj, depsgraph, props, closed=False):
     """closed: the last evaluation of this mesh was a closed surface. Its
     Normal Velocity is then a volume source, so the
-    per-frame arrays do not depend on it and the geometry can be reused."""
+    per-frame arrays do not depend on it and the geometry can be reused.
+    An Emission Mask is part of the key (P23): its name, threshold and, for
+    a mesh attribute, its values (a painted vertex group changes the
+    geometry revision)."""
     if obj.type != "MESH" or obj.modifiers or obj.data.shape_keys:
         return None
     if abs(float(props.normal_velocity)) > 1e-6 and not (
             closed):
         return None
-    if str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip():
-        return None
     if uses_velocity_attribute(props):
         return None
     mesh = obj.data
     evaluated_mesh = obj.evaluated_get(depsgraph).data
-    return (
+    key = (
         mesh.as_pointer(),
         evaluated_mesh.as_pointer(),
         geometry_revision(mesh),
@@ -244,6 +249,36 @@ def _static_mesh_cache_key(obj, depsgraph, props, closed=False):
         len(mesh.polygons),
         len(mesh.edges),
     )
+    mask = str(getattr(props, "mesh_emission_mask_attribute", "") or "").strip()
+    if mask:
+        digest = _mask_attribute_digest(mesh, mask)
+        if digest is False:
+            return None
+        key += (mask, float(props.mesh_emission_mask_threshold), digest)
+    return key
+
+
+def _mask_attribute_digest(mesh, name):
+    """A checksum of the mask attribute's values; None for a vertex group (no
+    such attribute); False when its values cannot be read in bulk (then the
+    mesh is not cached)."""
+    attribute = mesh.attributes.get(name)
+    if attribute is None:
+        return None
+    if np is None or not len(attribute.data):
+        return False
+    first = attribute.data[0]
+    for field in ("value", "vector", "color"):
+        if not hasattr(first, field):
+            continue
+        width = 1 if field == "value" else (len(first.vector) if field == "vector" else 4)
+        values = np.empty(len(attribute.data) * width, dtype=np.float32)
+        try:
+            attribute.data.foreach_get(field, values)
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return False
+        return attribute.domain, zlib.crc32(values.tobytes())
+    return False
 
 
 def _particle_mesh(obj, depsgraph, props):

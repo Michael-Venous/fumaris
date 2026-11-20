@@ -172,8 +172,7 @@ class FumarisSpawnSettings(PropertyGroup):
     # spawning from objects
     source_collection: PointerProperty(
         name="Sources", type=bpy.types.Collection,
-        description="Objects that emit particles: meshes from their surface or volume, point clouds and "
-                    "Geometry Nodes points from every point, each frame")
+        description="Objects that emit particles: mesh surfaces or volumes, point clouds and Geometry Nodes points")
     source_mode: EnumProperty(
         name="Emit From",
         items=[("SURFACE", "Surface", "Random points on the meshes' faces, Source Rate per second"),
@@ -194,15 +193,12 @@ class FumarisSpawnSettings(PropertyGroup):
     # motion
     drag: FloatProperty(
         name="Drag", default=10000.0, min=0.0, max=10000.0, soft_max=100.0,
-        description="How strongly the gas carries a particle, per second: 0 flies free (a heavy ember), "
-                    "10000 follows the smoke exactly (a tracer)")
+        description="How strongly the gas carries a particle: 0 flies free (heavy ember), 10000 follows the smoke (tracer)")
     gravity: FloatProperty(name="Gravity", default=0.0, soft_min=-1.0, soft_max=2.0,
                            description="Share of the domain's gravity on the particles (negative: they rise)")
     effectors: FloatProperty(
         name="Effectors", default=0.0, min=0.0, soft_max=1.0, subtype="FACTOR",
-        description="How strongly the domain's effectors push these particles themselves, as they push the "
-                    "smoke (1). At 0 the particles feel them only through the smoke, enough for tracers; "
-                    "heavy embers need their own")
+        description="How strongly the domain's effectors push these particles directly. 0: only through the smoke")
     lifetime: FloatProperty(name="Lifetime", default=5.0, min=0.0, soft_max=20.0, unit="TIME_ABSOLUTE",
                             description="Simulated seconds a particle lives (0: until it leaves the domain)")
     lifetime_random: FloatProperty(name="Lifetime Random", default=0.3, min=0.0, max=1.0, subtype="FACTOR",

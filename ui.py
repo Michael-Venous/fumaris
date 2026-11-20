@@ -140,7 +140,10 @@ def draw_participants(layout, props, *, activate=False):
         title.label(text=label)
         split.prop(props, attribute, text="")
         if opened:
-            draw_participant_rows(layout.column(align=True), props, role=role, activate=activate)
+            # Indented under its category (user, 2026-11-20).
+            indent = layout.row(align=True)
+            indent.separator(factor=2.2)
+            draw_participant_rows(indent.column(align=True), props, role=role, activate=activate)
 
 
 def _highlight_row(layout, operator, name, icon, highlighted, **properties):
@@ -1045,8 +1048,7 @@ class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
 class FUMARIS_OT_color_mixing_enable(bpy.types.Operator):
     bl_idname = "fumaris.color_mixing_enable"
     bl_label = "Turn On Per-Emitter Smoke Color"
-    bl_description = ("Turn on the domain's Per-Emitter Smoke Color, so each emitter's smoke keeps its own color "
-                      "(about 1.4x the simulation time and a third of the blocks per GB)")
+    bl_description = ("Turn on the domain's Per-Emitter Smoke Color (about 1.4x the simulation time)")
     bl_options = {"REGISTER", "UNDO"}
 
     domain: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
@@ -1090,7 +1092,14 @@ class FUMARIS_OT_domain_show_look(bpy.types.Operator):
 
 def _draw_versions_section(layout, scene, domain):
     box = layout.box()
-    if _section(box, domain.fumaris, "show_panel_compare", "Versions", "FILE_FOLDER"):
+    # All domains is a compact scene-wide toggle in the header, outside the
+    # list (user, 2026-11-20).
+    header = box.row()
+    opened = _section(header, domain.fumaris, "show_panel_compare", "Versions", "FILE_FOLDER")
+    toggle = header.row()
+    toggle.alignment = "RIGHT"
+    toggle.prop(scene, "fumaris_versions_all", text="", icon="OUTLINER", emboss=scene.fumaris_versions_all)
+    if opened:
         from .compare import draw_compare
         draw_compare(box, scene, domain)
 

@@ -146,13 +146,9 @@ class FumarisDetailLayer(PropertyGroup):
     layer_type: EnumProperty(name="Type", items=_type_items(), default="DISTURB",
                              description="What this layer does to the smoke")
     strength: FloatProperty(name="Strength", default=100.0, min=0.0, soft_max=1000.0,
-                            description="Disturb and Grain: push in scene units per second squared (about 50 "
-                                        "is subtle, 300 strong on a fireball a few metres across). Shred and "
-                                        "Soot Burn-off: rate per second")
+                            description="Disturb and Grain: push strength (about 50 subtle, 300 strong). Shred and Soot Burn-off: rate per second")
     size: FloatProperty(name="Size", default=1.0, min=1e-12, soft_min=0.001, soft_max=10.0, subtype="DISTANCE",
-                        description="Disturb: swirl size. Grain: block edge length. In scene units; at least "
-                                    "128 / Resolution (two motion cells: 0.25 at 512), or 64 / Resolution "
-                                    "with Full-Resolution Channels; smaller does little")
+                        description="Disturb: swirl size. Grain: block size. In scene units; below two motion cells it does little")
     detail: IntProperty(name="Detail", default=1, min=1, max=6,
                         description="Disturb: adds smaller swirls, each half the size. Grain: layers, each "
                                     "three times the block size (up to 3). 1 = one size")

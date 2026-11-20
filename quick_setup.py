@@ -694,8 +694,7 @@ def _unique_group_name(base):
 class FUMARIS_OT_domain_create(bpy.types.Operator):
     bl_idname = "fumaris.domain_create"
     bl_label = "New Domain"
-    bl_description = ("Create an empty simulation domain at the 3D cursor, with its Emitters, Colliders, Effectors "
-                      "and Outflows collections under the Fumaris collection, and choose it in the Fumaris tab")
+    bl_description = ("Create an empty domain at the 3D cursor with its Emitters, Colliders, Effectors and Outflows collections")
     bl_options = {"REGISTER", "UNDO"}
 
     # Empty: the Fumaris tab's name box (then Simulation).
@@ -842,8 +841,7 @@ class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
 class FUMARIS_OT_domain_choose(bpy.types.Operator):
     bl_idname = "fumaris.domain_choose"
     bl_label = "Choose Domain"
-    bl_description = ("Choose this domain for the Fumaris tab, playback and Add actions, select it and show its "
-                      "settings. It stays chosen while you select its emitters and colliders")
+    bl_description = ("Choose this domain for the Fumaris tab, playback and Add actions")
     bl_options = {"REGISTER", "UNDO"}
 
     name: bpy.props.StringProperty(options={"HIDDEN"})
@@ -868,8 +866,7 @@ class FUMARIS_OT_domain_choose(bpy.types.Operator):
 class FUMARIS_OT_participant_remove(bpy.types.Operator):
     bl_idname = "fumaris.participant_remove"
     bl_label = "Remove from Domain"
-    bl_description = ("Take this object out of the chosen domain: unlink it from the domain's collections and clear "
-                      "its Fumaris role. The object stays in the scene")
+    bl_description = ("Take this object out of the domain. The object stays in the scene")
     bl_options = {"REGISTER", "UNDO"}
 
     name: bpy.props.StringProperty(options={"HIDDEN"})

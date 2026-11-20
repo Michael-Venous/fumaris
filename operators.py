@@ -1497,7 +1497,7 @@ def _show_physics_tab(manager):
 class FUMARIS_OT_participant_solo(Operator):
     bl_idname = "fumaris.participant_solo"
     bl_label = "Solo Participant"
-    bl_description = "Simulate only this participant of its kind (other emitters, colliders, effectors or outflows are disabled); click again to restore them. Works while previewing"
+    bl_description = "Simulate only this one of its kind; click again to restore the others"
     bl_options = {"REGISTER", "UNDO"}
 
     name: bpy.props.StringProperty()
@@ -1549,7 +1549,7 @@ def _draw_view_menu(self, _context):
 class FUMARIS_OT_preview_pause(Operator):
     bl_idname = "fumaris.preview_pause"
     bl_label = "Pause or Resume Preview"
-    bl_description = "Pause or resume the live preview. While paused the smoke stays on screen and redraws as you move the view or change its look"
+    bl_description = "Pause or resume the live preview. Paused smoke stays on screen"
 
     @classmethod
     def description(cls, context, _properties):
@@ -1858,7 +1858,7 @@ class FUMARIS_OT_cache_make_lighter(Operator):
 class FUMARIS_OT_add_sparks(Operator):
     bl_idname = "fumaris.add_sparks"
     bl_label = "Add Sparks"
-    bl_description = "Add sparks and embers that spawn in hot gas and fly through the baked velocity (Geometry Nodes on a new object). Needs a bake with VDB velocity"
+    bl_description = "Add sparks and embers that fly through the baked velocity. Needs a bake with VDB velocity"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -1893,7 +1893,7 @@ class FUMARIS_OT_add_sparks(Operator):
 class FUMARIS_OT_add_source(Operator):
     bl_idname = "fumaris.add_source"
     bl_label = "Add Source"
-    bl_description = "Add a ready-made Geometry Nodes source to this domain's emitters at the 3D cursor; its settings are on the object's Geometry Nodes modifier"
+    bl_description = "Add a ready-made Geometry Nodes source at the 3D cursor; its settings are on its modifier"
     bl_options = {"REGISTER", "UNDO"}
 
     kind: bpy.props.EnumProperty(
@@ -1921,7 +1921,7 @@ class FUMARIS_OT_add_source(Operator):
 class FUMARIS_OT_gravity_from_scene(Operator):
     bl_idname = "fumaris.gravity_from_scene"
     bl_label = "Gravity from Scene"
-    bl_description = "Copy the Scene's gravity (Scene Properties > Gravity) into this domain's Gravity. The domain keeps its own value afterwards"
+    bl_description = "Copy the Scene's gravity into this domain's Gravity"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod

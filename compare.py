@@ -1225,7 +1225,7 @@ class FUMARIS_OT_entry_select(_EntryOperator, Operator):
 class FUMARIS_OT_entry_pin(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_pin"
     bl_label = "Pin"
-    bl_description = "Pin or unpin. Pinned versions stay at the top; Bake offers to replace a pinned VDB version (a bake, or a preview sequence you want to keep as one)"
+    bl_description = "Pinned versions stay at the top, and Bake offers to replace a pinned version"
 
     key: StringProperty()
 
@@ -1253,8 +1253,7 @@ class FUMARIS_OT_entry_pin(_EntryOperator, Operator):
 class FUMARIS_OT_entry_sync_material(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_sync_material"
     bl_label = "Sync Material"
-    bl_description = ("On: this version uses Fumaris's material, kept in step with the domain's Look (bakes start "
-                      "on). Off: it gets its own copy, which the Look no longer changes (saves start off)")
+    bl_description = ("On: this version follows the domain's Look. Off: it keeps its own material copy")
 
     key: StringProperty()
 
@@ -1296,7 +1295,7 @@ class FUMARIS_OT_entry_show(_EntryOperator, Operator):
 class FUMARIS_OT_entry_import(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_import"
     bl_label = "Import"
-    bl_description = "Bring this version into the scene as a volume object, to render (EEVEE or Cycles) and keep; Remove takes it out of the scene again (its files stay)"
+    bl_description = "Bring this version into the scene as a volume object to render; Remove takes it out (files stay)"
 
     key: StringProperty()
 
@@ -1323,8 +1322,7 @@ class FUMARIS_OT_entry_import(_EntryOperator, Operator):
 class FUMARIS_OT_entry_image(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_image"
     bl_label = "Image Editor"
-    bl_description = ("Show this snapshot, or this playblast, in an Image Editor (a playblast follows Blender's "
-                      "timeline there; Play opens it in your video player instead)")
+    bl_description = ("Show this snapshot or playblast in an Image Editor")
 
     key: StringProperty()
 
@@ -1392,8 +1390,7 @@ class FUMARIS_OT_entry_play(_EntryOperator, Operator):
 class FUMARIS_OT_entry_export_movie(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_export_movie"
     bl_label = "Export MP4…"
-    bl_description = ("Save a copy of this playblast's movie where you choose. Playblasts are kept on disk in the "
-                      "domain's Versions folder, never inside the .blend; Delete removes them")
+    bl_description = ("Save a copy of this playblast's movie where you choose")
 
     key: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
     filepath: StringProperty(subtype="FILE_PATH", options={"SKIP_SAVE"})
@@ -1546,7 +1543,7 @@ class FUMARIS_OT_entry_changes(_EntryOperator, Operator):
 class FUMARIS_OT_entry_load(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_load"
     bl_label = "Load Settings"
-    bl_description = "Set the domain and its sources to the settings this version was made with (sources are matched by name). Your current settings are overwritten"
+    bl_description = "Set the domain and its sources to this version's settings, overwriting the current ones"
     bl_options = {"REGISTER", "UNDO"}
 
     key: StringProperty()
@@ -1935,13 +1932,12 @@ def _draw_entry_row(column, domain, entry, selected):
 
 
 def draw_compare(layout, scene, domain):
-    box = layout.box()
-    actions = box.row(align=True)
-    actions.alignment = "LEFT"
-    actions.prop(scene, "fumaris_versions_all", text="All domains", icon="OUTLINER", toggle=True)
+    # (All domains is toggled in the Versions header.)
     if not scene.fumaris_versions_all:
-        _draw_domain_versions(box, layout, domain)
+        if list_entries(domain):
+            _draw_domain_versions(layout.box(), layout, domain)
         return
+    box = layout.box()
 
     domains = sorted((obj for obj in scene.objects if _is_domain(obj)), key=lambda obj: obj.name.casefold())
     for index, target in enumerate(domains):

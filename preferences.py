@@ -181,14 +181,14 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     bake_workers: IntProperty(
         name="Background Bakes",
-        description="How many domains Bake in Background and Bake All bake at once, each in its own Blender process. 0 (Auto): one per ticked GPU. More domains wait their turn",
+        description="How many domains bake at once in the background. 0 (Auto): one per ticked GPU",
         default=0, min=0, max=8, update=_preferences_changed,
     )
     bake_gpus: CollectionProperty(type=FumarisBakeGpu)
 
     default_output_dir: StringProperty(
         name="Default Cache Directory",
-        description="Cache directory new domains start with, in any scene. Setting a domain's Cache Directory updates it; empty uses a fumaris_cache folder next to the .blend file",
+        description="Cache folder new domains start with. Empty: a fumaris_cache folder next to the .blend",
         default="", subtype="DIR_PATH",
     )
 
@@ -200,7 +200,7 @@ class FumarisPreferences(bpy.types.AddonPreferences):
 
     hide_volumes_during_playback: BoolProperty(
         name="Hide Volumes While Playing",
-        description="Hide imported Fumaris volumes in the viewport while the timeline plays (Blender loads every VDB frame as it plays, which is slow), and show them again when it stops. Renders are not affected",
+        description="Hide imported volumes while the timeline plays, for speed. Renders are not affected",
         default=True,
     )
 

@@ -375,7 +375,7 @@ VDB version. The button at the right of a row is a quick look: the eye shows or
 hides a VDB version in the viewport (imported the first time), the picture opens
 a snapshot in an Image Editor.
 
-Use **All domains**, the icon beside **Save Playblast**, to show every domain
+Use **All domains**, the icon at the right of the Versions header, to show every domain
 in the scene under its own name. Use the eye on each VDB version to set up
 which bakes play together, and open saved playblasts from the same list. You
 can do this without changing the active domain. View-layer and collection

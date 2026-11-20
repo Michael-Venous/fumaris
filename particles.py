@@ -249,7 +249,8 @@ class FumarisParticleSettings(PropertyGroup):
     max_particles: IntProperty(
         name="Max Particles", default=1_000_000, min=1000, max=64 * 1024 * 1024, soft_max=10_000_000,
         description="Particles alive at most, of every Spawn Particles modifier together. Each takes 92 "
-                    "bytes of GPU memory, taken from Simulation Memory. Spawns past it are dropped")
+                    "bytes of GPU memory, taken from Simulation Memory (at most half of it: more are not made, "
+                    "nor more than the GPU can address in one buffer). Spawns past it are dropped")
     seed: IntProperty(name="Seed", default=0, min=0, description="Another number gives other random particles")
     kill_outside: BoolProperty(name="Inside Domain", default=True,
                                description="Remove particles that leave the domain object's box "
@@ -384,6 +385,17 @@ def memory_bytes(domain):
     if settings is None or not active(domain):
         return 0
     return int(settings.max_particles) * DEVICE_BYTES_PER_PARTICLE
+
+
+def slots_that_fit(domain):
+    """The particles a set VRAM (not Auto) holds: at most half of it
+    (src/simulation_memory.cpp); the bridge makes no more. None under Auto
+    VRAM (the bridge decides, and warns when Max Particles is cut)."""
+    props = domain.fumaris
+    if getattr(props, "simulation_memory_auto", False):
+        return None
+    half = int(float(props.simulation_memory) * 1024.0 * 2**20) // 2
+    return half // DEVICE_BYTES_PER_PARTICLE
 
 
 # ---------------------------------------------------------------- frames
@@ -1371,6 +1383,10 @@ def draw_system(layout, domain):
     limits.prop(settings, "max_particles")
     limits.prop(settings, "seed")
     body.label(text=f"GPU memory: {settings.max_particles * DEVICE_BYTES_PER_PARTICLE / 2**20:.0f} MB")
+    fit = slots_that_fit(domain)
+    if fit is not None and settings.max_particles > fit:
+        # (review 2026-11-20 #4: they took memory beyond VRAM; now cut)
+        ui._wrapped(body, f"Only {fit:,} fit in half of VRAM: more are not made", "ERROR")
     body.prop(settings, "kill_outside")
     shown = ui._pair(body)
     shown.prop(settings, "show_in_preview")

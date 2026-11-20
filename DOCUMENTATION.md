@@ -709,7 +709,10 @@ tracers in the cool smoke and embers from the fire.
   modifier of the domain): `Max Particles`, how many live at most of all of
   them together; each takes 92 bytes of GPU memory, taken from the domain's
   simulation memory (1 million: 88 MB), and when it is full new particles are
-  dropped until others die. `Seed` gives other random particles. `Inside
+  dropped until others die. They get at most half of the simulation memory
+  (VRAM 1 GB holds 5.8 million) and no more than the GPU can address in one
+  buffer (an Intel Arc 140V: 22 million): a larger Max Particles is cut to
+  that, and the panel and the simulation's warnings say so. `Seed` gives other random particles. `Inside
   Domain` removes those that leave a mesh domain's box. `Show in Preview` and
   `Amount`: the share of them the live preview draws (one pixel each).
 - The point cloud carries `velocity` (Cycles motion blur), `age` (seconds),
@@ -955,9 +958,10 @@ needed when the mesh's vertices change from frame to frame, and is scaled by
 Motion Velocity Scale. Moving the object itself still adds its motion.
 Instanced meshes need `Realize Instances` for their attributes to be read.
 
-`Motion Sub-Steps` sample intermediate source poses for moving or deforming
-sources. They do not improve a static emitter or the fluid solve and they
-multiply emitter work inside each domain Sub-Step.
+`Motion Sub-Steps` sample intermediate source poses for moving sources (the
+object's transform; a deforming mesh is sampled at its end-of-frame shape).
+They do not improve a static emitter or the fluid solve and they multiply
+emitter work inside each domain Sub-Step.
 
 ### Collection Points
 
@@ -1110,6 +1114,15 @@ margin are shut.
   with their surface as it moves (`Velocity Influence`), and are not treated
   as convex solids while they deform. A sphere inflating into smoke kept 87% of
   it (55% before 2.0.0 beta 4, when it swallowed the smoke).
+  Known limitation: within a frame only the object's own motion (its
+  transform) is swept through the solver steps; a deforming surface stands
+  where it is at the end of the frame in every step. A surface that moves
+  more than about half a velocity cell per frame by deformation pushes into
+  the smoke in jumps and loses much of what it meets: at Resolution 256 a
+  plate moved by a shape key kept 98% of a cloud at 2 m/s but 20% at 4 m/s
+  and 16% at 8 m/s (moved by its location instead: all of it at 8 m/s).
+  Animate rigid motion on the object, not with shape keys or bones, and keep
+  deformation under half a velocity cell per frame where smoke is near.
 
 ### Effectors
 
@@ -1325,7 +1338,9 @@ For a faster or more memory-efficient simulation:
 - One live preview or `Bake` runs at a time. `Bake in Background` bakes more
   domains at the same time.
 - Colliders are improved Flow collision emitters, not sealed pressure
-  boundaries.
+  boundaries. A collider deforming fast (shape keys, bones) is not swept
+  through a frame's steps as a moving one is and loses smoke it meets
+  (Colliders, Deforming colliders).
 - Results do not match Mantaflow parameter-for-parameter.
 - Mac requires Apple Silicon, macOS 26+ and Blender 5.2+. Intel Macs are unsupported.
 

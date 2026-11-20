@@ -239,16 +239,35 @@ def delete_generated_data(directory, prefix=PREFIX):
         for path in _frame_files(directory, prefix):
             _FRAME_METADATA.pop(_metadata_key(path), None)
             os.remove(path)
+        # The bake's particles (particles/<prefix>particles_####.ply): left
+        # behind, a shorter bake into the slot showed the old run's particles
+        # past its end (the particle objects read the folder frame by frame).
+        particle_directory, particle_prefix = _particle_files(directory, prefix)
+        for path in _frame_files(particle_directory, particle_prefix, ".ply"):
+            os.remove(path)
         delete_temporary_writes(directory, prefix)
+        try:
+            os.rmdir(particle_directory)   # only when nothing else is in it
+        except OSError:
+            pass
         _delete_import_copies(directory)
 
 
+def _particle_files(directory, prefix):
+    """The folder and file-name prefix of a bake's particle frames
+    (src/particles.cpp, particles.frame_files)."""
+    return os.path.join(directory, "particles"), f"{prefix}particles_"
+
+
 def delete_temporary_writes(directory, prefix=PREFIX):
-    for path in _frame_files(directory, prefix, ".vdb.tmp"):
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
+    particle_directory, particle_prefix = _particle_files(directory, prefix)
+    for folder, head, suffix in ((directory, prefix, ".vdb.tmp"),
+                                 (particle_directory, particle_prefix, ".ply.tmp")):
+        for path in _frame_files(folder, head, suffix):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
 
 
 def _socket(sockets, *names):

@@ -35,7 +35,7 @@ from bpy.types import Operator
 
 from . import diagnostics, runtime
 from .background_runner import CANCEL_FILE, FRAMES_FILE, JOB_FILE, STATUS_FILE, write_json
-from .bridge import _popen_options
+from .bridge import _popen_options, require_compatible_bridge
 from .cache import (
     _pid_is_alive,
     cache_lock,
@@ -217,7 +217,8 @@ def _check(context, domain):
     error = runtime_validation_error()
     if error:
         raise RuntimeError(error)
-    if bridge_executable() is None:
+    executable = bridge_executable()
+    if executable is None:
         raise RuntimeError("Bridge executable not found")
     session, _participants = build_session(context, domain=domain, write_vdb=True, preview_enabled=False)
     prefix = session["output_prefix"]
@@ -227,6 +228,9 @@ def _check(context, domain):
     if any(os.path.normpath(job.directory) == os.path.normpath(directory) for job in _jobs):
         raise RuntimeError(f"Fumaris cache is already in use: {directory}")
     require_unprotected(directory, "bake over it")
+    # The version is emptied at the click (_clear): not for a bridge that
+    # would refuse the bake (an incomplete update; review 2026-11-20 #1).
+    require_compatible_bridge(executable)
     # Refuse a version another Blender is writing before the scene is saved.
     os.makedirs(directory, exist_ok=True)
     with cache_lock(directory):

@@ -40,8 +40,11 @@ from .protocol import (
     SESSION_RESET,
     FRAME_COMPLETE,
     PREVIEW_COMPLETE,
+    PROTOCOL_VERSION,
+    ProtocolMismatchError,
     SharedImages,
     check_ready,
+    mismatch_message,
     read_message,
     pack_preview_payload,
     reset_packed_display_lut,
@@ -516,6 +519,58 @@ def _popen_options():
     if os.name == "nt":
         return {"creationflags": subprocess.CREATE_NO_WINDOW}
     return {"start_new_session": True}
+
+
+# (executable, mtime, size) -> its protocol version, for require_compatible_bridge.
+_PROTOCOL_VERSIONS = {}
+_PROTOCOL_CHECK_SECONDS = 20.0
+
+
+def require_compatible_bridge(executable, environment=None):
+    """Before a bake clears the slot it writes into: raise unless the bridge
+    speaks this add-on's protocol and starts (review 2026-11-20 #1). Its READY
+    says so too, but only after the old frames were deleted: an incomplete
+    update (an old bridge left behind) erased the bake it then refused to
+    replace. `fumaris_bridge --protocol-version` answers without touching the
+    GPU (a few milliseconds); one answer is kept per executable file."""
+    try:
+        status = os.stat(executable)
+        key = (os.path.abspath(executable), status.st_mtime_ns, status.st_size)
+    except OSError:
+        key = None
+    version = _PROTOCOL_VERSIONS.get(key) if key else None
+    if version is None:
+        if environment is None:
+            environment = process_environment(executable)
+        try:
+            result = subprocess.run(
+                [executable, "--protocol-version"], env=environment,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=_PROTOCOL_CHECK_SECONDS, **_popen_options())
+        except subprocess.TimeoutExpired:
+            # Slow to start (a virus scanner's first look): READY still checks.
+            print(f"Fumaris: {executable} --protocol-version did not answer; checked when it starts",
+                  file=sys.stderr, flush=True)
+            return
+        except OSError as error:
+            from .linux_runtime import explain_launch_failure
+            raise RuntimeError(explain_launch_failure(
+                executable, environment, f"The simulation program could not start: {error}", "")) from error
+        stdout = result.stdout.decode("utf-8", "replace").strip()
+        stderr = result.stderr.decode("utf-8", "replace")
+        if result.returncode == 0 and stdout.isdigit():
+            version = int(stdout)
+        elif "Unknown argument" in stderr:
+            version = 1   # a bridge from before the versioned protocol
+        else:
+            from .linux_runtime import explain_launch_failure
+            message = stderr.strip()[-1000:] or (
+                f"The simulation program did not start (exit code {result.returncode})")
+            raise RuntimeError(explain_launch_failure(executable, environment, message, stderr))
+        if key:
+            _PROTOCOL_VERSIONS[key] = version
+    if version != PROTOCOL_VERSION:
+        raise ProtocolMismatchError(mismatch_message(PROTOCOL_VERSION, version))
 
 
 def process_memory_bytes(pid):

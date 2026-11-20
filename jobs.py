@@ -5,7 +5,7 @@ import time
 
 import bpy
 
-from .bridge import BridgeWorker, process_memory_bytes
+from .bridge import BridgeWorker, process_memory_bytes, require_compatible_bridge
 from .cache import RefusedError, cache_lock, require_unprotected
 from .diagnostics import console_log
 from . import diagnostics
@@ -179,6 +179,9 @@ class FrameRangeJob:
 
         if clear_cache:
             require_unprotected(self._directory, "bake over it")
+            # The old frames are deleted below: refuse a bridge that would
+            # then refuse the session (an incomplete update) first.
+            require_compatible_bridge(executable)
         try:
             os.makedirs(self._directory, exist_ok=True)
         except OSError as error:

@@ -302,6 +302,7 @@ def _draw_emitter_shape(box, obj, props):
             box.prop(props, "point_radius")
         elif props.particle_subtype == "mesh":
             _draw_mesh_emitter_options(box, props)
+            _draw_small_instance_warning(box, obj, props)
     elif props.participant_type == "geometry_nodes":
         box.prop(props, "gn_subtype", text="Type")
         if props.gn_subtype == "point_cloud":
@@ -924,6 +925,26 @@ def _draw_emitter_colors(layout, props):
     else:
         _wrapped(layout, "Colors the smoke, not the flame. Costs about 1.4x the simulation time and a third "
                          "of the blocks per GB", "INFO")
+
+
+def _draw_small_instance_warning(layout, obj, props):
+    """Blender scales each instance by the particle Size (0.05 by default), so
+    instances often end up far smaller than a cell and emit almost nothing
+    (S10, 2026-11-20: 1.5 cm spheres at 12 cm cells emitted 0.04% of the
+    points' smoke)."""
+    system = obj.particle_systems.get(props.particle_system_name) if obj else None
+    settings = getattr(system, "settings", None)
+    instance = getattr(settings, "instance_object", None)
+    if settings is None or settings.render_type != "OBJECT" or instance is None:
+        return
+    size = max(instance.dimensions) * settings.particle_size
+    domains = emitter_domains(obj)
+    if not domains:
+        return
+    cell = 32.0 / max(1, max(int(d.fumaris.resolution) for d in domains))
+    if size < 2.0 * cell:
+        layout.label(text=f"Instances are {size * 100:.3g} cm, under 2 cells: raise the particle Size",
+                     icon="ERROR")
 
 
 def emitter_domains(obj, scene=None):

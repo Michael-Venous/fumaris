@@ -4,6 +4,7 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: a particle source of type Mesh warns when its instances are smaller than two cells of the domain. Blender scales each instance by the particle system's Size (0.05 by default), which easily makes them too small to reach the grid, so they emitted almost nothing without saying why.
 - Fixed: Smoke Decay 1.0 removed all the smoke every step, so a source's smoke never left it. The rate compounds over each second, so the slider now ends at 0.99 (1% left after a second), and older files set to 1.0 simulate as 0.99.
 - Fixed: bakes with fire glow are now guaranteed to write the same files run to run: one total used for the glow was added up in an order that depended on how the work was split between CPU threads.
 - Changed: bakes with fire glow (the Explosion and other Pyro looks) write their VDB files faster, which speeds up bakes on computers with few CPU cores: an Explosion at Resolution 768 on 4 cores bakes in 7.8 s instead of 10.8 s (the glow and Pyro grids took 400 ms of each frame's writing, now 220 ms). The files are identical.

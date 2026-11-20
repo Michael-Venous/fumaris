@@ -20,7 +20,7 @@ from bpy.types import Operator
 from . import exporters, protocol
 from .bridge import BridgeWorker
 from .diagnostics import console_log
-from .runtime import active_job
+from .runtime import active_job, blocking_job
 from .utils import simulation_frame_range
 
 try:
@@ -116,7 +116,7 @@ class FUMARIS_OT_playblast(Operator):
 
     @classmethod
     def poll(cls, context):
-        return np is not None and active_job() is None and _largest_view(context) is not None
+        return np is not None and blocking_job() is None and _largest_view(context) is not None
 
     def _domain(self, context):
         if self.domain_name:

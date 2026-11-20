@@ -37,7 +37,7 @@ from .importers import (
     _frame_files,
 )
 from .jobs import FrameRangeJob, stop_message, writing_last_frames
-from .protocol import PREVIEW_CACHE_EXPORTED
+from .protocol import PREVIEW_CACHE_EXPORTED, PREVIEW_RELEASED
 from .preview import (
     capture_volume_preview,
     preview_targets,
@@ -58,6 +58,8 @@ from .runtime import (
     gpu_notice_due,
     active_job,
     active_mode,
+    blocking_job,
+    release_parked_preview,
     background_bake,
     background_job,
     claim_job,
@@ -123,7 +125,7 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         if background_job(domain):
             cls.poll_message_set("This domain is baking in the background")
             return False
-        return bool(domain and not active_job())
+        return bool(domain and not blocking_job())
 
     def invoke(self, context, _event):
         # Bake writes into the domain's current slot, clearing it first. With
@@ -437,7 +439,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
     @classmethod
     def poll(cls, context):
         from .playback import scene_domains
-        return not active_job() and any(
+        return not blocking_job() and any(
             domain.fumaris.simulation_state != "baking"
             for domain in scene_domains(context)
         )
@@ -449,7 +451,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if not domain or domain.fumaris.smoke_object_type != 'domain':
             self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
-        if active_job() or domain.fumaris.simulation_state == "baking":
+        if blocking_job() or domain.fumaris.simulation_state == "baking":
             self.report({"WARNING"}, "Stop the active job before previewing")
             return {"CANCELLED"}
         job = background_job(domain)
@@ -565,7 +567,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return True
         if getattr(self, "_pause_requested", False):
             return False
-        _cancel_job(context, self)
+        if self.can_park(context):
+            self.park(context)   # like Stop: the cached frames stay (F8)
+        else:
+            _cancel_job(context, self)
         for area in context.screen.areas if context.screen else ():
             area.tag_redraw()
         return True
@@ -627,6 +632,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         domain = bpy.data.objects.get(self._domain_name)
         if domain is None or getattr(self, "_worker", None) is None or not getattr(self, "_accepted", False):
             return False
+        if getattr(self, "_parked", False):
+            return False   # its simulation was released: a new bridge starts over
         if session_structure_signature(domain) != self._session_signature:
             return False
         from .utils import get_addon_preferences
@@ -793,6 +800,10 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         return 2
 
     def _ready_to_submit(self, context):
+        if getattr(self, "_parked", False) and self._parked_stale(context):
+            console_log(f"Fumaris: the settings of {self._domain_name} changed; its kept preview cache was released")
+            _cancel_job(context, self)
+            return False
         if getattr(self, "_preview_render_submitted", False):
             return False
         if self._in_flight > 0 and self._frame > self._end_frame:
@@ -879,8 +890,13 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         if not getattr(self, "_pause_requested", False):
             return -1
         cache = getattr(self, "_preview_cache", None) or {}
-        live = getattr(self, "_live_frame", None)
         frame = int(context.scene.frame_current)
+        if getattr(self, "_parked", False):
+            # Stopped, the cache kept (F8): no live state; outside the cached
+            # range the bridge draws nothing.
+            first, last = int(cache.get("first", -1)), int(cache.get("last", -1))
+            return frame if 0 <= first <= frame <= last else -1
+        live = getattr(self, "_live_frame", None)
         first = int(cache.get("first", -1))
         if live is None or first < 0 or frame >= live or frame < first:
             return -1
@@ -1017,6 +1033,16 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
                     area.tag_redraw()
 
     def _handle_worker_message(self, context, message_type, data, _payload):
+        if message_type == PREVIEW_RELEASED:
+            before = float(data.get("flow_device_memory_before", 0)) / 2**30
+            after = float(data.get("flow_device_memory_bytes", 0)) / 2**30
+            self._parked_gpu_bytes = int(float(data.get("flow_device_memory_bytes", 0)))
+            diagnostics.record(self._diagnostic_key, {"bridge_preview_release_ms": float(data.get("release_ms", 0.0))})
+            console_log(f"Fumaris preview stopped, cached frames kept: GPU memory {before:.2f} -> {after:.2f} GiB "
+                        f"({float(data.get('release_ms', 0.0)):.0f} ms)")
+            for area in context.screen.areas if context.screen else ():
+                area.tag_redraw()
+            return True
         if message_type != PREVIEW_CACHE_EXPORTED:
             return False
         pending = getattr(self, "_export_pending", None) or {}
@@ -1142,6 +1168,68 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         console_log(f"Fumaris preview complete for {self._domain_name}")
         return {"FINISHED"}
 
+    # F8: Stop keeps the cached frames. The preview stays paused on its cache
+    # (scrub, play back, Save Sequence) while the bridge frees the
+    # simulation's GPU memory; Play starts over from the first frame, a
+    # second Stop, a settings change or any other job releases the cache.
+    def can_park(self, context):
+        domain = bpy.data.objects.get(self._domain_name)
+        cache = getattr(self, "_preview_cache", None) or {}
+        return bool(
+            domain is not None
+            and domain.fumaris.preview_cache
+            and not getattr(self, "_parked", False)
+            and getattr(self, "_accepted", False)
+            and getattr(self, "_worker", None) is not None
+            and not getattr(self, "_export_pending", None)
+            and not getattr(self, "_finished", False)
+            and int(float(cache.get("frames", 0) or 0)) > 0
+        )
+
+    def park(self, context):
+        domain = bpy.data.objects.get(self._domain_name)
+        self._parked = True
+        self._pause_requested = True
+        self._replaying = False
+        self._replay_waiting = False
+        self._restart_pending = False
+        self._loop_reset_pending = False
+        self._parked_signature, self._parked_settings = self._parked_digest(domain)
+        self._parked_checked_at = time.monotonic()
+        self._worker.send_preview_release()
+        # Redraw the view from the cache (the live state is about to go).
+        self._last_preview_signature = None
+        self._next_preview_capture_at = 0.0
+        domain.fumaris.simulation_state = "idle"
+        diagnostics.set_status(self._diagnostic_key, "Stopped (cache kept)")
+        console_log(f"Fumaris preview stopped for {self._domain_name}; its cached frames are kept")
+        tag_timelines(context)
+
+    def _parked_stale(self, context):
+        """The domain or its sources changed since Stop (checked twice a second)."""
+        now = time.monotonic()
+        if now < getattr(self, "_parked_checked_at", 0.0) + 0.5:
+            return False
+        self._parked_checked_at = now
+        domain = bpy.data.objects.get(self._domain_name)
+        if domain is None:
+            return True
+        return self._parked_digest(domain) != (self._parked_signature, self._parked_settings)
+
+    def _parked_digest(self, domain):
+        """(session structure, simulation settings); None where the domain
+        cannot give one (no emitter collection)."""
+        from .participants import participants as gather_participants
+        try:
+            structure = session_structure_signature(domain)
+        except Exception:
+            structure = None
+        try:
+            sources = gather_participants(domain.fumaris)
+        except Exception:
+            sources = []
+        return structure, settings_digest(domain, sources, getattr(self, "_resolution_scale", 1.0))
+
     def set_paused(self, context, paused):
         paused = bool(paused)
         if paused == getattr(self, "_pause_requested", False):
@@ -1230,6 +1318,12 @@ class FUMARIS_OT_preview_stop(Operator):
         if job is None:
             self.report({"WARNING"}, "This domain has no active preview")
             return {"CANCELLED"}
+        if getattr(job, "can_park", None) is not None and job.can_park(context):
+            # F8: the cached frames stay; a second Stop releases them.
+            job.park(context)
+            for area in context.screen.areas if context.screen else ():
+                area.tag_redraw()
+            return {"FINISHED"}
         _cancel_job(context, job)
         return {"FINISHED"}
 
@@ -1401,6 +1495,11 @@ class FUMARIS_OT_preview_pause(Operator):
         if getattr(job, "_pause_requested", False) and getattr(job, "_export_pending", None):
             self.report({"INFO"}, "Saving a version: Resume once it is written")
             return {"CANCELLED"}
+        if getattr(job, "_parked", False):
+            # Stopped with its cache kept: Play starts over, as after any Stop.
+            name = job._domain_name
+            _cancel_job(context, job)
+            return bpy.ops.fumaris.preview_play(domain_name=name)
         try:
             job.set_paused(
                 context,
@@ -1562,7 +1661,7 @@ class FUMARIS_OT_cache_slot_new(Operator):
 
     @classmethod
     def poll(cls, context):
-        return bool(_active_domain(context) and not active_job())
+        return bool(_active_domain(context) and not blocking_job())
 
     def execute(self, context):
         domain = _active_domain(context)
@@ -1590,7 +1689,7 @@ class FUMARIS_OT_cache_slot_restore_settings(Operator):
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
-        if not domain or active_job():
+        if not domain or blocking_job():
             return False
         # Polls run while drawing: peek, never create the cache identity.
         directory = peek_output_directory_for_object(domain)
@@ -1631,7 +1730,7 @@ class FUMARIS_OT_cache_make_lighter(Operator):
     @classmethod
     def poll(cls, context):
         domain = _active_domain(context)
-        if not domain or active_job():
+        if not domain or blocking_job():
             return False
         if "_lite" in (domain.fumaris.cache_slot or ""):
             cls.poll_message_set("This version is already a lighter copy")
@@ -1827,7 +1926,7 @@ class FUMARIS_OT_cache_protect(Operator):
 
     @classmethod
     def poll(cls, context):
-        return bool(_active_domain(context) and not active_job())
+        return bool(_active_domain(context) and not blocking_job())
 
     def execute(self, context):
         domain = _active_domain(context)
@@ -1861,7 +1960,7 @@ class FUMARIS_OT_delete(Operator):
         if background_job(domain):
             cls.poll_message_set("This domain is baking in the background")
             return False
-        return bool(domain and not active_job())
+        return bool(domain and not blocking_job())
 
     def invoke(self, context, event):
         domain = _active_domain(context)
@@ -1887,7 +1986,7 @@ class FUMARIS_OT_delete(Operator):
         if not domain:
             self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
-        if active_job():
+        if blocking_job():
             self.report({"ERROR"}, "Stop the active Fumaris simulation first")
             return {"CANCELLED"}
         prefix = domain.fumaris.output_prefix or "fumaris_"
@@ -2224,7 +2323,13 @@ def _cancel_preview_before_native_playback(_scene=None, _depsgraph=None):
     _cancel_job(bpy.context, job)
 
 
+def _release_parked(job):
+    _cancel_job(bpy.context, job)
+
+
 def register():
+    from . import runtime
+    runtime._PARKED_RELEASE[0] = _release_parked
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_MT_view.append(_draw_view_menu)

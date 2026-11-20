@@ -31,6 +31,7 @@ from .protocol import (
     FAILED,
     FRAME,
     PREVIEW_CACHE_EXPORT,
+    PREVIEW_RELEASE,
     PREVIEW_RENDER,
     SESSION_BEGIN,
     SESSION_COMPLETE,
@@ -130,6 +131,11 @@ class BridgeWorker:
     def send_preview_cache_export(self, header):
         """Write the preview cache's frames as VDB files (PREVIEW_CACHE_EXPORTED)."""
         self._requests.put_nowait((PREVIEW_CACHE_EXPORT, header, b""))
+
+    def send_preview_release(self):
+        """Stop keeping the cache (F8): free the simulation's GPU memory; the
+        bridge then draws cached frames only (PREVIEW_RELEASED)."""
+        self._requests.put_nowait((PREVIEW_RELEASE, {}, b""))
 
     def end_session(self):
         self._requests.put_nowait((SESSION_END, {}, b""))

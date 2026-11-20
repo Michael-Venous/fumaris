@@ -8,7 +8,7 @@ from bpy.props import EnumProperty
 from mathutils import Vector
 
 from . import detail_stack
-from .runtime import active_job
+from .runtime import active_job, blocking_job
 
 
 # Presets start from the domain defaults (properties.py)
@@ -583,7 +583,7 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         if context.mode != "OBJECT":
             cls.poll_message_set("Switch to Object Mode to create a Fumaris setup")
             return False
-        if active_job():
+        if blocking_job():
             cls.poll_message_set("Stop the active Fumaris simulation before creating a setup")
             return False
         return context.scene is not None
@@ -765,7 +765,7 @@ class FUMARIS_OT_participants_add_selected(bpy.types.Operator):
         if context.mode != "OBJECT":
             cls.poll_message_set("Switch to Object Mode")
             return False
-        if active_job():
+        if blocking_job():
             cls.poll_message_set("Stop the active Fumaris simulation first")
             return False
         if resolve_domain(context) is None:
@@ -845,7 +845,7 @@ class FUMARIS_OT_domain_choose(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if active_job():
+        if blocking_job():
             cls.poll_message_set("Stop the active Fumaris simulation to choose another domain")
             return False
         return True
@@ -871,7 +871,7 @@ class FUMARIS_OT_participant_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return not active_job()
+        return not blocking_job()
 
     def execute(self, context):
         from .playback import resolve_domain
@@ -913,7 +913,7 @@ class FUMARIS_OT_object_delete(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if active_job():
+        if blocking_job():
             cls.poll_message_set("Stop the active Fumaris simulation first")
             return False
         return True

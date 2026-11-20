@@ -198,8 +198,9 @@ follow scene color-management settings; final OpenVDB shading and rendering
 inside Blender are unaffected.
 
 Press `Pause` to inspect the frozen live grid from other angles without
-advancing it. Press `Stop` to end preview, clear its viewport image, and release
-its Flow working set. Native Blender
+advancing it. Press `Stop` to end preview and release its simulation's GPU
+memory. Without Cache Preview it also clears its viewport image. With Cache
+Preview the cached frames stay after Stop (see Preview Cache). Native Blender
 playback is separate from Fumaris preview and should not be started at the same
 time.
 
@@ -1219,9 +1220,10 @@ For a faster or more memory-efficient simulation:
 
 - Hardware coverage is limited and AMD GPUs are currently unqualified.
 - Geometry Nodes Volume emission is experimental.
-- The preview cache lasts until the preview stops; Save Sequence keeps it.
-  Cached frames are for looking back, not checkpoints: Resume always continues
-  from the live frame.
+- The preview cache lasts until Play starts the preview again, Release Cache,
+  a settings change or another job; Save Sequence keeps it on disk. Cached
+  frames are for looking back, not checkpoints: Resume always continues from
+  the live frame, and Play after Stop starts from the first frame.
 - Volume preview shading is intentionally simpler than a final Blender volume
   material. Scene Occlusion uses viewport depth, so transparent objects occlude
   as if solid.
@@ -1414,8 +1416,13 @@ ever removes cached frames.
 - **Escape** stops a bake (keeping the frames written, like Stop), a playing
   live preview (like Stop) and a save in progress (its files are removed). A
   paused preview leaves Escape to Blender (it stops timeline playback).
-- **Stop** releases the cache with the simulation (as does a change of
-  resolution or domain, which restarts the preview).
+- **Stop** releases the simulation's GPU memory but keeps the cached frames:
+  the panel says "Stopped: cached frames kept" with the RAM they use, and
+  scrubbing, timeline playback and Save Sequence work as while paused (frames
+  outside the cache show nothing). **Play** then starts the preview again from
+  the first frame, and **Release Cache** (the Stop button now) frees the
+  frames. A change to the domain's or its sources' simulation settings,
+  starting a bake or another preview, and loading a file release them too.
 
 Preferences > Preview Cache RAM sets the most memory the cache may use (0: a
 quarter of the RAM, from 1 to 16 GB; set more to keep more frames, for example

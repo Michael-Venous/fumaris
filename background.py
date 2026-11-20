@@ -48,7 +48,7 @@ from .diagnostics import console_log
 from .exporters import bridge_executable, build_session
 from .importers import VOLUME_MARKER, baked_frame_count, delete_generated_data, delete_temporary_writes
 from .preview import clear_preview
-from .runtime import active_job, active_mode, background_job
+from .runtime import active_job, active_mode, background_job, blocking_job, release_parked_preview
 from .jobs import WRITING_LAST_FRAMES
 from .utils import (
     addon_directory,
@@ -200,6 +200,8 @@ def _check(context, domain):
     Returns (version folder, prefix)."""
     if background_job(domain) is not None:
         raise RuntimeError(f"'{domain.name}' is already baking in the background")
+    # A stopped preview that only keeps its cached frames (F8) gives way.
+    release_parked_preview()
     foreground = active_job()
     if foreground is not None and getattr(foreground, "_domain_name", None) == domain.name:
         raise RuntimeError(f"Stop the {'bake' if active_mode() == 'baking' else 'preview'} of '{domain.name}' first")
@@ -980,7 +982,7 @@ class FUMARIS_OT_bake_background(Operator):
         if background_job(domain) is not None:
             cls.poll_message_set("This domain is baking in the background")
             return False
-        foreground = active_job()
+        foreground = blocking_job()
         if foreground is not None and getattr(foreground, "_domain_name", None) == domain.name:
             cls.poll_message_set("Stop this domain's preview or bake first")
             return False

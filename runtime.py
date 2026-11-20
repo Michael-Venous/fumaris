@@ -40,6 +40,26 @@ def active_job():
     return _ACTIVE_JOB
 
 
+# F8: releases a stopped preview that only keeps its cached frames (set by
+# operators.py: the job's own cleanup).
+_PARKED_RELEASE = [None]
+
+
+def blocking_job():
+    """The active job, unless it is a stopped preview keeping only its cached
+    frames (F8): that one steps aside for anything else and is released when
+    another job claims the GPU."""
+    job = active_job()
+    return None if job is not None and getattr(job, "_parked", False) else job
+
+
+def release_parked_preview():
+    """Ends a stopped preview's kept cache, if there is one."""
+    job = active_job()
+    if job is not None and getattr(job, "_parked", False) and _PARKED_RELEASE[0] is not None:
+        _PARKED_RELEASE[0](job)
+
+
 def active_mode():
     job = active_job()
     return getattr(job, "_job_mode", None) if job else None
@@ -48,6 +68,9 @@ def active_mode():
 def claim_job(job, mode):
     global _ACTIVE_JOB
     current = active_job()
+    if current is not None and current is not job and getattr(current, "_parked", False):
+        release_parked_preview()
+        current = active_job()
     if current is not None and current is not job:
         raise RuntimeError(f"Fumaris is already {active_mode()}")
     job._job_mode = mode

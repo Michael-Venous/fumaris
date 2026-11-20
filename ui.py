@@ -4,7 +4,7 @@ import textwrap
 from bpy.types import Panel
 
 from . import detail_stack
-from .runtime import active_job, active_mode, background_job
+from .runtime import active_job, active_mode, background_job, blocking_job
 from .jobs import WRITING_LAST_FRAMES, writing_last_frames
 from . import diagnostics
 from .memory_auto import draw_budget_summary, draw_full_resolution_forecast
@@ -1631,7 +1631,7 @@ class FUMARIS_PT_main(Panel):
             presets.operator("fumaris.preset_save", text="", icon="ADD")
         if props.smoke_object_type == "none":
             setup = header.row()
-            setup.enabled = active_job() is None
+            setup.enabled = blocking_job() is None
             setup.operator("fumaris.quick_setup", text="Quick Setup…", icon="ADD")
 
         if props.smoke_object_type == "domain":
@@ -1733,7 +1733,7 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             for obj in domains:
                 row = listing.row(align=True)
                 choose = row.row(align=True)
-                choose.enabled = not active_job()
+                choose.enabled = not blocking_job()
                 _highlight_row(choose, "fumaris.domain_choose", obj.name,
                                "RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF", obj == domain)
                 # Show in Viewport: the domain, its preview and its imported volumes.
@@ -1776,7 +1776,7 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         header.label(text="Add Objects", icon="ADD")
         if body:
             add = body.column(align=True)
-            add.enabled = not active_job()
+            add.enabled = not blocking_job()
             for pair in (("emitter", "collider"), ("effector", "outflow")):
                 row = add.row(align=True)
                 for role in pair:
@@ -1784,7 +1784,7 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
                                             icon=_ROLE_ICONS[role])
                     operator.role = role
             source = body.row()
-            source.enabled = not active_job()
+            source.enabled = not blocking_job()
             # Add Source acts on context.object: point it at the chosen domain.
             source.context_pointer_set("object", domain)
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")

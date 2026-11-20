@@ -3,7 +3,7 @@ import time
 
 import bpy
 from bpy.props import PointerProperty
-from .runtime import active_job, active_mode, background_job
+from .runtime import active_job, active_mode, background_job, blocking_job
 
 _KEYMAPS = []
 
@@ -24,8 +24,11 @@ def shortcut_label(context, operator):
 def preview_description(context, action):
     has_direct_shortcut = action in {"stop", "toggle"}
     job = active_job() if active_mode() == 'previewing' else None
+    parked = bool(getattr(job, '_parked', False))
     if action in {'toggle', 'pause'}:
-        action = ('resume' if getattr(job, '_pause_requested', False) else 'pause') if job else 'play'
+        action = 'play' if parked else (('resume' if getattr(job, '_pause_requested', False) else 'pause') if job else 'play')
+    if action == 'stop' and parked:
+        action = 'release'
     domain = resolve_domain(context) if hasattr(context, 'view_layer') else None
     cached = bool(domain and getattr(domain.fumaris, 'preview_cache', False))
     descriptions = {
@@ -36,7 +39,9 @@ def preview_description(context, action):
                  'Preview to keep its frames for scrubbing and saving.'),
         'pause': 'Pause the preview, keeping its simulation ready to resume; with Cache Preview on, scrub or play the timeline to see the cached frames, or Save Sequence.',
         'resume': 'Resume the preview from its live frame (after the last frame: from the start).',
-        'stop': 'Stop the preview, releasing its simulation memory and its cache.',
+        'stop': 'Stop the preview, releasing its simulation memory. With Cache Preview, its cached frames stay '
+                'for scrubbing, playback and Save Sequence until Play, a second Stop or a settings change.',
+        'release': 'Release the cached frames the stopped preview kept (their RAM and the GPU memory to draw them).',
     }
     binding = shortcut_label(context, 'fumaris.preview_stop' if action == 'stop' else 'fumaris.preview_toggle')
     # Blender appends the keymap shortcut for directly bound operators.
@@ -273,7 +278,7 @@ def transport_status(context, domain):
     job = active_job()
     if active_mode() == 'previewing' and job is not None:
         live = getattr(job, '_frame', None)
-        if live:
+        if live and not getattr(job, '_parked', False):
             parts.append(f'Live {int(live)}')
         cache = getattr(job, '_preview_cache', None) or {}
         if int(cache.get('frames', 0)) > 0:
@@ -294,10 +299,12 @@ def draw_controls(layout, context, *, compact=False, popover=True, details=True,
     job = active_job()
     running = active_mode() == 'previewing'
     paused = running and bool(getattr(job, '_pause_requested', False))
+    # F8: stopped with its cached frames kept: Play starts over.
+    parked = running and bool(getattr(job, '_parked', False))
     row = layout.row(align=True)
     if compact and popover:
         row.popover(panel='FUMARIS_PT_playback', text='Fumaris')
-    row.operator('fumaris.preview_toggle', text='' if compact else ('Resume' if paused else 'Pause' if running else 'Play'),
+    row.operator('fumaris.preview_toggle', text='' if compact else ('Play' if parked else 'Resume' if paused else 'Pause' if running else 'Play'),
                  icon='PAUSE' if running and not paused else 'PLAY')
     # One button for Bake and Stop: Stop while a preview or bake runs (the
     # two never run together), else Bake for the same domain (the Bake
@@ -305,7 +312,8 @@ def draw_controls(layout, context, *, compact=False, popover=True, details=True,
     if active_mode() == 'baking':
         row.operator('fumaris.stop', text='' if compact else 'Stop Bake', icon='SNAP_FACE')
     elif running:
-        row.operator('fumaris.preview_stop', text='' if compact else 'Stop', icon='SNAP_FACE')
+        row.operator('fumaris.preview_stop', text='' if compact else ('Release Cache' if parked else 'Stop'),
+                     icon='TRASH' if parked else 'SNAP_FACE')
         # Small, as in the Simulate panel.
         row.row(align=True).operator('fumaris.preview_restart', text='', icon='FILE_REFRESH')
     else:
@@ -333,7 +341,15 @@ def draw_controls(layout, context, *, compact=False, popover=True, details=True,
         layout.label(text=status)
     if not compact and details:
         layout.label(text='Domain: ' + domain.name if domain else 'Choose a domain', icon='MOD_FLUID')
-        if running:
+        if parked:
+            kept = layout.column(align=True)
+            kept.label(text='Stopped: cached frames kept', icon='INFO')
+            gib = float(getattr(job, '_parked_gpu_bytes', 0) or 0) / 2**30
+            cache = getattr(job, '_preview_cache', None) or {}
+            ram = float(cache.get('bytes', 0) or 0) / 2**30
+            kept.label(text=f'{ram:.1f} GB RAM' + (f', {gib:.1f} GB GPU' if gib > 0 else ''), icon='BLANK1')
+            kept.label(text='Play, Release or a setting change ends it', icon='BLANK1')
+        elif running:
             layout.label(text='Paused' if paused else 'Playing')
         elif active_mode() == 'baking':
             layout.label(text='Baking — live preview unavailable', icon='INFO')
@@ -347,7 +363,7 @@ class FUMARIS_PT_playback(bpy.types.Panel):
 
     def draw(self, context):
         row = self.layout.row()
-        row.enabled = not active_job()
+        row.enabled = not blocking_job()
         row.prop(context.scene, 'fumaris_preview_domain', text='Domain')
         draw_controls(self.layout, context)
         self.layout.label(text='Edit shortcuts in Fumaris preferences', icon='PREFERENCES')

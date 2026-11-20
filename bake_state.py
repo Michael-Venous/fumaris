@@ -33,6 +33,8 @@ def sync_cache_slot(obj):
     show_only_slot_volumes(os.path.dirname(directory), directory)
     from .sparks import follow_bakes
     follow_bakes()
+    from .particles import follow_bakes as follow_particle_bakes
+    follow_particle_bakes()
     from .compare import after_slot_change, forget_scan
     after_slot_change(obj)
     forget_scan()

@@ -1424,6 +1424,9 @@ def _draw_domain(layout, scene, props):
             field.prop(props, "oxygen_use", text="Use")
             field.prop(props, "oxygen_mixing", text="Mixing")
 
+    from .particles import draw_domain_section
+    draw_domain_section(layout, props, _section, _pair, _nested_foldout, is_baking)
+
     participants_box = layout.box()
     participants_box.enabled = not is_baking
     if _section(participants_box, props, "show_panel_participants", "Participants", "OUTLINER_COLLECTION"):

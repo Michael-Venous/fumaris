@@ -4,6 +4,7 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: Particles (domain panel): GPU particles that ride the smoke, simulated with it in every step, so they show in the live preview and a bake writes them with its VDBs (a point-cloud file per frame, imported as a point cloud that renders in Cycles and works with Geometry Nodes). Tracers (glitter that follows the smoke exactly) or Embers (heavy, falling, cooling, glowing); spawn in the smoke by density and temperature, from mesh surfaces or volumes, or from point clouds and Geometry Nodes points; drag, gravity, lifetime, bounce/stick/kill on colliders. Bakes are identical run to run and to the live preview. A million particles add about 0.4 ms of GPU time per frame and 35 MB of cache per frame.
 - Changed: Sparks start only where the hot gas rises (new Lift Speed input, 0.5 m/s): embers are carried up by rising gas instead of being born in still air at a fuel bed and falling through the ground. Sparks already in a file keep their settings; Add Sparks again for the new behaviour.
 
 - Added: turning on Full-Resolution Channels after a preview or bake shows what that run's busiest frame would need with it ("Last run's peak at full res:" / "~12 of 9.3 GB: smoke cut off"), in red when it would fill or overflow VRAM. Auto VRAM keeps the same amount with it on, which holds 3-4 times fewer blocks, so a scene that fit could be cut off seconds in with no warning before the run. The red line also shows under VRAM while Advanced is folded.

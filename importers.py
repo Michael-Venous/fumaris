@@ -1917,6 +1917,8 @@ def import_sequence(
     # Sparks made for the volume this one replaces carry on with it.
     from .sparks import follow_bakes
     follow_bakes()
+    from .particles import follow_bakes as follow_particle_bakes
+    follow_particle_bakes()
     return volume_object
 
 

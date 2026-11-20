@@ -1789,11 +1789,10 @@ class FumarisSettings(PropertyGroup):
 
     smoke_decay: FloatProperty(
         name="Smoke Decay",
-        description="Fraction of the smoke removed per second, in proportion to its density. Flow applies whichever removes more each step, this or Dissipation, so dense smoke ignores Dissipation and fades only at this rate. Raise it when dense leftovers linger after the thin smoke is gone. Flow's built-in value is 0.3",
+        description="Fraction of the smoke removed per second, in proportion to its density. Flow applies whichever removes more each step, this or Dissipation, so dense smoke ignores Dissipation and fades only at this rate. Raise it when dense leftovers linger after the thin smoke is gone. Flow's built-in value is 0.3. The rate compounds, so 0.99 leaves 1% after a second (1.0 would remove all smoke every step)",
         default=0.1,
         min=0.0,
-        max=1.0,
-        soft_max=0.99,
+        max=0.99,
         subtype="FACTOR",
     )
 

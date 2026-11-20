@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Fixed: Smoke Decay 1.0 removed all the smoke every step, so a source's smoke never left it. The rate compounds over each second, so the slider now ends at 0.99 (1% left after a second), and older files set to 1.0 simulate as 0.99.
+- Fixed: bakes with fire glow are now guaranteed to write the same files run to run: one total used for the glow was added up in an order that depended on how the work was split between CPU threads.
 - Changed: bakes with fire glow (the Explosion and other Pyro looks) write their VDB files faster, which speeds up bakes on computers with few CPU cores: an Explosion at Resolution 768 on 4 cores bakes in 7.8 s instead of 10.8 s (the glow and Pyro grids took 400 ms of each frame's writing, now 220 ms). The files are identical.
 - Changed: OpenVDB sources that play a sequence load each new frame faster: only the parts of the file that hold something are read into the simulation and sent to the GPU, and the smoke grid is sent once instead of three times (a 512 Fumaris explosion used as a source: 311 -> 198 ms a new frame; a 256 one 74 -> 55 ms; the cauliflower scene's four VDB emitters 15 -> 11 ms a frame). Results are identical.
 - Fixed: masked and deforming mesh sources could bake slightly differently depending on what was simulated before them in the same step (which of two equally close faces of the mesh a cell took depended on the face search built before); with the surface-search reuse of this version that showed up as a different bake. Each mesh's search now depends only on the mesh. Rising Smoke, Steady Fire, Explosion and unmasked static or moving sources bake identically; masked and deforming sources bake slightly differently from before.

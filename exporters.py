@@ -250,6 +250,8 @@ def session_structure_signature(domain):
         simulation_memory_mb(props),
         bool(getattr(props, "simulation_memory_auto", False)),
         bool(getattr(props, "full_resolution_velocity", False)),
+        # An already four-channel session still needs a separate attribute pool.
+        bool(getattr(props, "color_mixing", False)),
         bool(getattr(props, "advection_reflection", False)),
         bool(props.follow_object),
         sim_start,

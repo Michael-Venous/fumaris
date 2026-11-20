@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Fixed: changing Per-Emitter Smoke Color during playback restarts the preview with the right VRAM budget, even if the simulation already kept all four channels.
+
 - Fixed (Windows): a background bake in a deep project folder could fail at its end with "The filename or extension is too long" (WinError 206): the folder Fumaris imports the bake from now has a shorter name.
 - Changed: moved the Per-Emitter Smoke Color explanation and simulation cost into its tooltip. The Color section still shows advice when all emitters use the same smoke color.
 - Fixed: cache scans ignore directories named like numbered VDB or PLY frames. If a directory blocks a frame write, the bake reports that frame and keeps the output already written.

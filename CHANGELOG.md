@@ -5,6 +5,9 @@ All notable customer-facing changes are recorded here.
 ## Unreleased
 
 - Changed: moved the Per-Emitter Smoke Color explanation and simulation cost into its tooltip. The Color section still shows advice when all emitters use the same smoke color.
+- Fixed: cache scans ignore directories named like numbered VDB or PLY frames. If a directory blocks a frame write, the bake reports that frame and keeps the output already written.
+
+- Fixed: when Replace has to copy its backups, an open cache file can block publication. Rollback leaves that unchanged file alone, restores the earlier files, and keeps the partial bake in Versions.
 
 - Fixed: saving a copy of a Blender file beside the original could share a writable bake cache. The first cache edit in the copy gives it its own cache and keeps its existing versions.
 - Fixed: Replace keeps the previous bake until the new one finishes. If the new bake fails or is stopped, any completed VDB frames are kept in a separate partial version.

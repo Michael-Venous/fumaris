@@ -2110,7 +2110,7 @@ def _frame_files(directory, prefix, suffix=".vdb"):
             numbered = [
                 (frame, entry.path)
                 for entry in entries
-                if (frame := _frame_number(entry.name, prefix, suffix)) is not None
+                if (frame := _frame_number(entry.name, prefix, suffix)) is not None and entry.is_file()
             ]
     except (FileNotFoundError, NotADirectoryError):
         return []

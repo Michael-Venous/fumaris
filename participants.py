@@ -65,7 +65,7 @@ _ROLE_NAMES = {"emitter": "Emitter", "collider": "Collider", "effector": "Effect
                "outflow": "Outflow", "domain": "Domain", "none": "nothing"}
 
 
-def participant_overview(domain_props, limit=60, search="", counts=None):
+def participant_overview(domain_props, limit=60, search="", counts=None, *, role_filter=None):
     """(object, role, reason) for the objects in the domain's collections.
 
     reason is None for objects the simulation uses, otherwise why it skips
@@ -78,6 +78,8 @@ def participant_overview(domain_props, limit=60, search="", counts=None):
     rows = []
     seen = set()
     for attribute, role in _ROLES:
+        if role_filter is not None and role != role_filter:
+            continue
         collection = getattr(domain_props, attribute, None)
         if collection is None:
             continue

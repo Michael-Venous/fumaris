@@ -259,12 +259,14 @@ def draw_full_resolution_forecast(layout, props, state, fire=False, alerts_only=
 
 def draw_budget_summary(layout, props, state=None):
     """Read-only line under Resolution / VRAM: the Auto amount."""
-    budget, when = budget_bytes_for_display(props, state)
-    column = layout.column(align=True)
+    budget, _when = budget_bytes_for_display(props, state)
     if getattr(props, "simulation_memory_auto", False):
-        lines = budget_lines(props, state) or ["Auto VRAM: what is free", "at start, less a reserve"]
-        for index, line in enumerate(lines):
-            column.label(text=line, icon="MEMORY" if index == 0 else "BLANK1")
+        gib = float(1 << 30)
+        free = free_bytes_for_display(props, state)
+        text = f"Auto VRAM {budget / gib:.1f} GB" if budget is not None else "Auto VRAM · at start"
+        if budget is not None and free is not None:
+            text += f" · {max(0, free - budget) / gib:.1f} GB left"
+        layout.label(text=text)
     elif budget is not None:
         # A set amount above what the GPU has: the bridge reserves what fits
         # and spills into system memory only when the smoke needs more.
@@ -272,14 +274,13 @@ def draw_budget_summary(layout, props, state=None):
         reading = selected_reading(_gpu_uuid())
         total = reading.get("device_local_bytes") if reading else None
         if total and budget > total:
+            column = layout.column(align=True)
             row = column.row()
             row.alert = True
             row.label(text=f"Above this GPU's {total / (1 << 30):.0f} GB:", icon="ERROR")
             row = column.row()
             row.alert = True
             row.label(text="the rest is slow (system RAM)", icon="BLANK1")
-    if budget is not None:
-        column.separator()
 
 
 def auto_toggled(props, _context):

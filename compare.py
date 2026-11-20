@@ -1939,8 +1939,8 @@ def _draw_entry_row(column, domain, entry, selected):
 def draw_compare(layout, scene, domain):
     box = layout.box()
     actions = box.row(align=True)
-    actions.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE").domain_name = domain.name
-    actions.prop(scene, "fumaris_versions_all", text="", icon="OUTLINER", toggle=True)
+    actions.alignment = "LEFT"
+    actions.prop(scene, "fumaris_versions_all", text="All domains", icon="OUTLINER", toggle=True)
     if not scene.fumaris_versions_all:
         _draw_domain_versions(box, layout, domain)
         return

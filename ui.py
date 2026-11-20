@@ -63,15 +63,6 @@ def _fire_on_half_storage(props):
         return False
 
 
-def _fire_storage(props):
-    """Where the domain's fire keeps its fuel and burn: "half" (fire
-    storage), "full" (Full-Resolution Channels) or "none" (no fire, or
-    another option already keeps all four channels)."""
-    if not _fire_on_half_storage(props):
-        return "none"
-    return "full" if props.full_resolution_velocity else "half"
-
-
 def _wrapped(layout, text, icon="NONE"):
     """A status label that wraps instead of being cut off in a narrow panel."""
     lines = textwrap.wrap(text, width=max(16, _LINE_CHARS)) or [""]
@@ -117,14 +108,39 @@ _ROLE_ICONS = {"emitter": "OUTLINER_OB_FORCE_FIELD", "collider": "MOD_PHYSICS",
                "effector": "FORCE_WIND", "outflow": "TRIA_DOWN_BAR"}
 
 
-def _draw_participant_list(layout, props):
-    """Objects in the domain's collections: select, enable, solo, and why an
-    object is not simulated."""
-    layout.separator(factor=0.5)
-    content, opened = _nested_foldout(layout, props, "show_participant_list", "Objects")
-    if not opened:
-        return
-    draw_participant_rows(content, props)
+_PARTICIPANT_GROUPS = (
+    ("emitter", "Emitters"), ("collider", "Colliders"),
+    ("effector", "Effectors"), ("outflow", "Outflows"),
+)
+
+
+def draw_participants(layout, props, *, activate=False):
+    """The same collection fields and disclosed objects in both panels."""
+    wm = bpy.context.window_manager
+    searching = bool(wm.fumaris_participant_search.strip())
+    groups = []
+    for role, label in _PARTICIPANT_GROUPS:
+        attribute = f"{role}_collection"
+        collection = getattr(props, attribute)
+        disclosure = f"show_{role}_participants"
+        count = len(collection.all_objects) if collection else 0
+        groups.append((role, label, attribute, disclosure, count))
+    if searching or any(count > _SEARCH_FROM and getattr(props, disclosure)
+                        for _, _, _, disclosure, count in groups):
+        layout.prop(wm, "fumaris_participant_search", text="", icon="VIEWZOOM")
+    for role, label, attribute, disclosure, count in groups:
+        split = _label_split(layout, 0.28, 0.36)
+        title = split.row(align=True)
+        title.alignment = "LEFT"
+        opened = count and getattr(props, disclosure)
+        if count:
+            title.prop(props, disclosure, text="", icon="TRIA_DOWN" if opened else "TRIA_RIGHT", emboss=False)
+        else:
+            title.label(text="", icon="BLANK1")
+        title.label(text=label)
+        split.prop(props, attribute, text="")
+        if opened:
+            draw_participant_rows(layout.column(align=True), props, role=role, activate=activate)
 
 
 def _highlight_row(layout, operator, name, icon, highlighted, **properties):
@@ -160,7 +176,7 @@ class FUMARIS_OT_participant_list_more(bpy.types.Operator):
         return {"FINISHED"}
 
 
-def draw_participant_rows(content, props, *, activate=False):
+def draw_participant_rows(content, props, *, role, activate=False):
     """One row per object in the domain's collections. activate (the
     sidebar): clicking a name makes it active and shows its settings."""
     from .operators import solo_object_name
@@ -170,10 +186,9 @@ def draw_participant_rows(content, props, *, activate=False):
     wm = bpy.context.window_manager
     search = wm.fumaris_participant_search.strip().lower()
     counts = {}
-    rows = participant_overview(props, limit=wm.fumaris_participant_limit, search=search, counts=counts)
+    rows = participant_overview(props, limit=wm.fumaris_participant_limit, search=search,
+                                counts=counts, role_filter=role)
     matching = counts.get("matching", 0)
-    if search or matching > _SEARCH_FROM:
-        content.prop(wm, "fumaris_participant_search", text="", icon="VIEWZOOM")
     if not rows:
         content.label(text="No matching objects" if search else "No objects in these collections", icon="INFO")
         return
@@ -959,23 +974,40 @@ def emitter_domains(obj, scene=None):
     return domains
 
 
+def _draw_bake_menu(layout, domain, *, preview_options=False):
+    protected = domain is not None and is_protected(peek_output_directory_for_object(domain))
+    row = layout.row()
+    row.enabled = not protected
+    row.operator("fumaris.bake_background", text="Bake in Background", icon="RENDERLAYERS")
+    playblast = layout.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE")
+    if domain is not None:
+        playblast.domain_name = domain.name
+    if preview_options and domain is not None:
+        layout.separator()
+        options = layout.column()
+        options.enabled = not blocking_job()
+        options.prop(domain.fumaris, "preview_cache")
+        options.prop(domain.fumaris, "preview_bake")
+    layout.separator()
+    row = layout.row()
+    row.enabled = not protected
+    row.operator("fumaris.delete", text="Delete Bake", icon="TRASH")
+
+
 class FUMARIS_MT_bake_more(bpy.types.Menu):
-    """Beside Play and Bake: the less common bake actions."""
     bl_label = "Bake"
     bl_idname = "FUMARIS_MT_bake_more"
 
     def draw(self, context):
-        layout = self.layout
-        obj = context.object
-        protected = obj is not None and is_protected(peek_output_directory_for_object(obj))
-        row = layout.row()
-        row.enabled = not protected
-        row.operator("fumaris.bake_background", text="Bake in Background", icon="RENDERLAYERS")
-        layout.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE")
-        layout.separator()
-        row = layout.row()
-        row.enabled = not protected
-        row.operator("fumaris.delete", text="Delete Bake", icon="TRASH")
+        _draw_bake_menu(self.layout, context.object)
+
+
+class FUMARIS_MT_sidebar_bake_more(bpy.types.Menu):
+    bl_label = "Bake"
+    bl_idname = "FUMARIS_MT_sidebar_bake_more"
+
+    def draw(self, context):
+        _draw_bake_menu(self.layout, context.object, preview_options=True)
 
 
 class FUMARIS_OT_emitter_color_offer(bpy.types.Operator):
@@ -1058,6 +1090,13 @@ class FUMARIS_OT_domain_show_look(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _draw_versions_section(layout, scene, domain):
+    box = layout.box()
+    if _section(box, domain.fumaris, "show_panel_compare", "Versions", "FILE_FOLDER"):
+        from .compare import draw_compare
+        draw_compare(box, scene, domain)
+
+
 def _draw_domain(layout, scene, props):
     job = active_job()
     mode = active_mode()
@@ -1073,6 +1112,7 @@ def _draw_domain(layout, scene, props):
     # This domain's background bake (others, and the preview, stay usable).
     background = background_job(domain)
 
+    _draw_versions_section(layout, scene, domain)
     simulate_box = layout.box()
     if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
         controls = simulate_box.column(align=True)
@@ -1113,17 +1153,14 @@ def _draw_domain(layout, scene, props):
         if slot_protected:
             controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
         controls.separator(factor=0.5)
-        cache_preview = controls.row(align=True)
-        cache_preview.enabled = mode is None
-        cache_preview.prop(props, "preview_cache")
+        preview_options = controls.row(align=True)
+        preview_options.enabled = mode is None
+        preview_options.prop(props, "preview_cache")
+        preview_options.prop(props, "preview_bake", text="While Baking" if _TIGHT else "Preview While Baking")
         if props.preview_cache:
-            # Beside the checkbox; tight, on its own line so neither is cut off.
-            step = controls.row(align=True) if _TIGHT else cache_preview
+            step = controls.row(align=True)
             step.enabled = mode is None
-            step.prop(props, "preview_cache_step", text="")
-        bake_preview = controls.row(align=True)
-        bake_preview.enabled = mode is None
-        bake_preview.prop(props, "preview_bake")
+            step.prop(props, "preview_cache_step", text="Cache Quality")
         # While this domain previews: a cached preview can be kept as a
         # version (Sequence and Frame wait for a pause), and the viewport
         # pictured. Stopped, the buttons are hidden.
@@ -1221,16 +1258,11 @@ def _draw_domain(layout, scene, props):
         auto = grid_row.row(align=True)
         auto.ui_units_x = 2.2
         auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
-        # Full-Resolution Channels sits with Resolution and VRAM (user,
-        # 2026-11-20): it decides the look of billowing explosions and costs
-        # 3-4x the VRAM, so it is a first-line quality choice, not Advanced.
-        settings.prop(props, "full_resolution_velocity")
-        draw_budget_summary(settings, props, diagnostics.snapshot(domain))
+        settings.row(align=True).prop(props, "full_resolution_velocity")
+        state = diagnostics.snapshot(domain)
+        draw_budget_summary(settings, props, state)
         if props.full_resolution_velocity:
-            _wrapped(settings, "Motion at full resolution: about 3-4x the VRAM and 1.5-4x the time", "INFO")
-            if draw_full_resolution_forecast(settings, props, diagnostics.snapshot(domain),
-                                             _fire_on_half_storage(props)):
-                settings.separator()
+            draw_full_resolution_forecast(settings, props, state, _fire_on_half_storage(props), alerts_only=True)
         settings.prop(props, "air_margin")
         substeps_row = _pair(settings)
         substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
@@ -1238,13 +1270,6 @@ def _draw_domain(layout, scene, props):
         cells = substeps_row.row(align=True)
         cells.active = props.num_sub_steps > 1
         cells.prop(props, "adaptive_cfl")
-
-    # Versions right under Simulate: bakes, snapshots and playblasts are what a
-    # shot goes back and forth between (Brent, 2026-11-19: it sat below Output).
-    compare_box = layout.box()
-    if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
-        from .compare import draw_compare
-        draw_compare(compare_box, scene, props.id_data)
 
     look_box = layout.box()
     look_box.enabled = not is_baking
@@ -1456,14 +1481,8 @@ def _draw_domain(layout, scene, props):
     participants_box.enabled = not is_baking
     if _section(participants_box, props, "show_panel_participants", "Participants", "OUTLINER_COLLECTION"):
         participants = participants_box.column(align=True)
-        # Labels in a narrow column so the collection fields start close to them.
-        for name, label in (("emitter_collection", "Emitters"), ("collider_collection", "Colliders"),
-                            ("effector_collection", "Effectors"), ("outflow_collection", "Outflows")):
-            split = _label_split(participants, 0.18, 0.3)
-            split.label(text=label)
-            split.prop(props, name, text="")
+        draw_participants(participants, props)
         participants.operator_menu_enum("fumaris.add_source", "kind", text="Add Source", icon="ADD")
-        _draw_participant_list(participants, props)
 
     output_box = layout.box()
     output_box.enabled = not is_baking
@@ -1587,11 +1606,7 @@ def _draw_domain(layout, scene, props):
         # The on/off switches, two by two.
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
-        # (Full-Resolution Channels moved up to Simulate, beside Resolution.)
         grid.prop(props, "auto_cell_size")
-        storage = _fire_storage(props)
-        if not props.full_resolution_velocity and storage == "half":
-            _wrapped(advanced, "Motion, fuel and burn at half resolution: 1.6x the blocks for a fire", "INFO")
         advanced.separator()
         walls = _pair(advanced)
         walls.prop(props, "open_collider_wall")
@@ -1614,6 +1629,16 @@ def _draw_domain(layout, scene, props):
     _draw_diagnostics(layout, props)
 
 
+def _set_layout_width(context):
+    global _NARROW, _TIGHT, _LINE_CHARS
+    region = context.region
+    scale = context.preferences.system.ui_scale or 1.0
+    width = region.width / scale if region is not None else 1000.0
+    _NARROW = region is not None and width < NARROW_WIDTH
+    _TIGHT = region is not None and width < TIGHT_WIDTH
+    _LINE_CHARS = int((width - 70) / 7.0)
+
+
 class FUMARIS_PT_main(Panel):
     """Fumaris object settings in the Physics Properties editor."""
 
@@ -1628,13 +1653,7 @@ class FUMARIS_PT_main(Panel):
         return context.object is not None
 
     def draw(self, context):
-        global _NARROW, _TIGHT, _LINE_CHARS
-        region = context.region
-        scale = context.preferences.system.ui_scale or 1.0
-        width = region.width / scale if region is not None else 1000.0
-        _NARROW = region is not None and width < NARROW_WIDTH
-        _TIGHT = region is not None and width < TIGHT_WIDTH
-        _LINE_CHARS = int((width - 70) / 7.0)
+        _set_layout_width(context)
         layout = self.layout
         obj = context.object
         props = obj.fumaris
@@ -1725,6 +1744,7 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
 
     def draw(self, context):
         from . import playback
+        _set_layout_width(context)
         layout = self.layout
         domains = playback.scene_domains(context)
         domain = playback.resolve_domain(context)
@@ -1750,19 +1770,19 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             from . import background
             listing = body.column(align=True)
             for obj in domains:
-                row = listing.row(align=True)
-                choose = row.row(align=True)
+                split = listing.split(factor=0.83, align=True)
+                choose = split.row(align=True)
                 choose.enabled = not blocking_job()
                 _highlight_row(choose, "fumaris.domain_choose", obj.name,
                                "RADIOBUT_ON" if obj == domain else "RADIOBUT_OFF", obj == domain)
-                # Show in Viewport: the domain, its preview and its imported volumes.
-                row.prop(obj.fumaris, "viewport_visible", text="", emboss=False,
-                         icon="HIDE_OFF" if obj.fumaris.viewport_visible else "HIDE_ON")
-                # Its background bake: Stop on its row, progress under it.
+                actions = split.row(align=True)
+                actions.alignment = "RIGHT"
                 job = background_job(obj)
+                if job is not None and job.state != "ended":
+                    actions.operator("fumaris.bake_background_stop", text="", icon="CANCEL").domain = obj.name
+                actions.prop(obj.fumaris, "viewport_visible", text="", emboss=False,
+                             icon="HIDE_OFF" if obj.fumaris.viewport_visible else "HIDE_ON")
                 if job is not None:
-                    if job.state != "ended":
-                        row.operator("fumaris.bake_background_stop", text="", icon="CANCEL").domain = obj.name
                     background.draw_status(listing, job)
             if domains:
                 # Every domain, or the selected ones, baked in the background:
@@ -1774,6 +1794,10 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
                 chosen = buttons.row(align=True)
                 chosen.enabled = selected > 0
                 chosen.operator("fumaris.bake_all", text=f"Bake Selected ({selected})").scope = "SELECTED"
+                if domain is not None:
+                    menu = buttons.row(align=True)
+                    menu.context_pointer_set("object", domain)
+                    menu.menu("FUMARIS_MT_sidebar_bake_more", text="", icon="DOWNARROW_HLT")
                 if background.jobs():
                     bake.operator("fumaris.bake_background_stop", text="Stop All", icon="CANCEL").everything = True
         if not domains:
@@ -1784,13 +1808,11 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
         if domain is None:
             layout.label(text="Choose a domain", icon="INFO")
             return
-        # The object list first, Add Objects under it (user, 2026-11-16; was the
-        # reverse since 2026-11-15).
+        _draw_versions_section(layout, context.scene, domain)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_objects")
-        # The domain is named in the controls above: a long name cut this off.
-        header.label(text="Objects", icon="OUTLINER_COLLECTION")
+        header.label(text="Participants", icon="OUTLINER_COLLECTION")
         if body:
-            draw_participant_rows(body.column(align=True), domain.fumaris, activate=True)
+            draw_participants(body.column(align=True), domain.fumaris, activate=True)
         header, body = _sidebar_section(layout, "FUMARIS_sidebar_add")
         header.label(text="Add Objects", icon="ADD")
         if body:
@@ -1809,7 +1831,7 @@ class FUMARIS_PT_sidebar(bpy.types.Panel):
             source.operator_menu_enum("fumaris.add_source", "kind", text="New Source", icon="ADD")
 
 
-CLASSES = (FUMARIS_MT_presets, FUMARIS_MT_bake_more, FUMARIS_OT_emitter_color_offer, FUMARIS_OT_color_mixing_enable,
+CLASSES = (FUMARIS_MT_presets, FUMARIS_MT_bake_more, FUMARIS_MT_sidebar_bake_more, FUMARIS_OT_emitter_color_offer, FUMARIS_OT_color_mixing_enable,
            FUMARIS_OT_domain_show_look, FUMARIS_PT_main, FUMARIS_OT_participant_list_more, FUMARIS_PT_sidebar)
 
 

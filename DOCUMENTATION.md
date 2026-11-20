@@ -73,8 +73,8 @@ Fumaris uses one object as the domain settings host and collections to identify
 simulation participants. The domain's panel runs top to bottom in the order you
 usually need it: `Simulate` (Play, Bake, frame range, Resolution and memory),
 `Look` (smoke and fire appearance and the live preview's settings), `Smoke
-Behavior` (with Detail & Shaping and Combustion), `Participants`, `Output`,
-`Versions` and `Advanced`. Unlike Mantaflow, the domain object's dimensions do
+Behavior` (with Combustion), `Modifiers` (detail, rates and particles, folded
+until you need them), `Participants`, `Output`, `Versions` and `Advanced`. Unlike Mantaflow, the domain object's dimensions do
 not form a hard simulation box; Flow allocates a sparse grid around active
 smoke.
 
@@ -345,56 +345,6 @@ played starts it over there, as in Blender.)
   AgX; above about 0.3 they render white. Cycles' motion blur smears them along
   their movement (they carry a `velocity` attribute).
 
-### Particles
-
-`Particles` (a section of the domain panel, with its own checkbox) adds GPU
-particles that ride the smoke. Unlike Sparks they are simulated with the smoke,
-in every simulation step and from the live velocity: they show in the live
-preview, and a bake writes them beside its VDBs (one point-cloud file per
-frame, `particles/<prefix>particles_0001.ply`). After the bake an object
-"<domain> Particles" shows the frame on screen as a point cloud that renders in
-Cycles and EEVEE.
-
-- `Kind` sets good values for each look: `Tracers` (light, follow the smoke
-  exactly, a white glitter material: an ink plume) or `Embers` (heavy, thrown
-  out of the fire by gravity and drag, cooling, glowing by temperature). Every
-  value can be changed after.
-- `Max Particles`: how many live at most. Each takes 92 bytes of GPU memory,
-  taken from the domain's simulation memory (1 million: 88 MB). When it is
-  full new particles are dropped until others die.
-- Spawning: `From Smoke` spawns `Rate` particles per simulated second, spread
-  evenly over the smoke whose density lies between `Smoke Min` and `Max` and
-  whose temperature lies between `Heat Min` and `Max` (Kelvin; 0 = no limit).
-  `Sources` is a collection whose objects emit too: meshes from their
-  `Surface` or `Volume` at `Rate` per second (with `Normal Speed` and a share of
-  their own motion, `Inherit`), or `Points`: one particle per point of a point
-  cloud or a Geometry Nodes output each frame (a point `velocity` attribute
-  sets its start speed, `size` its size).
-- Motion: `Drag` is how strongly the gas carries them per second (0 flies free,
-  10000 follows the smoke exactly); `Gravity` is the share of the domain's
-  gravity (negative: they rise); `Lifetime` in simulated seconds (0: forever)
-  with `Random`; `Colliders`: Pass, Bounce (with `Bounce` and `Friction`),
-  Stick or Kill on the domain's Fumaris colliders; `Inside Domain` removes those
-  that leave a mesh domain's box. Effectors move them through the gas they push
-  (a particle with Drag 0 does not feel them).
-- Look: `Size` (radius of the points) and `Random`; tracers' `Color` and
-  `Brightness` (the strength of their glitter flashes), embers' `Brightness`
-  (their glow). `Show in Preview` draws them over the live preview, `Amount` of
-  them (one pixel each).
-- The point cloud carries `velocity` (Cycles motion blur), `age` (seconds),
-  `temperature` (K), `smoke` (density at the particle), `size`, `random`
-  (0..1, fixed per particle), `id`, and `Col` with Colour Mixing. Its
-  `Fumaris Particles` Geometry Nodes modifier reads the files; add your own
-  nodes after it to instance objects on the points, make trails from
-  `velocity`, or fade them by `age`.
-- A bake is the same every time, and the same as the live preview of the same
-  frames. Re-baking or choosing another version points the object at that
-  bake's particles.
-- Not yet: particles that emit smoke, particles that push the smoke, particles
-  without visible smoke (a velocity-only mode), and particles in a cached
-  preview frame (they show the live simulation only). A collider thinner than
-  a velocity cell (twice the voxel size) can let fast particles through.
-
 ## Versions
 
 The `Versions` section (below Output) lists what the domain has
@@ -624,13 +574,13 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   `Vorticity Mask` chooses where: `Fast Motion` (default), `Smoke` (in
   proportion to density, so thin edges stay calm), `Flames` (hot gas) or
   `Everywhere`.
-- `Detail & Shaping` (folded) holds layers of artistic forces and per-cell
-  rates (see Detail & Shaping below). A `Disturb` layer pushes smoke and hot
-  gas with small random swirls of its `Size` (scene units; at least 128 /
-  Resolution, see Detail & Shaping), for breakup the base motion lacks: a Strength of about 50 is
-  subtle and 300 strongly mixed on a fireball a few metres across. `Shred`
-  stretches the motion across sharp temperature edges, tearing flames into
-  tongues; values around 1–5 are typical.
+- Artistic forces, per-cell rates and particles are `Modifiers` (their own
+  folded card below Smoke Behavior, see Modifiers). A `Disturb` modifier
+  pushes smoke and hot gas with small random swirls of its `Size` (scene
+  units; at least 128 / Resolution), for breakup the base motion lacks: a
+  Strength of about 50 is subtle and 300 strongly mixed on a fireball a few
+  metres across. `Shred` stretches the motion across sharp temperature
+  edges, tearing flames into tongues; values around 1–5 are typical.
 - `Preserve Turbulence` (Advanced)
   (advection–reflection, Zehnder et al. 2018) runs Sub-Steps in pairs that
   lose far less swirling energy to the solver itself: plumes stay lively
@@ -644,12 +594,25 @@ view, either works; scene space keeps the resting trail perfectly sharp.
   **0.01** is close to free air; raise it to calm turbulence and shorten how
   far smoke travels.
 
-### Detail & Shaping
+### Modifiers
 
-`Detail & Shaping` (in Smoke Behavior) is a stack of layers applied in order.
-Add a layer with `+`, reorder with the arrows; the checkbox turns one off.
+`Modifiers` (its own card below Smoke Behavior, folded; its title counts
+them, "Modifiers (2)") is one stack of everything you add on top of the base
+simulation: detail, per-cell rates and particles. A domain needs none; Quick
+Setups fill it with what suits them (the Explosion: a fine Disturb and Grain).
+Add with `+`, a menu grouped by purpose:
 
-Layers that add motion:
+- Detail: `Disturb`, `Grain`, `Shred`.
+- Rates: `Vorticity`, `Dissipation`, `Cooling`, `Soot Burn-off`.
+- Particles: `Spawn Tracers`, `Spawn Embers` (a `Spawn Particles` modifier).
+
+Reorder with the arrows (motion modifiers apply in that order); the checkbox
+turns one off; `-` removes it. Below the list are the selected modifier's
+settings and its masks. At most 8 motion modifiers (Disturb, Grain, Shred,
+Vorticity), 4 smoke and heat ones (Dissipation, Cooling, Soot Burn-off) and
+4 Spawn Particles.
+
+#### Detail
 
 - `Disturb`: swirling pushes of a set `Size` (scene units), with `Detail`
   adding smaller swirls, each half the size. Strength
@@ -671,7 +634,9 @@ The same goes for a Disturb's `Detail` swirls, each half the size of the one
 before: those below that size add no detail. To get finer detail,
 raise Resolution rather than lowering Size.
 
-Layers that scale a rate per cell (by their masks):
+#### Rates
+
+These scale a rate per cell, by their masks:
 
 - `Vorticity`, `Dissipation` and `Cooling` multiply the domain's Vorticity,
   Dissipation and cooling, for example stronger swirls in hot gas or cold
@@ -679,14 +644,85 @@ Layers that scale a rate per cell (by their masks):
 - `Soot Burn-off` thins smoke at its rate per second where the masks allow
   (by default where gas is hot and air is left), as soot oxidises.
 
-Masks decide where a layer acts. Each layer holds up to six; each maps a
-field from `From Min`–`From Max` to `To Min`–`To Max` and combines with the
+#### Masks
+
+Masks decide where a modifier acts. Each modifier holds up to six; each maps
+a field from `From Min`–`From Max` to `To Min`–`To Max` and combines with the
 masks above it by Multiply, Minimum, Maximum, Add, Subtract or Replace (the
 first starts from 1). Fields: Temperature (K), Speed (m/s), Smoke, Fuel,
-Burn, Air Left and Noise. New Disturb and Grain layers start with masks that
-keep them to smoke or heat (up to 2500 K), so clear air skips the work; a
-layer without masks acts everywhere (a scaling layer without masks changes
-nothing).
+Burn, Air Left and Noise. New Disturb and Grain modifiers start with masks
+that keep them to smoke or heat (up to 2500 K), so clear air skips the work;
+a modifier without masks acts everywhere (a rate modifier without masks
+changes nothing). For a Spawn Particles modifier the masks are where it
+spawns (see Particles).
+
+#### Particles
+
+A `Spawn Particles` modifier adds GPU particles that ride the smoke. Unlike
+Sparks they are simulated with the smoke, in every simulation step and from
+the live velocity: they show in the live preview, and a bake writes them
+beside its VDBs (one point-cloud file per frame,
+`particles/<prefix>particles_0001.ply`). After the bake each Spawn Particles
+modifier gets an object, "<domain> Tracers" or "<domain> Embers", that shows
+its particles of the frame on screen as a point cloud that renders in Cycles
+and EEVEE. A domain can hold four, each its own kind of particle, for example
+tracers in the cool smoke and embers from the fire.
+
+- `Tracers` / `Embers` set good values for each look: Tracers are light,
+  follow the smoke exactly and glitter white (an ink plume); Embers are heavy,
+  thrown out of the fire by gravity and drag, cooling and glowing by
+  temperature. Every value can be changed after.
+- `Spawn From`: `Smoke` spawns `Rate` particles per simulated second in the
+  smoke, spread by the modifier's masks (its `Spawn Masks`): where the masks
+  give more, more particles start, and none where they give 0. A new Tracers
+  modifier spawns in visible smoke (Smoke 0.05–0.1, fading in), a new Embers
+  modifier in burning gas (0.6–0.7 of Flame Temperature); add a Temperature
+  mask from 600 to 900 K with To 1 to 0 to keep tracers to the cool smoke, or
+  a Noise mask for clumps. Without masks they spread evenly over all smoke.
+  `Objects` spawns from a collection too: meshes from their `Surface` or
+  `Volume` at `Rate` per second (with `Normal Speed` and a share of their own
+  motion, `Inherit`), or `Points`: one particle per point of a point cloud or
+  a Geometry Nodes output each frame (a point `velocity` attribute sets its
+  start speed, `size` its size). Object particles ignore the masks unless
+  `Mask Objects` (under More) is on: then each is kept with the masks' value
+  where it starts (0 to 1).
+- Motion: `Drag` is how strongly the gas carries them per second (0 flies
+  free, 10000 follows the smoke exactly); `Gravity` is the share of the
+  domain's gravity (negative: they rise); `Effectors` is how strongly the
+  domain's effectors push the particles themselves, as they push the smoke
+  (Tracers 0: they follow the smoke, which the effectors push; Embers 1: a
+  wind blows them too); `Lifetime` in simulated seconds (0: forever) with
+  `Random`; `Colliders`: Pass, Bounce (with `Bounce` and `Friction`), Stick
+  or Kill on the domain's Fumaris colliders, tested every half velocity cell
+  along a particle's step, so fast particles do not jump through walls.
+- Look: `Size` (radius of the points) and `Random`; tracers' `Color` and
+  `Brightness` (the strength of their glitter flashes), embers' `Brightness`
+  (their glow); `Material` (under More) to use your own. `Show in Preview`
+  draws them over the live preview.
+- `Particle System` (under the stack, shared by every Spawn Particles
+  modifier of the domain): `Max Particles`, how many live at most of all of
+  them together; each takes 92 bytes of GPU memory, taken from the domain's
+  simulation memory (1 million: 88 MB), and when it is full new particles are
+  dropped until others die. `Seed` gives other random particles. `Inside
+  Domain` removes those that leave a mesh domain's box. `Show in Preview` and
+  `Amount`: the share of them the live preview draws (one pixel each).
+- The point cloud carries `velocity` (Cycles motion blur), `age` (seconds),
+  `temperature` (K), `smoke` (density at the particle), `size`, `random`
+  (0..1, fixed per particle), `id`, `group` (the modifier's place among the
+  bake's Spawn Particles, 0 the first), and `Col` with Colour Mixing. Its
+  `Fumaris Particles` Geometry Nodes modifier reads the files and keeps its
+  modifier's group; add your own nodes after it to instance objects on the
+  points, make trails from `velocity`, or fade them by `age`.
+- A bake is the same every time, and the same as the live preview of the same
+  frames. Re-baking or choosing another version points the objects at that
+  bake's particles.
+- Files with Particles from an earlier 2.0 beta (their own panel section)
+  open with them as a Spawn Particles modifier: the same particles.
+- Not yet: particles that emit smoke, particles that push the smoke, particles
+  without visible smoke (a velocity-only mode), and particles in a cached
+  preview frame (they show the live simulation only). A collider thinner than
+  a velocity cell (twice the voxel size) is not a wall for the smoke or the
+  particles: both pass through it.
 
 ### Combustion
 

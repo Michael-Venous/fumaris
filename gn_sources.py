@@ -394,6 +394,16 @@ def add_source(context, kind, domain):
         inputs["Density"].default_value = min(inputs["Density"].default_value, (0.75 / (2.5 * cell)) ** 2)
     modifier = obj.modifiers.new(label, "NODES")
     modifier.node_group = tree
+    # Blender 5.2.0 leaves a new modifier's Object inputs empty instead of
+    # taking the group's defaults (5.2.2 and 5.3 take them): Trail and
+    # Spreading Fire emitted nothing there. Set them on the modifier.
+    inputs = getattr(getattr(modifier, "properties", None), "inputs", None)
+    for item in tree.interface.items_tree:
+        if (getattr(item, "in_out", "") == "INPUT" and getattr(item, "socket_type", "") == "NodeSocketObject"
+                and item.default_value is not None):
+            slot = getattr(inputs, item.identifier, None) if inputs is not None else None
+            if slot is not None and getattr(slot, "value", None) is None:
+                slot.value = item.default_value
 
     props = obj.fumaris
     props.smoke_object_type = "emitter"

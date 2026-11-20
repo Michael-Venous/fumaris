@@ -24,7 +24,6 @@ from bpy.types import Operator
 
 from .cache import (
     CacheLock,
-    GUARD_FILE,
     SETTINGS_FILE,
     apply_settings_snapshot,
     cache_lock,
@@ -46,7 +45,8 @@ from .importers import (
     import_sequence,
 )
 from .runtime import active_job, active_mode
-from .utils import cache_slot_directory, output_directory_for_object, peek_output_directory_for_object, simulation_frame_range
+from .utils import (cache_slot_directory, ensure_cache_owner, output_directory_for_object,
+                    peek_output_directory_for_object, simulation_frame_range)
 
 # On the volume showing slot B: the name of the domain it is compared for.
 COMPARE_MARKER = "fumaris_compare_b"
@@ -614,6 +614,7 @@ def _new_version(domain, base):
     share one."""
     prefix = _prefix(domain.fumaris)
     validate_prefix(prefix)
+    ensure_cache_owner(domain)
     locks = {}
 
     def taken(slot):
@@ -875,6 +876,8 @@ def refresh_playblast_viewers(context, entry):
 # --- Entries: VDB versions and snapshots --------------------------------------
 
 def snapshot_root(domain, *, create=False):
+    if create:
+        ensure_cache_owner(domain)
     current = output_directory_for_object(domain) if create else peek_output_directory_for_object(domain)
     if not current:
         return None
@@ -1056,6 +1059,7 @@ def remove_entry_from_scene(entry):
 
 
 def delete_entry(domain, entry):
+    entry = _writable_entry(domain, entry)
     if entry["kind"] == "vdb":
         delete_version(domain, entry["name"])
     elif entry["kind"] == "playblast":
@@ -1086,6 +1090,7 @@ def changes_from_current(domain, entry):
 def delete_version(domain, name):
     """Delete a VDB version's frames, images, settings and note (a protected one is refused)."""
     props = domain.fumaris
+    ensure_cache_owner(domain)
     directory = cache_slot_directory(domain, name)
     require_unprotected(directory, "delete it")
     if props.compare_slot == name:
@@ -1093,6 +1098,9 @@ def delete_version(domain, name):
         props.compare_slot = ""
     recover_cache_lock(directory, owner_pid=os.getpid())
     with cache_lock(directory):
+        from .cache_revision import recover_replacement
+        recover_replacement(directory, _prefix(props))
+        require_unprotected(directory, "delete it")
         delete_generated_data(directory, _prefix(props))
         shutil.rmtree(os.path.join(directory, SNAPSHOT_DIRECTORY), ignore_errors=True)
         for file in (SETTINGS_FILE, NOTE_FILE, STATS_FILE):
@@ -1100,16 +1108,6 @@ def delete_version(domain, name):
                 os.remove(os.path.join(directory, file))
             except OSError:
                 pass
-    # The lock's guard file outlives the lock on purpose (contenders lock the
-    # same file); with the version gone it has nothing left to guard.
-    try:
-        os.remove(os.path.join(directory, GUARD_FILE))
-    except OSError:
-        pass
-    try:
-        os.rmdir(directory)
-    except OSError:
-        pass
     if name == props.cache_slot:
         props.simulation_state = "idle"
         props.baked_frames = 0
@@ -1148,6 +1146,17 @@ class _DomainOperator:
     @classmethod
     def poll(cls, context):
         return _domain(context) is not None and active_mode() != "baking"
+
+
+def _writable_entry(domain, entry):
+    old = os.path.dirname(output_directory_for_object(domain))
+    ensure_cache_owner(domain)
+    new = os.path.dirname(output_directory_for_object(domain))
+    if old == new:
+        return entry
+    path = os.path.join(new, os.path.relpath(entry["path"], old))
+    key = entry["key"] if entry["kind"] == "vdb" else entry["key"].split(":", 1)[0] + ":" + path
+    return {**entry, "key": key, "path": path}
 
 
 def _entry_or_report(op, context):
@@ -1209,6 +1218,11 @@ class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
         domain, entry = _entry_or_report(self, context)
         if entry is None:
             return {"CANCELLED"}
+        try:
+            entry = _writable_entry(domain, entry)
+        except (RuntimeError, OSError) as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
         if entry["kind"] == "vdb":
             write_pinned(entry["path"], not entry["pinned"])
         else:
@@ -1232,6 +1246,11 @@ class FUMARIS_OT_entry_sync_material(_DomainOperator, Operator):
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
         if entry is None or entry["kind"] != "vdb":
+            return {"CANCELLED"}
+        try:
+            entry = _writable_entry(domain, entry)
+        except (RuntimeError, OSError) as error:
+            self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         synced = not material_synced(entry["path"])
         write_note(entry["path"], read_note(entry["path"]), sync_material=synced)
@@ -1592,8 +1611,13 @@ class FUMARIS_OT_entry_note(_DomainOperator, Operator):
         return context.window_manager.invoke_props_dialog(self, title="Rename")
 
     def execute(self, context):
-        _domain_, entry = _entry_or_report(self, context)
+        domain, entry = _entry_or_report(self, context)
         if entry is None:
+            return {"CANCELLED"}
+        try:
+            entry = _writable_entry(domain, entry)
+        except (RuntimeError, OSError) as error:
+            self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         if entry["kind"] == "vdb":
             write_note(entry["path"], self.note)
@@ -1635,7 +1659,7 @@ class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
             return {"CANCELLED"}
         try:
             delete_entry(domain, entry)
-        except RuntimeError as error:
+        except (RuntimeError, OSError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         self.report({"INFO"}, f"Deleted '{entry['name']}'")
@@ -1799,10 +1823,10 @@ class FUMARIS_OT_snapshot(_DomainOperator, Operator):
         domain = _domain(context)
         try:
             pixels = capture_snapshot(context, domain)
+            root = snapshot_root(domain, create=True)
         except Exception as error:
             self.report({"ERROR"}, f"Snapshot failed: {error}")
             return {"CANCELLED"}
-        root = snapshot_root(domain, create=True)
         path = os.path.join(root, f"{time.strftime('%Y%m%d-%H%M%S')}_f{context.scene.frame_current:04d}.png")
         save_png(pixels, path)
         write_sidecar(path, **settings_snapshot_data(domain, _participants_for_snapshot(domain)))

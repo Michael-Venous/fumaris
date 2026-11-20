@@ -24,6 +24,7 @@ from .cache import (
     set_protected,
     recover_cache_lock,
 )
+from .cache_revision import BakeReplacement, recover_replacement
 from .diagnostics import console_log
 from . import diagnostics
 from .exporters import build_frame, build_session, session_structure_signature
@@ -49,6 +50,8 @@ from .preview import (
 )
 from .utils import (
     cache_slot_directory,
+    ensure_cache_owner,
+    owns_cache,
     output_directory_for_object,
     peek_output_directory_for_object,
     simulation_frame_range,
@@ -103,14 +106,16 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     _timer_interval = 0.001
 
     replace_confirmed: BoolProperty(options={"HIDDEN", "SKIP_SAVE"})
+    replacement_slot: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
 
     def _escape(self, context):
         """Escape: like Stop (keeps and imports the frames written so far)."""
         domain = bpy.data.objects.get(self._domain_name)
         if not getattr(self, "_accepted", False):
             self._stop_requested = True
+            replacing = getattr(self, "_replacement", None) is not None
             _cancel_job(context, self)
-            if domain:
+            if domain and not replacing:
                 mark_bake_cancelled(domain)
                 self._store_bake_stats(domain)
         elif not getattr(self, "_stop_requested", False):
@@ -154,6 +159,21 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
 
         self._domain_name = domain.name
         try:
+            from .bridge import require_compatible_bridge
+            from .jobs import bridge_executable
+            executable = bridge_executable()
+            if executable is None:
+                raise RuntimeError("Bridge executable not found")
+            require_compatible_bridge(executable)
+            slot = self.replacement_slot or domain.fumaris.cache_slot
+            require_unprotected(cache_slot_directory(domain, slot), "bake over it")
+            ensure_cache_owner(domain)
+            directory = cache_slot_directory(domain, slot)
+            prefix = domain.fumaris.output_prefix or "fumaris_"
+            props = domain.fumaris
+            self._previous_bake = {key: getattr(props, key) for key in (
+                "simulation_state", "baked_frames", "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb")}
+            self._replacement = BakeReplacement.begin(directory, prefix)
             claim_job(self, "baking")
             clear_all_previews()
             self._configure_job(
@@ -163,6 +183,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 write_vdb=True,
                 preview_enabled=bool(domain.fumaris.preview_bake),
                 show_progress=True,
+                output_directory=self._replacement.directory if self._replacement else directory,
+                require_empty=True,
             )
         except Exception as error:
             # (a refusal is reported, not kept as the domain's last failure)
@@ -172,6 +194,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
             self._restore_imported_volumes()
             self._cleanup_volume_staging()
             self._release_cache_lock()
+            if getattr(self, "_replacement", None) is not None:
+                self._settle_replacement(domain, False)
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
@@ -198,7 +222,34 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
 
     def _complete(self, context):
         domain = bpy.data.objects.get(self._domain_name)
-        self._finish(context)
+        replacing = getattr(self, "_replacement", None) is not None
+        self._finish(context, keep_replacement=True)
+        if replacing:
+            if domain:
+                self._store_bake_stats(domain)
+            try:
+                partial = self._settle_replacement(domain, not self._stop_requested)
+            except Exception as error:
+                partial = self._settle_replacement(domain, False)
+                message = f"Could not replace the bake: {error}"
+                if partial:
+                    message += f". Partial output saved as '{os.path.basename(partial)}'"
+                self._record_failure(message)
+                self.report({"ERROR"}, message)
+                return {"CANCELLED"}
+            if self._stop_requested:
+                text = "Fumaris bake stopped. The previous bake is kept"
+                if partial:
+                    text += f". Partial output saved as '{os.path.basename(partial)}'"
+                self.report({"INFO"}, text)
+                return {"FINISHED"}
+        if domain and self.replacement_slot and domain.fumaris.cache_slot != self.replacement_slot:
+            stats = {key: getattr(domain.fumaris, key) for key in (
+                "bake_elapsed", "bake_peak_vram_mb", "bake_peak_ram_mb")}
+            domain.fumaris.cache_slot = self.replacement_slot
+            for key, value in stats.items():
+                setattr(domain.fumaris, key, value)
+            domain.fumaris.compare_selected = "vdb:" + self.replacement_slot
         try:
             _import_cache(context, domain, self._directory, self._prefix)
         except Exception as error:
@@ -213,7 +264,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
                 mark_bake_cancelled(domain)
             else:
                 mark_bake_complete(domain)
-            self._store_bake_stats(domain)
+            if not replacing:
+                self._store_bake_stats(domain)
             _activate(context, domain)
             from .sparks import problems
             for message in problems(domain):
@@ -227,14 +279,18 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
     def _cancelled(self, context, data):
         self._record_failure(data.get("message", "Bake failed"))
         domain = bpy.data.objects.get(self._domain_name)
+        replacing = getattr(self, "_replacement", None) is not None
         if domain:
             clear_preview(domain)
             mark_bake_cancelled(domain)
-        self._finish(context)
+        self._finish(context, keep_replacement=True)
         if domain:
             self._store_bake_stats(domain)
+        partial = self._settle_replacement(domain, False) if replacing else ""
         message = stop_message(data.get("message", "Bake stopped"),
                                data.get("stderr") or self._worker.stderr())
+        if partial:
+            message += f". Partial output saved as '{os.path.basename(partial)}'"
         console_log(f"Fumaris bake stopped: {message}")
         self.report({"ERROR"}, message)
         return {"CANCELLED"}
@@ -321,10 +377,12 @@ def _fumaris_animation(obj):
             curves.extend(action.fcurves)
     names, keys = set(), []
     for curve in curves:
-        if not curve.data_path.startswith("fumaris."):
+        path = curve.data_path
+        if path.startswith("fumaris."):
+            path = path[len("fumaris."):]
+            names.add(path.split(".")[0].split("[")[0])
+        elif not path.startswith("fumaris_particles."):
             continue
-        path = curve.data_path[len("fumaris."):]
-        names.add(path.split(".")[0].split("[")[0])
         driver = getattr(curve, "driver", None)
         keys.append((path, curve.array_index, curve.mute,
                      [(tuple(key.co), key.interpolation, tuple(key.handle_left), tuple(key.handle_right))
@@ -337,6 +395,7 @@ def settings_digest(domain, participants, resolution_scale):
     """The simulation settings of the domain and its sources (no look, no
     view). Animated settings count by their keys, not this frame's value, so
     playing through the animation is not a change."""
+    from . import detail_stack, particles
     from .cache import _rna_values
     from .exporters import _domain_state
     from .presets import _belongs
@@ -351,7 +410,28 @@ def settings_digest(domain, participants, resolution_scale):
     animated, animation[""] = _fumaris_animation(domain)
     state = {key: value for key, value in _domain_state(domain.fumaris, resolution_scale).items()
              if key not in animated}
-    data = {"domain": state, "sources": sources, "animation": animation}
+    # The packet exports particle modifiers separately from the domain. Use
+    # their settings here too, including source collection and mask changes.
+    animated_paths = {curve[0] for curve in animation[""]}
+    particle_system = {key: value for key, value in particles.system_to_dict(domain).items()
+                       if f"fumaris_particles.{key}" not in animated_paths}
+    layers = []
+    for index, layer in enumerate(detail_stack.to_list(domain.fumaris)):
+        if layer["layer_type"] != "PARTICLES":
+            continue
+        path = f"detail_layers[{index}]"
+        fields = layer.pop("particles")
+        masks = layer.pop("masks")
+        layers.append({
+            **{key: value for key, value in layer.items() if f"{path}.{key}" not in animated_paths},
+            "particles": {key: value for key, value in fields.items()
+                          if f"{path}.particles.{key}" not in animated_paths},
+            "masks": [{key: value for key, value in mask.items()
+                       if f"{path}.masks[{i}].{key}" not in animated_paths}
+                      for i, mask in enumerate(masks)],
+        })
+    data = {"domain": state, "sources": sources, "animation": animation,
+            "particle_system": particle_system, "particle_layers": layers}
     return hashlib.blake2b(json.dumps(data, sort_keys=True, default=str).encode(), digest_size=16).hexdigest()
 
 
@@ -459,13 +539,6 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             waiting = "is queued to bake" if job.state == "queued" else "is baking"
             self.report({"WARNING"}, f"'{domain.name}' {waiting} in the background: stop that bake or wait for it")
             return {"CANCELLED"}
-        if domain.fumaris.simulation_state == "baked":
-            # The bake stays in Versions (its eye shows it again); the preview
-            # runs in an empty slot, so nothing is written over it.
-            from .compare import free_slot_name
-            prefix = domain.fumaris.output_prefix or "fumaris_"
-            domain.fumaris.cache_slot = free_slot_name(
-                "live", lambda slot: bool(baked_frame_count(cache_slot_directory(domain, slot), prefix)))
         if _is_playing(context):
             self.report({"WARNING"}, "Stop Blender playback before starting Fumaris preview")
             return {"CANCELLED"}
@@ -474,6 +547,14 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             self.report({"WARNING"}, "Open a 3D Viewport before starting Fumaris preview")
             return {"CANCELLED"}
 
+        previous_slot = domain.fumaris.cache_slot
+        if domain.fumaris.simulation_state == "baked":
+            # The bake stays in Versions (its eye shows it again); the preview
+            # runs in an empty slot, so nothing is written over it.
+            from .compare import free_slot_name
+            prefix = domain.fumaris.output_prefix or "fumaris_"
+            domain.fumaris.cache_slot = free_slot_name(
+                "live", lambda slot: bool(baked_frame_count(cache_slot_directory(domain, slot), prefix)))
         from .playback import choose_domain
         choose_domain(context.scene, domain)
         self._domain_name = domain.name
@@ -487,6 +568,8 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             if not isinstance(error, RefusedError):
                 self._record_failure(str(error))
             self._finish(context)
+            if domain.fumaris.cache_slot != previous_slot:
+                domain.fumaris.cache_slot = previous_slot
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
 
@@ -733,7 +816,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             # No viewport to draw into: the replay still moves on.
             self._replay_frame_done(context, domain)
             return
-        preview["cache_frame"] = self._frame
+        preview.update(cache_frame=self._frame, cache_frame_enabled=True)
         self._last_submitted_volume_preview = preview
         self._worker.send_preview(preview)
         self._preview_sent_at = time.monotonic()
@@ -868,7 +951,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return False
         preview = capture_volume_preview(context, domain)
         if preview.get("valid", False):
-            preview["cache_frame"] = self._cache_frame(context)
+            frame = self._cache_frame(context)
+            if frame is not None:
+                preview.update(cache_frame=frame, cache_frame_enabled=True)
         signature = volume_preview_signature(preview)
         if signature is None or signature == self._last_preview_signature:
             return False
@@ -880,27 +965,19 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
         return True
 
     def _cache_frame(self, context):
-        """Preview cache: the earlier frame to draw while paused (-1: live).
-
-        Scrubbing or playing the timeline back while paused shows the frames
-        the preview simulated; at or past the live frame it shows the live
-        state, which Resume continues from."""
-        if getattr(self, "_replaying", False) and not getattr(self, "_pause_requested", False):
-            return int(context.scene.frame_current)   # replaying: the frame on screen
-        if not getattr(self, "_pause_requested", False):
-            return -1
-        cache = getattr(self, "_preview_cache", None) or {}
+        """The frame to draw from cache, or None for the live grid."""
         frame = int(context.scene.frame_current)
+        paused = getattr(self, "_pause_requested", False)
+        if getattr(self, "_replaying", False) and not paused:
+            return frame
+        cache = getattr(self, "_preview_cache", None) or {}
+        if not paused or not int(cache.get("frames", 0)):
+            return None
+        first, last = int(cache["first"]), int(cache["last"])
         if getattr(self, "_parked", False):
-            # Stopped, the cache kept (F8): no live state; outside the cached
-            # range the bridge draws nothing.
-            first, last = int(cache.get("first", -1)), int(cache.get("last", -1))
-            return frame if 0 <= first <= frame <= last else -1
+            return frame if first <= frame <= last else None
         live = getattr(self, "_live_frame", None)
-        first = int(cache.get("first", -1))
-        if live is None or first < 0 or frame >= live or frame < first:
-            return -1
-        return frame
+        return frame if live is not None and first <= frame < live else None
 
     def _rerender_fits_before_frame(self):
         """A rerender (by its measured time, with margin) finishes before the
@@ -923,7 +1000,9 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             # The same cached frame as the main view while paused (its
             # signature includes it, so scrubbing redraws every view).
             if preview.get("valid", False):
-                preview["cache_frame"] = self._cache_frame(context)
+                frame = self._cache_frame(context)
+                if frame is not None:
+                    preview.update(cache_frame=frame, cache_frame_enabled=True)
             signature = volume_preview_signature(preview)
             view_id = int(preview.get("view_id", 0))
             if signature is None or signatures.get(view_id) == signature:
@@ -1090,7 +1169,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             write_settings_snapshot(directory, domain, self._participants)
             scale = int(round(100 * float(getattr(self, "_resolution_scale", 1.0))))
             first, last = int(data.get("first", -1)), int(data.get("last", -1))
-            what = f"frame {first} from the preview" if first == last and first >= 0 else "from the preview"
+            what = f"frame {first} from the preview" if first == last else "from the preview"
             # A save gets its own copy of the material (Sync Material off).
             write_note(directory, what + (f" at {scale}%" if scale != 100 else ""), sync_material=False)
             forget_scan()
@@ -1482,6 +1561,8 @@ class FUMARIS_OT_preview_pause(Operator):
         if active_mode() != "previewing":
             return False
         job = active_job()
+        if not getattr(job, "_accepted", False) or getattr(job, "_parked", False):
+            return False
         if getattr(job, "_pause_requested", False) and getattr(job, "_export_pending", None):
             cls.poll_message_set("Saving a version: Resume once it is written")
             return False
@@ -1495,11 +1576,6 @@ class FUMARIS_OT_preview_pause(Operator):
         if getattr(job, "_pause_requested", False) and getattr(job, "_export_pending", None):
             self.report({"INFO"}, "Saving a version: Resume once it is written")
             return {"CANCELLED"}
-        if getattr(job, "_parked", False):
-            # Stopped with its cache kept: Play starts over, as after any Stop.
-            name = job._domain_name
-            _cancel_job(context, job)
-            return bpy.ops.fumaris.preview_play(domain_name=name)
         try:
             job.set_paused(
                 context,
@@ -1646,11 +1722,11 @@ class FUMARIS_OT_bake_into(Operator):
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
-        domain.fumaris.cache_slot = slot
-        domain.fumaris.compare_selected = "vdb:" + slot
-        # Started through invoke so the bake's modal handler is installed
-        # the same way as from the Bake button.
-        bpy.ops.fumaris.bake("INVOKE_DEFAULT", replace_confirmed=True)
+        if not self.slot:
+            domain.fumaris.cache_slot = slot
+            domain.fumaris.compare_selected = "vdb:" + slot
+        # The old slot stays current until an explicit replacement succeeds.
+        bpy.ops.fumaris.bake("INVOKE_DEFAULT", replace_confirmed=True, replacement_slot=self.slot)
         return {"FINISHED"}
 
 
@@ -1744,6 +1820,11 @@ class FUMARIS_OT_cache_make_lighter(Operator):
         domain = _active_domain(context)
         props = domain.fumaris
         prefix = props.output_prefix or "fumaris_"
+        try:
+            ensure_cache_owner(domain)
+        except (RuntimeError, OSError) as error:
+            self.report({"ERROR"}, str(error))
+            return {"CANCELLED"}
         source = output_directory_for_object(domain)
         files = [os.path.basename(path) for path in _frame_files(source, prefix)]
 
@@ -1930,15 +2011,16 @@ class FUMARIS_OT_cache_protect(Operator):
 
     def execute(self, context):
         domain = _active_domain(context)
-        directory = output_directory_for_object(domain)
-        protect = not is_protected(directory)
-        if protect and not baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
-            # (a locked empty version only refuses the bake that would fill it)
-            self.report({"WARNING"}, f"Version '{domain.fumaris.cache_slot}' holds no baked frames: nothing to protect")
-            return {"CANCELLED"}
         try:
-            set_protected(directory, protect)
-        except OSError as error:
+            ensure_cache_owner(domain)
+            directory = output_directory_for_object(domain)
+            protect = not is_protected(directory)
+            if protect and not baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
+                self.report({"WARNING"}, f"Version '{domain.fumaris.cache_slot}' holds no baked frames: nothing to protect")
+                return {"CANCELLED"}
+            with cache_lock(directory):
+                set_protected(directory, protect)
+        except (RuntimeError, OSError) as error:
             self.report({"ERROR"}, f"Could not change protection: {error}")
             return {"CANCELLED"}
         self.report(
@@ -1990,15 +2072,18 @@ class FUMARIS_OT_delete(Operator):
             self.report({"ERROR"}, "Stop the active Fumaris simulation first")
             return {"CANCELLED"}
         prefix = domain.fumaris.output_prefix or "fumaris_"
-        directory = output_directory_for_object(domain)
-        frames = baked_frame_count(directory, prefix)
         try:
+            ensure_cache_owner(domain)
+            directory = output_directory_for_object(domain)
             require_unprotected(directory, "delete it")
             recover_cache_lock(directory, owner_pid=os.getpid())
             with cache_lock(directory):
+                recover_replacement(directory, prefix)
+                require_unprotected(directory, "delete it")
+                frames = baked_frame_count(directory, prefix)
                 clear_preview(domain)
                 delete_generated_data(directory, prefix)
-        except RuntimeError as error:
+        except (RuntimeError, OSError) as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
         diagnostics.clear(domain)
@@ -2044,8 +2129,9 @@ class FUMARIS_OT_stop(_ActiveBakeOperator, Operator):
         if not getattr(job, "_accepted", False):
             domain = bpy.data.objects.get(getattr(job, "_domain_name", ""))
             job._stop_requested = True
+            replacing = getattr(job, "_replacement", None) is not None
             _cancel_job(context, job)
-            if domain:
+            if domain and not replacing:
                 mark_bake_cancelled(domain)
                 job._store_bake_stats(domain)
             self.report({"INFO"}, "Fumaris bake stopped before simulation started")
@@ -2162,18 +2248,19 @@ def _recover_orphaned_bakes():
             continue
         directory = output_directory_for_object(obj)
         try:
-            recover_cache_lock(directory, owner_pid=owner_pid)
+            if owns_cache(directory):
+                recover_cache_lock(directory, owner_pid=owner_pid)
             if not os.path.isdir(directory):
                 if props.simulation_state == "baking":
                     props.simulation_state = "stopped"
                 continue
-            with cache_lock(directory):
-                delete_temporary_writes(
-                    directory,
-                    props.output_prefix or "fumaris_",
-                )
-                if props.simulation_state == "baking":
-                    props.simulation_state = "stopped"
+            if owns_cache(directory):
+                with cache_lock(directory):
+                    prefix = props.output_prefix or "fumaris_"
+                    recover_replacement(directory, prefix)
+                    delete_temporary_writes(directory, prefix)
+            if props.simulation_state == "baking":
+                props.simulation_state = "stopped"
             if _kept_frames_unloaded(obj, directory):
                 unloaded.append(obj.name)
         except RuntimeError:
@@ -2193,7 +2280,10 @@ def _kept_frames_unloaded(domain, directory):
     frames and statistics in the domain's folder, but the file was saved
     before it ended: no volume shows them (beta 3 review R30)."""
     props = domain.fumaris
-    if props.simulation_state not in {"idle", "baking", "stopped"} or domain_volumes(domain):
+    if props.simulation_state not in {"idle", "baking", "stopped"}:
+        return False
+    current = os.path.normpath(directory)
+    if any(os.path.normpath(volume[VOLUME_MARKER]) == current for volume in domain_volumes(domain)):
         return False
     from .compare import read_bake_stats
     try:

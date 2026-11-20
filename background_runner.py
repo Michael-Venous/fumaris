@@ -141,6 +141,7 @@ class BackgroundBake(FrameRangeJob):
                 preview_enabled=False,
                 show_progress=False,
                 output_directory=directory,
+                require_empty=True,
             )
         except Exception as error:
             self._record_failure(str(error))

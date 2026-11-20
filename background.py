@@ -43,6 +43,7 @@ from .cache import (
     recover_cache_lock,
     require_unprotected,
 )
+from .cache_revision import BakeReplacement
 from .devices import device_environment
 from .diagnostics import console_log
 from .exporters import bridge_executable, build_session
@@ -50,7 +51,6 @@ from .importers import (
     VOLUME_MARKER,
     adopt_frame_metadata,
     baked_frame_count,
-    delete_generated_data,
     delete_temporary_writes,
 )
 from .preview import clear_preview
@@ -59,6 +59,7 @@ from .jobs import WRITING_LAST_FRAMES
 from .utils import (
     addon_directory,
     cache_slot_directory,
+    ensure_cache_owner,
     get_addon_preferences,
     output_directory_for_object,
     peek_output_directory_for_object,
@@ -123,14 +124,19 @@ class _Batch:
 class Job:
     """One domain's background bake. Draw code reads these fields only."""
 
-    def __init__(self, context, domain, directory, prefix, batch):
+    def __init__(self, context, domain, directory, prefix, batch, replacement, slot):
         self.uid = int(domain.session_uid)      # finds the domain after a rename
         self.domain_name = domain.name
         self.scene = context.scene.name
+        self.scene_uid = int(context.scene.session_uid)
         self.view_layer = context.view_layer.name
-        self.directory = directory
+        self.target = directory
+        self.replacement = replacement
+        self.keep_previous = False
+        self.directory = replacement.directory if replacement is not None else directory
         self.prefix = prefix
-        self.slot = domain.fumaris.cache_slot
+        self.original_slot = domain.fumaris.cache_slot
+        self.slot = slot or self.original_slot
         self.resolution = int(domain.fumaris.resolution)
         self.batch = batch
         self.path = os.path.join(batch.directory, str(len(batch.jobs)))
@@ -204,7 +210,7 @@ def _scripts_allowed():
 
 # --- Starting ------------------------------------------------------------------
 
-def _check(context, domain):
+def _check(context, domain, slot=""):
     """What FUMARIS_OT_bake refuses when it starts, checked at the click.
     Returns (version folder, prefix)."""
     if background_job(domain) is not None:
@@ -224,27 +230,19 @@ def _check(context, domain):
     prefix = session["output_prefix"]
     if not all(character.isalnum() or character in "._-" for character in prefix):
         raise RuntimeError("Output prefix may contain only letters, numbers, '.', '_', and '-'")
-    directory = output_directory_for_object(domain)
-    if any(os.path.normpath(job.directory) == os.path.normpath(directory) for job in _jobs):
+    require_compatible_bridge(executable)
+    slot = slot or domain.fumaris.cache_slot
+    require_unprotected(cache_slot_directory(domain, slot), "bake over it")
+    ensure_cache_owner(domain)
+    directory = cache_slot_directory(domain, slot)
+    if any(os.path.normpath(job.target) == os.path.normpath(directory) for job in _jobs):
         raise RuntimeError(f"Fumaris cache is already in use: {directory}")
     require_unprotected(directory, "bake over it")
-    # The version is emptied at the click (_clear): not for a bridge that
-    # would refuse the bake (an incomplete update; review 2026-11-20 #1).
-    require_compatible_bridge(executable)
-    # Refuse a version another Blender is writing before the scene is saved.
-    os.makedirs(directory, exist_ok=True)
-    with cache_lock(directory):
-        pass
     return directory, prefix
 
 
-def _clear(domain, directory, prefix):
-    """Empty the version, as a bake does before its first frame. The lock
-    refuses a version another Blender is writing."""
-    os.makedirs(directory, exist_ok=True)
-    with cache_lock(directory):
-        clear_preview(domain)
-        delete_generated_data(directory, prefix)
+def _reset_status(domain):
+    clear_preview(domain)
     props = domain.fumaris
     props.simulation_state = "idle"
     props.baked_frames = 0
@@ -253,14 +251,16 @@ def _clear(domain, directory, prefix):
     props.bake_peak_ram_mb = 0.0
 
 
-def start(context, domains):
+def start(context, domains, *, target_slots=None):
     """Queue a background bake of each domain's current version, from one
     snapshot of the scene as it is now. Returns (jobs, [(domain name, why not)])."""
     errors = []
     checked = []
+    target_slots = target_slots or {}
     for domain in dict.fromkeys(domains):
         try:
-            checked.append((domain, *_check(context, domain)))
+            slot = target_slots.get(domain, "")
+            checked.append((domain, *_check(context, domain, slot), slot))
         except (RuntimeError, OSError) as error:
             errors.append((domain.name, str(error)))
     if not checked:
@@ -279,13 +279,20 @@ def start(context, domains):
     _batches.append(batch)
 
     started = []
-    for domain, directory, prefix in checked:
+    for domain, directory, prefix, slot in checked:
+        replacement = None
         try:
-            _clear(domain, directory, prefix)
+            if any(job.target == directory for job in _jobs):
+                raise RuntimeError(f"Fumaris cache is already in use: {directory}")
+            replacement = BakeReplacement.begin(directory, prefix)
+            job = Job(context, domain, directory, prefix, batch, replacement, slot)
         except (RuntimeError, OSError) as error:
+            if replacement is not None:
+                replacement.stop()
             errors.append((domain.name, str(error)))
             continue
-        job = Job(context, domain, directory, prefix, batch)
+        if replacement is None and job.slot == job.original_slot:
+            _reset_status(domain)
         diagnostics.begin(domain, "Background Bake")
         diagnostics.set_status(job.uid, "Queued")
         runtime._BACKGROUND_JOBS[job.uid] = job
@@ -523,6 +530,26 @@ def _end(job, result, error, *, crashed=False):
         job.log = None
     if crashed:
         _recover_crashed(job)
+    replacement = job.replacement
+    if replacement is None:
+        return
+    try:
+        if result == "finished" and baked_frame_count(job.directory, job.prefix):
+            replacement.complete()
+            job.directory = job.target
+            job.replacement = None
+            return
+        if result == "finished":
+            job.result, job.error = "failed", "The replacement wrote no VDB frames"
+    except Exception as exc:
+        job.result, job.error = "failed", f"Could not replace the bake: {exc}"
+    job.keep_previous = True
+    try:
+        job.directory = replacement.stop()
+    except Exception as exc:
+        job.result = "failed"
+        job.error = f"{job.error}. Could not keep partial output: {exc}".lstrip(". ")
+    job.replacement = None
 
 
 def _recover_crashed(job):
@@ -563,10 +590,11 @@ def _find_domain(job):
     return None
 
 
-def _window_for(domain):
-    """A window showing the domain's scene: the volume is imported there."""
+def _window_for(job, domain):
+    """Import into the scene where the bake was requested."""
     for window in bpy.context.window_manager.windows:
-        if window.view_layer.objects.get(domain.name) == domain:
+        if (window.scene.session_uid == job.scene_uid
+                and window.view_layer.objects.get(domain.name) == domain):
             return window
     return None
 
@@ -599,28 +627,40 @@ def _finish(job):
 
     domain = None if job.detached else _find_domain(job)
     name = domain.name if domain is not None else job.domain_name
-    frames = baked_frame_count(job.directory, job.prefix)
+    frames = baked_frame_count(job.directory, job.prefix) if job.directory else 0
     foreground = active_job()
     # The version the domain shows now (not if it was switched meanwhile).
+    shown = peek_output_directory_for_object(domain) if domain is not None else None
+    switch_slot = (job.result == "finished" and domain is not None and domain.fumaris.cache_slot == job.original_slot
+                   and job.slot != job.original_slot)
+    expected = os.path.join(os.path.dirname(shown), os.path.basename(job.target)) if shown and switch_slot else shown
     current = (
         domain is not None
-        and os.path.normpath(peek_output_directory_for_object(domain) or "") == os.path.normpath(job.directory)
+        and not job.keep_previous
+        and os.path.normpath(expected or "") == os.path.normpath(job.target)
         and not (foreground is not None and getattr(foreground, "_domain_name", None) == domain.name)
     )
     imported = False
     import_error = ""
     if current and frames and job.result in {"finished", "stopped"}:
-        window = _window_for(domain)
+        window = _window_for(job, domain)
+        source_scene_exists = any(scene.session_uid == job.scene_uid for scene in domain.users_scene)
+        blocker = (_import_blocker(job, window) if window is not None else
+                   "when you return to the bake's scene" if source_scene_exists else "")
+        if blocker:
+            if job.waiting != blocker:
+                job.waiting = blocker
+                return True
+            return False
         if window is not None:
-            blocker = _import_blocker(job, window)
-            if blocker:
-                if job.waiting != blocker:
-                    job.waiting = blocker
-                    return True
-                return False
             _adopt_frames(job)
             try:
                 with bpy.context.temp_override(window=window):
+                    if switch_slot:
+                        from .importers import show_only_slot_volumes
+                        domain.fumaris.cache_slot = job.slot
+                        domain.fumaris.compare_selected = "vdb:" + job.slot
+                        show_only_slot_volumes(os.path.dirname(job.target), job.target)
                     _import_cache(bpy.context, domain, job.directory, job.prefix)
                 imported = True
             except Exception as error:
@@ -628,7 +668,7 @@ def _finish(job):
 
     # The statistics file, when this bake wrote it (an earlier bake's stays
     # in the folder until then).
-    stats = read_bake_stats(job.directory) if job.status.get("stats") else {}
+    stats = read_bake_stats(job.directory) if job.directory and job.status.get("stats") else {}
     if current:
         props = domain.fumaris
         if job.result == "finished" and not import_error:
@@ -641,6 +681,7 @@ def _finish(job):
         props.bake_peak_ram_mb = float(stats.get("peak_ram_mb", 0.0))
     forget_scan()
 
+    log = ""
     if job.result == "failed" or import_error:
         log = _keep_log(job)
         error = import_error or job.error or "The bake failed"
@@ -648,8 +689,6 @@ def _finish(job):
         diagnostics.set_status(job.uid, "Failed")
         diagnostics.finish(job.uid)
         text = f"Background bake of '{name}' failed: {error}"
-        if log:
-            text += f". Log: {log}"
         level = "ERROR"
     else:
         diagnostics.finish(job.uid)
@@ -661,7 +700,7 @@ def _finish(job):
         if domain is None:
             if frames and not job.detached:
                 text += f". Its domain is no longer in the scene; the frames are in {job.directory}"
-        elif frames and not imported:
+        elif frames and not imported and not job.keep_previous:
             text += f". It is version '{job.slot}' in Versions"
         level = "INFO"
         capacity = diagnostics.capacity_message(diagnostics.snapshot(job.uid))
@@ -669,6 +708,12 @@ def _finish(job):
             text += ". " + capacity
             level = "WARNING"
 
+    if job.keep_previous:
+        text += ". The previous bake is kept"
+        if job.directory:
+            text += f". Partial output saved as '{os.path.basename(job.directory)}'"
+    if log:
+        text += f". Log: {log}"
     _forget(job)
     if job.detached:
         console_log("Fumaris: " + text)
@@ -676,7 +721,7 @@ def _finish(job):
         if imported and not bpy.app.background:
             # An undo step of its own: undoing a later edit keeps the volume.
             try:
-                with bpy.context.temp_override(window=_window_for(domain) or bpy.context.window_manager.windows[0]):
+                with bpy.context.temp_override(window=_window_for(job, domain) or bpy.context.window_manager.windows[0]):
                     bpy.ops.ed.undo_push(message="Fumaris Background Bake")
             except Exception as error:
                 console_log(f"Fumaris cleanup warning: {error}")
@@ -695,6 +740,12 @@ def _adopt_frames(job):
 
 
 def _forget(job):
+    if job.replacement is not None:
+        try:
+            job.replacement.stop()
+        except (OSError, RuntimeError) as error:
+            console_log(f"Fumaris could not clean up replacement for {job.domain_name}: {error}")
+        job.replacement = None
     if job in _jobs:
         _jobs.remove(job)
     if runtime._BACKGROUND_JOBS.get(job.uid) is job:
@@ -1053,9 +1104,9 @@ class FUMARIS_OT_bake_background(Operator):
             self.report({"ERROR"}, "Select a Fumaris domain")
             return {"CANCELLED"}
         try:
-            if self.slot or self.new:
-                _bake_into(domain, self.slot)
-            started, errors = start(context, [domain])
+            if self.new:
+                _bake_into(domain, "")
+            started, errors = start(context, [domain], target_slots={domain: self.slot} if self.slot else None)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
@@ -1152,19 +1203,22 @@ class FUMARIS_OT_bake_all(Operator):
             return {"CANCELLED"}
         errors = []
         ready = []
+        target_slots = {}
         for domain in domains:
             try:
                 if self.versions != "CURRENT":
                     target = bake_target(domain)
                     if target is None:
                         _keep_what_is_there(domain)
+                    elif self.versions == "REPLACE":
+                        target_slots[domain] = target["name"]
                     else:
-                        _bake_into(domain, target["name"] if self.versions == "REPLACE" else "")
+                        _bake_into(domain, "")
                 ready.append(domain)
             except RuntimeError as error:
                 errors.append((domain.name, str(error)))
         try:
-            started, start_errors = start(context, ready)
+            started, start_errors = start(context, ready, target_slots=target_slots)
         except RuntimeError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}

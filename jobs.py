@@ -11,6 +11,8 @@ from .diagnostics import console_log
 from . import diagnostics
 from .exporters import bridge_executable, build_frame, build_session
 from .importers import (
+    _frame_files,
+    _particle_files,
     baked_frame_count,
     delete_generated_data,
     delete_temporary_writes,
@@ -118,6 +120,7 @@ class FrameRangeJob:
         keep_alive=False,
         output_directory=None,
         require_emitter=True,
+        require_empty=False,
     ):
         runtime_error = runtime_validation_error()
         if runtime_error:
@@ -195,7 +198,12 @@ class FrameRangeJob:
         if write_vdb:
             self._cache_lock = cache_lock(self._directory).acquire()
         try:
+            if require_empty:
+                particle_dir, particle_prefix = _particle_files(self._directory, self._prefix)
+                if baked_frame_count(self._directory, self._prefix) or _frame_files(particle_dir, particle_prefix, ".ply"):
+                    raise RuntimeError("The version now contains a bake. Start again to replace it")
             if clear_cache:
+                require_unprotected(self._directory, "bake over it")
                 delete_generated_data(self._directory, self._prefix)
         except Exception:
             self._release_cache_lock()
@@ -484,7 +492,7 @@ class FrameRangeJob:
 
     def _frame_complete(self, context, data, payload):
         domain = bpy.data.objects.get(self._domain_name)
-        completed = int(data.get("frame", self._frame))
+        completed = int(data["frame"])
         self._in_flight = max(0, self._in_flight - 1)
         ahead = self._frame   # frames already sent ahead are not sent again
         self._completed_frames.append(completed)
@@ -626,7 +634,29 @@ class FrameRangeJob:
         self._ending_session = True
         return None
 
-    def _finish(self, context):
+    def _settle_replacement(self, domain, success):
+        replacement = getattr(self, "_replacement", None)
+        if replacement is None:
+            return ""
+        if success:
+            if not baked_frame_count(self._directory, self._prefix):
+                raise RuntimeError("The replacement wrote no VDB frames")
+            replacement.complete()
+            self._directory = str(replacement.target)
+            self._replacement = None
+            return ""
+        self._replacement = None
+        try:
+            return replacement.stop()
+        except (RuntimeError, OSError) as error:
+            console_log(f"Fumaris could not move partial output from {replacement.directory}: {error}")
+            return ""
+        finally:
+            if domain:
+                for key, value in self._previous_bake.items():
+                    setattr(domain.fumaris, key, value)
+
+    def _finish(self, context, *, keep_replacement=False):
         self._finished = True
         release_job(self)
 
@@ -669,6 +699,8 @@ class FrameRangeJob:
         cleanup(self._cleanup_volume_staging)
         cleanup(self._delete_interrupted_writes)
         cleanup(self._release_cache_lock)
+        if not keep_replacement and getattr(self, "_replacement", None) is not None:
+            cleanup(self._settle_replacement, bpy.data.objects.get(self._domain_name), False)
         if getattr(self, "_restore_frame", False) and context.scene.frame_current != self._original_frame:
             cleanup(context.scene.frame_set, self._original_frame)
 
@@ -771,15 +803,16 @@ def stop_message(message, stderr):
         # Not the bridge's routine status lines ("Auto Simulation Memory: ...",
         # per-frame timings), which read as part of the reason (2026-11-19
         # review); anything else it said is kept.
-        if line.strip() and not _GPU_LIST_LINE.match(line) and not _ROUTINE_LINE.match(line.strip()):
-            lines.append(line.strip())
+        line = line.strip()
+        if line and line != message and not _GPU_LIST_LINE.match(line) and not _ROUTINE_LINE.match(line):
+            lines.append(line)
     return f"{message}: {' '.join(lines)}" if lines else message
 
 
 _ROUTINE_LINE = re.compile(
     r"(Auto Simulation Memory:|Fumaris frame \d+|timings:|Fumaris VDB |Fumaris preview loop reset|"
     r"Fumaris Flow runtime loaded|Fumaris background bake:|Initializing Flow|Fumaris: point cloud|"
-    r"Flow GPU labels|PROFILE_LABEL|TRACE )")
+    r"Flow GPU labels|Fumaris: environment |PROFILE_LABEL|TRACE )")
 
 
 def recover_removed_job(operator):

@@ -4,6 +4,13 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Fixed: saving a copy of a Blender file beside the original could share a writable bake cache. The first cache edit in the copy gives it its own cache and keeps its existing versions.
+- Fixed: Replace keeps the previous bake until the new one finishes. If the new bake fails or is stopped, any completed VDB frames are kept in a separate partial version.
+- Fixed: after stopping a cached preview with negative warmup frames, scrubbing showed a blank image. Uncapped previews could also stop with a frame-order error during warmup. The preview now runs through warmup, shows its cached frames after Stop, and reports the frame it actually drew.
+- Fixed: the playback controls in Properties, the sidebar and the headers now agree. Play after Stop starts from the beginning, Release Cache frees the kept frames, and Play from a baked domain preserves the bake in Versions.
+- Fixed: a background bake that finishes while another scene is open imports its volume when you return to the bake's scene.
+- Fixed: changing Spawn Particles settings, including Tracers Rate, releases a stopped preview cache.
+
 - Fixed: after an incomplete update (an old simulation program left behind while Fumaris was replaced), Bake and Bake in Background deleted the frames of the bake they were replacing and only then found that the simulation program was from another version: the old bake was gone and nothing replaced it. The add-on now checks the simulation program before it touches the bake, and the bake stays.
 - Fixed: baking again into a version that held a longer bake with particles showed the old bake's particles after the new bake's last frame (replacing frames 1-100 with 1-40 showed old particles from frame 41 on): its particle files stayed in the folder. Baking over a version and deleting it now remove its particle files too.
 - Fixed: a particle frame that could not be written (a full disk, a file in the way) was only mentioned in the system console, and the bake still ended as complete with that frame missing. The bake now stops and names the frame and the reason. Particle files are also written correctly into folders whose names have characters outside the system's code page on Windows.

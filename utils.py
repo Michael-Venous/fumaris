@@ -1,6 +1,7 @@
 import os
 import sys
 import hashlib
+import shutil
 import uuid
 import stat
 import tempfile
@@ -226,6 +227,147 @@ def cache_identity_for_object(obj):
         identity = hashlib.sha256(f"{name}|{uuid.uuid4().hex}".encode("utf-8")).hexdigest()[:24]
         props.cache_id = identity
     return identity
+
+
+_CACHE_OWNER = ".fumaris_owner"
+_UNSAVED_OWNER = uuid.uuid4().hex
+
+
+def cache_project_key():
+    if not bpy.data.filepath:
+        return _UNSAVED_OWNER
+    path = os.path.normcase(os.path.realpath(bpy.data.filepath))
+    return hashlib.sha256(os.fsencode(path)).hexdigest()
+
+
+def _read_cache_owner(root):
+    try:
+        with open(os.path.join(root, _CACHE_OWNER), encoding="ascii") as stream:
+            return stream.read()
+    except FileNotFoundError:
+        return ""
+
+
+def owns_cache(directory):
+    """Does this file have write access to this already-resolved slot?"""
+    return _read_cache_owner(os.path.dirname(directory)) == cache_project_key()
+
+
+def _repoint_cache_volumes(old, new):
+    from .importers import VOLUME_MARKER
+
+    def mapped(path):
+        source = os.path.normcase(os.path.abspath(path))
+        if source.startswith(os.path.normcase(old) + os.sep):
+            return os.path.join(new, os.path.relpath(path, old))
+        return None
+
+    for obj in bpy.data.objects:
+        marker = obj.get(VOLUME_MARKER)
+        if not marker or obj.type != "VOLUME" or obj.library is not None:
+            continue
+        new_marker = mapped(marker)
+        if new_marker is None:
+            continue
+        obj[VOLUME_MARKER] = new_marker
+        volume = obj.data
+        original = volume.filepath
+        path = mapped(bpy.path.abspath(original, library=volume.library))
+        if path is not None:
+            if original.startswith("//"):
+                try:
+                    path = bpy.path.relpath(path)
+                except ValueError:
+                    pass
+            volume.filepath = path
+
+
+def ensure_cache_owner(domain):
+    """Isolate disk writes from a Save As or a separately copied .blend.
+
+    Reads can continue to use the inherited cache. The first write copies its
+    versions and then rebinds the scene to the new cache identity. A populated
+    legacy cache has no verifiable owner, so it is also copied before writing.
+    """
+    from .cache import GUARD_FILE, LOCK_FILE, RefusedError, cache_lock
+    from .cache_revision import JOURNAL, WORK
+
+    if background_bake() is not None:
+        return  # The parent selected and reserved the worker's output.
+    directory = output_directory_for_object(domain)
+    root = os.path.dirname(directory)
+    owner = cache_project_key()
+    if _read_cache_owner(root) == owner:
+        return
+
+    infrastructure = {GUARD_FILE, LOCK_FILE, _CACHE_OWNER, WORK}
+    with cache_lock(root):
+        previous = _read_cache_owner(root)
+        if previous == owner:
+            return
+        if not previous and not any(
+            name not in infrastructure
+            for _path, _dirs, names in os.walk(root) for name in names
+        ):
+            with open(os.path.join(root, _CACHE_OWNER), "w", encoding="ascii") as stream:
+                stream.write(owner)
+            return
+
+        # The new identity becomes visible only after the complete copy.
+        identity = uuid.uuid4().hex[:24]
+        new = os.path.join(os.path.dirname(root), identity)
+        with tempfile.TemporaryDirectory(dir=os.path.dirname(root), prefix=".fumaris_fork_") as scratch:
+            stage = os.path.join(scratch, "cache")
+            os.mkdir(stage)
+
+            def ignored(_folder, names):
+                return [name for name in names if name in infrastructure]
+
+            with os.scandir(root) as entries:
+                for entry in entries:
+                    if entry.name in infrastructure:
+                        continue
+                    dest = os.path.join(stage, entry.name)
+                    if entry.is_dir(follow_symlinks=False):
+                        if entry.name.startswith("."):  # snapshots, playblasts
+                            shutil.copytree(entry.path, dest, ignore=ignored, symlinks=True)
+                        else:
+                            with cache_lock(entry.path):
+                                if os.path.isfile(os.path.join(entry.path, WORK, JOURNAL)):
+                                    raise RefusedError(
+                                        f"Version '{entry.name}' has an interrupted replacement. "
+                                        "Open its original Blender file to recover it before copying.")
+                                shutil.copytree(entry.path, dest, ignore=ignored, symlinks=True)
+                    elif entry.is_file(follow_symlinks=False):
+                        shutil.copy2(entry.path, dest)
+            # Import-only sequence links in older caches can point at the
+            # original frame by absolute path. Rebase those links; avoid
+            # carrying references to files outside the cache being copied.
+            for folder, dirs, files in os.walk(stage):
+                for name in (*dirs, *files):
+                    path = os.path.join(folder, name)
+                    if os.path.islink(path):
+                        source = os.path.join(root, os.path.relpath(path, stage))
+                        linked = os.path.abspath(os.path.join(os.path.dirname(source), os.readlink(path)))
+                        os.unlink(path)
+                        if linked.startswith(root + os.sep):
+                            clone = os.path.join(stage, os.path.relpath(linked, root))
+                            os.symlink(os.path.relpath(clone, folder), path)
+            with open(os.path.join(stage, _CACHE_OWNER), "w", encoding="ascii") as stream:
+                stream.write(owner)
+            os.rename(stage, new)
+    domain.fumaris.cache_id = identity
+    _repoint_cache_volumes(root, new)
+    key = domain.fumaris.compare_selected
+    kind, _, path = key.partition(":")
+    if kind in {"img", "blast"} and path.startswith(root + os.sep):
+        domain.fumaris.compare_selected = kind + ":" + os.path.join(new, os.path.relpath(path, root))
+    from .compare import forget_scan
+    from .particles import follow_bakes as follow_particles
+    from .sparks import follow_bakes as follow_sparks
+    follow_particles()
+    follow_sparks()
+    forget_scan()
 
 
 def output_directory_for_object(obj):

@@ -818,10 +818,12 @@ def _draw_preview_cache_status(layout, scene, job, paused):
         return f"{size / (1 << 30):.1f} GB" if size >= (1 << 30) else f"{size / (1 << 20):.0f} MB"
 
     live = getattr(job, "_live_frame", None)
-    if paused and live is not None and first <= scene.frame_current < live:
-        shown = cache.get("shown", -1)
-        _wrapped(layout, f"Showing cached frame {shown if shown >= 0 else scene.frame_current} (live {live})",
-                 "SEQUENCE")
+    parked = getattr(job, "_parked", False)
+    if paused and cache.get("shown_cached", cache.get("shown", -1) >= 0):
+        suffix = f" (live {live})" if not parked and live is not None else ""
+        _wrapped(layout, f"Showing cached frame {cache['shown']}{suffix}", "SEQUENCE")
+    elif parked and not first <= scene.frame_current <= last:
+        _wrapped(layout, f"Frame {scene.frame_current} is outside the preview cache", "INFO")
     elif paused and live is not None and scene.frame_current < first:
         _wrapped(layout, f"Frame {scene.frame_current} is no longer cached (oldest kept: {first})", "INFO")
     elif paused and getattr(job, "_loop_reset_pending", False):
@@ -1078,39 +1080,9 @@ def _draw_domain(layout, scene, props):
     simulate_box = layout.box()
     if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
         controls = simulate_box.column(align=True)
-        # Tight: words without icons, so no word is cut off.
-        icon = (lambda name: "NONE") if _TIGHT else (lambda name: name)
-        # One row for what runs: Play and Bake when idle; while something
-        # runs, its own buttons and one Stop for it. The menu at the end
-        # holds Bake in Background and Delete Bake.
+        from .playback import draw_transport
         row = controls.row(align=True)
-        if background is not None:
-            from .background import stop_label
-            sub = row.row(align=True)
-            # (Ended and waiting to be imported: nothing left to stop.)
-            sub.enabled = background.state != "ended"
-            sub.operator("fumaris.bake_background_stop", icon=icon("CANCEL"), text=stop_label(background))
-        elif is_baking:
-            row.operator("fumaris.stop", icon=icon("CANCEL"), text="Stop Bake")
-        elif is_previewing:
-            play = row.row(align=True)
-            play.enabled = not is_initializing
-            play.operator(
-                "fumaris.preview_pause",
-                icon=icon("PLAY" if is_preview_paused else "PAUSE"),
-                text="Resume" if is_preview_paused else "Pause",
-            )
-            row.operator("fumaris.preview_stop", icon=icon("CANCEL"), text="Stop")
-            restart = row.row(align=True)
-            restart.enabled = not is_initializing
-            restart.operator("fumaris.preview_restart", icon="FILE_REFRESH", text="")
-        else:
-            play = row.row(align=True)
-            play.enabled = mode is None
-            play.operator("fumaris.preview_play", icon=icon("PLAY"), text="Play")
-            bake = row.row(align=True)
-            bake.enabled = mode is None and not slot_protected
-            bake.operator("fumaris.bake", icon=icon("RENDER_ANIMATION"), text="Bake")
+        draw_transport(row, domain, icons=not _TIGHT)
         row.menu("FUMARIS_MT_bake_more", text="", icon="DOWNARROW_HLT")
         if slot_protected:
             controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")
@@ -1169,7 +1141,9 @@ def _draw_domain(layout, scene, props):
                            "CHECKMARK" if completed else "PAUSE")
         elif is_previewing:
             replaying = getattr(job, "_replaying", False)
-            if replaying:
+            if getattr(job, "_parked", False):
+                status.label(text="Stopped: cached frames kept", icon="INFO")
+            elif replaying:
                 status.label(text="Replaying the cache · Paused" if is_preview_paused else "Replaying the cache",
                              icon="PAUSE" if is_preview_paused else "LOOP_FORWARDS")
             else:

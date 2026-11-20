@@ -246,6 +246,7 @@ def volume_preview_signature(preview):
         int(preview["height"]),
         int(preview.get("view_id", 0)),
         int(preview.get("cache_frame", -1)),
+        bool(preview.get("cache_frame_enabled", False)),
         rounded(preview["view"]),
         rounded(preview["projection"]),
         round(float(preview.get("step_cells", 1.0)), 4),

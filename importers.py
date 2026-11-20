@@ -2125,7 +2125,10 @@ def _stage_import_sequence(directory, files, prefix=PREFIX):
     first_frame = _frame_number(files[0], prefix)
     if first_frame is None:
         raise RuntimeError("Cannot stage an unnumbered Fumaris VDB frame")
-    root = os.path.join(directory, IMPORT_DIRECTORY)
+    from .utils import cache_project_key
+    # Other .blend files can still read an inherited cache. A read/import in
+    # one file must not prune another file's import sequence links.
+    root = os.path.join(directory, IMPORT_DIRECTORY, cache_project_key())
     os.makedirs(root, exist_ok=True)
     target = os.path.join(root, str(time.time_ns()))
     os.makedirs(target, exist_ok=False)

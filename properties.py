@@ -803,7 +803,11 @@ class FumarisSettings(PropertyGroup):
     color_mixing: BoolProperty(
         # (identifier kept as color_mixing: saved files and scripts use it)
         name="Per-Emitter Smoke Color",
-        description="Each emitter's smoke takes the Smoke Color set on the emitter (Emitted Channels); where plumes meet, the colors mix. It colors the smoke, not the flame (the flame's color is set under Flame, for the whole domain). Bakes gain a color grid and the material and preview use it. Costs about 1.4x the simulation time and a third fewer blocks for the same VRAM. For one color everywhere, leave this off and set Color",
+        description=("Each emitter's smoke takes the Smoke Color set in Emitted Channels. "
+                     "Where plumes meet, their colors mix. Flame color is set for the whole domain under Flame. "
+                     "The preview and baked volume use a smoke color grid. "
+                     "Costs about 1.4x the simulation time and leaves a third of the blocks per GB of VRAM. "
+                     "For one smoke color everywhere, leave this off and set Color"),
         default=False,
     )
 

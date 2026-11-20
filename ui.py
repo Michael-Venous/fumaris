@@ -915,8 +915,7 @@ def _emitter_color_note(props):
 
 
 def _draw_emitter_colors(layout, props):
-    """Per-Emitter Smoke Color, under the smoke Color: the switch, its cost while
-    it is on, and a note when it buys nothing."""
+    """Show advice when the enabled option makes no visible difference."""
     layout.prop(props, "color_mixing")
     if not props.color_mixing:
         return
@@ -924,9 +923,6 @@ def _draw_emitter_colors(layout, props):
     if note:
         # (advice, not an error: the result is right, only slower)
         _wrapped(layout, note, "INFO")
-    else:
-        _wrapped(layout, "Colors the smoke, not the flame. Costs about 1.4x the simulation time and a third "
-                         "of the blocks per GB", "INFO")
 
 
 def _draw_small_instance_warning(layout, obj, props):
@@ -1080,9 +1076,39 @@ def _draw_domain(layout, scene, props):
     simulate_box = layout.box()
     if _section(simulate_box, props, "show_panel_simulate", "Simulate", "PHYSICS"):
         controls = simulate_box.column(align=True)
-        from .playback import draw_transport
+        # Tight: words without icons, so no word is cut off.
+        icon = (lambda name: "NONE") if _TIGHT else (lambda name: name)
+        # One row for what runs: Play and Bake when idle; while something
+        # runs, its own buttons and one Stop for it. The menu at the end
+        # holds Bake in Background and Delete Bake.
+        from .playback import preview_labels
+        play_label, stop_label_text = preview_labels(job if is_previewing else None)
         row = controls.row(align=True)
-        draw_transport(row, domain, icons=not _TIGHT)
+        if background is not None:
+            from .background import stop_label
+            sub = row.row(align=True)
+            # (Ended and waiting to be imported: nothing left to stop.)
+            sub.enabled = background.state != "ended"
+            sub.operator("fumaris.bake_background_stop", icon=icon("CANCEL"), text=stop_label(background))
+        elif is_baking:
+            row.operator("fumaris.stop", icon=icon("CANCEL"), text="Stop Bake")
+        elif is_previewing:
+            play = row.row(align=True)
+            play.operator("fumaris.preview_toggle",
+                          icon=icon("PAUSE" if play_label == "Pause" else "PLAY"), text=play_label)
+            stop_icon = "TRASH" if stop_label_text == "Release Cache" else "CANCEL"
+            row.operator("fumaris.preview_stop", icon=icon(stop_icon), text=stop_label_text)
+            restart = row.row(align=True)
+            restart.enabled = not is_initializing
+            restart.operator("fumaris.preview_restart", icon="FILE_REFRESH", text="")
+        else:
+            play = row.row(align=True)
+            play.enabled = mode is None
+            row.context_pointer_set("fumaris_domain", domain)
+            play.operator("fumaris.preview_toggle", icon=icon("PLAY"), text=play_label)
+            bake = row.row(align=True)
+            bake.enabled = mode is None and not slot_protected
+            bake.operator("fumaris.bake", icon=icon("RENDER_ANIMATION"), text="Bake")
         row.menu("FUMARIS_MT_bake_more", text="", icon="DOWNARROW_HLT")
         if slot_protected:
             controls.label(text=f"Version '{props.cache_slot}' is protected", icon="LOCKED")

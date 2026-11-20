@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Changed: moved the Per-Emitter Smoke Color explanation and simulation cost into its tooltip. The Color section still shows advice when all emitters use the same smoke color.
+
 - Fixed: saving a copy of a Blender file beside the original could share a writable bake cache. The first cache edit in the copy gives it its own cache and keeps its existing versions.
 - Fixed: Replace keeps the previous bake until the new one finishes. If the new bake fails or is stopped, any completed VDB frames are kept in a separate partial version.
 - Fixed: after stopping a cached preview with negative warmup frames, scrubbing showed a blank image. Uncapped previews could also stop with a frame-order error during warmup. The preview now runs through warmup, shows its cached frames after Stop, and reports the frame it actually drew.

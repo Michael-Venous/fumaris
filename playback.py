@@ -300,51 +300,47 @@ def transport_status(context, domain):
     return ' / '.join(parts)
 
 
-def draw_transport(row, domain, *, compact=False, icons=True):
-    job = active_job()
-    mode = active_mode()
-    if domain is not None:
-        row.context_pointer_set('fumaris_domain', domain)
-    background = background_job(domain)
-    if background is not None:
-        from .background import stop_label
-        stop = row.row(align=True)
-        stop.enabled = background.state != 'ended'
-        stop.operator('fumaris.bake_background_stop', text='' if compact else stop_label(background),
-                      icon='CANCEL' if icons else 'NONE').domain = domain.name
-        return
-    if mode == 'baking':
-        row.operator('fumaris.stop', text='' if compact else 'Stop Bake',
-                     icon='CANCEL' if icons else 'NONE')
-        return
-    running = mode == 'previewing'
-    parked = running and bool(getattr(job, '_parked', False))
-    paused = running and bool(getattr(job, '_pause_requested', False))
-    play = 'Play' if parked or not running else 'Resume' if paused else 'Pause'
-    row.operator('fumaris.preview_toggle', text='' if compact else play,
-                 icon=('PAUSE' if play == 'Pause' else 'PLAY') if icons else 'NONE')
-    if running:
-        row.operator('fumaris.preview_stop', text='' if compact else ('Release Cache' if parked else 'Stop'),
-                     icon=('TRASH' if parked else 'CANCEL') if icons else 'NONE')
-        row.operator('fumaris.preview_restart', text='', icon='FILE_REFRESH')
-    elif domain is not None:
-        bake = row.row(align=True)
-        bake.context_pointer_set('object', domain)
-        bake.operator('fumaris.bake', text='' if compact else 'Bake',
-                      icon='RENDER_ANIMATION' if icons else 'NONE')
+def preview_labels(job):
+    if getattr(job, '_parked', False):
+        return 'Play', 'Release Cache'
+    if job is None:
+        return 'Play', 'Stop'
+    return ('Resume' if getattr(job, '_pause_requested', False) else 'Pause'), 'Stop'
 
 
 def draw_controls(layout, context, *, compact=False, popover=True, details=True, domain=None):
-    if domain is None or active_job():
+    if domain is not None and not active_job():
+        # The buttons below act on it too (resolve_domain reads this). While
+        # a job runs they control that job, so its domain is shown.
+        layout.context_pointer_set('fumaris_domain', domain)
+    else:
         domain = resolve_domain(context)
     job = active_job()
     running = active_mode() == 'previewing'
     paused = running and bool(getattr(job, '_pause_requested', False))
     parked = running and bool(getattr(job, '_parked', False))
+    play, stop = preview_labels(job if running else None)
     row = layout.row(align=True)
     if compact and popover:
         row.popover(panel='FUMARIS_PT_playback', text='Fumaris')
-    draw_transport(row, domain, compact=compact)
+    row.operator('fumaris.preview_toggle', text='' if compact else play,
+                 icon='PAUSE' if running and not paused else 'PLAY')
+    # One button for Bake and Stop: Stop while a preview or bake runs (the
+    # two never run together), else Bake for the same domain (the Bake
+    # operator acts on context.object).
+    if active_mode() == 'baking':
+        row.operator('fumaris.stop', text='' if compact else 'Stop Bake', icon='SNAP_FACE')
+    elif running:
+        row.operator('fumaris.preview_stop', text='' if compact else stop,
+                     icon='TRASH' if parked else 'SNAP_FACE')
+        # Small, as in the Simulate panel.
+        row.row(align=True).operator('fumaris.preview_restart', text='', icon='FILE_REFRESH')
+    else:
+        bake = row.row(align=True)
+        bake.enabled = domain is not None and not job
+        if domain is not None:
+            bake.context_pointer_set('object', domain)
+        bake.operator('fumaris.bake', text='' if compact else 'Bake', icon='RENDER_ANIMATION')
     # The header shows no status: its changing width would move the buttons.
     if not compact and domain is not None:
         # A failed preview or bake is visible wherever its controls are.

@@ -37,7 +37,8 @@ from .participants import (
     participants as _participants,
 )
 from .point_export import _empty_point_arrays, _point_arrays, _world_vector
-from .protocol import DISPLAY_LUT_KEY, PROTOCOL_VERSION, pack_preview_payload, split_scene_depth
+from .protocol import (
+    DISPLAY_LUT_KEY, PROTOCOL_VERSION, pack_preview_payload, shared_images_supported, split_scene_depth)
 from .utils import (
     executable_path,
     flame_value,
@@ -132,6 +133,8 @@ def build_session(
                    _VDB_WRITERS.get(getattr(domain.fumaris, "vdb_writers", "BALANCED"), (6, 0)))),
         "write_vdb": bool(write_vdb),
         "preview_enabled": bool(preview_enabled),
+        # Preview images through shared memory, not the pipe (B4).
+        "preview_shared_memory": bool(preview_enabled) and shared_images_supported(),
         # Preview cache: a live preview keeps its frames for scrubbing.
         "preview_cache": bool(preview_enabled and not write_vdb and getattr(domain.fumaris, "preview_cache", False)),
         # Cache Every: a fixed step copies each kept frame whole; Auto paces it.

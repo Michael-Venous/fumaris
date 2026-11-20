@@ -38,6 +38,9 @@ from .protocol import (
     SESSION_COMPLETE,
     SESSION_END,
     SESSION_RESET,
+    FRAME_COMPLETE,
+    PREVIEW_COMPLETE,
+    SharedImages,
     check_ready,
     read_message,
     pack_preview_payload,
@@ -112,6 +115,8 @@ class BridgeWorker:
         self._messages_received = 0
         self._stderr_lines = 0
         self._reader_thread = None
+        # Preview images the bridge leaves in shared memory (B4).
+        self._shared_images = SharedImages()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
@@ -330,7 +335,7 @@ class BridgeWorker:
         """Reader thread: every reply, in order, to self.responses."""
         try:
             while True:
-                response = read_message(self._process.stdout)
+                response = self._resolve(read_message(self._process.stdout))
                 self._messages_received += 1
                 if _TRACE:
                     print(f"WORKER got {response[0]} frame={response[1].get('frame') if isinstance(response[1], dict) else None} payload={len(response[2])}", file=sys.stderr, flush=True)
@@ -372,8 +377,21 @@ class BridgeWorker:
             b"",
         ))
 
+    def _resolve(self, response):
+        """A reply whose image is in shared memory, as if it came in the payload."""
+        message_type, data, payload = response
+        if message_type in (FRAME_COMPLETE, PREVIEW_COMPLETE):
+            failure = self._shared_images.failure
+            payload = self._shared_images.resolve(data, payload)
+            if self._shared_images.failure != failure:
+                with self._stderr_lock:
+                    line = f"Fumaris: preview image not read from shared memory: {self._shared_images.failure}\n"
+                    self._stderr.append(line)
+                    self._pending_stderr.append(line)
+        return message_type, data, payload
+
     def _receive(self):
-        response = read_message(self._process.stdout)
+        response = self._resolve(read_message(self._process.stdout))
         if response[0] == FAILED:
             raise RuntimeError(response[1].get("message", "Bridge failed"))
         self.responses.put(response)
@@ -423,6 +441,7 @@ class BridgeWorker:
             self._stderr_thread.join(timeout=1.0)
         if process.stdout:
             process.stdout.close()
+        self._shared_images.close()
         if process.stderr and (not self._stderr_thread or not self._stderr_thread.is_alive()):
             process.stderr.close()
 

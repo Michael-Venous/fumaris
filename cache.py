@@ -196,24 +196,21 @@ def _pid_is_alive(pid):
         except ProcessLookupError:
             return False
 
+    # Waiting on the process, not its exit code: a process has its exit code
+    # as soon as it starts ending, before Windows closes its files, so a
+    # job folder removed then kept the dead bake's log (F2b, 2026-11-20).
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
     kernel32.OpenProcess.restype = ctypes.c_void_p
-    kernel32.GetExitCodeProcess.argtypes = (
-        ctypes.c_void_p,
-        ctypes.POINTER(ctypes.c_ulong),
-    )
-    kernel32.GetExitCodeProcess.restype = ctypes.c_int
+    kernel32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
+    kernel32.WaitForSingleObject.restype = ctypes.c_ulong
     kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
     kernel32.CloseHandle.restype = ctypes.c_int
-    handle = kernel32.OpenProcess(0x1000, False, pid)
+    handle = kernel32.OpenProcess(0x00100000 | 0x1000, False, pid)   # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
     if not handle:
         return ctypes.get_last_error() == 5
     try:
-        exit_code = ctypes.c_ulong()
-        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
-            return True
-        return exit_code.value == 259
+        return kernel32.WaitForSingleObject(handle, 0) == 0x102   # WAIT_TIMEOUT: still running
     finally:
         kernel32.CloseHandle(handle)
 

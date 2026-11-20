@@ -277,6 +277,36 @@ def _parent_gone(parent):
     return not _pid_is_alive(parent)
 
 
+class _Parent:
+    """The main Blender. On Windows a handle to it, held from the start: a
+    gone process's number can be given to a new one (then the bake would never
+    see its Blender close), never while a handle to it is open (F2b)."""
+
+    def __init__(self, pid):
+        self.pid = pid
+        self._handle = None
+        self._kernel32 = None
+        if os.name == "nt" and pid:
+            try:
+                import ctypes
+                kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                kernel32.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+                kernel32.OpenProcess.restype = ctypes.c_void_p
+                kernel32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_ulong)
+                kernel32.WaitForSingleObject.restype = ctypes.c_ulong
+                self._handle = kernel32.OpenProcess(0x00100000, False, pid)   # SYNCHRONIZE
+                self._kernel32 = kernel32
+            except (AttributeError, OSError):
+                self._handle = None
+
+    def gone(self):
+        if not self.pid:
+            return False
+        if self._handle:
+            return self._kernel32.WaitForSingleObject(self._handle, 0) == 0   # WAIT_OBJECT_0: it ended
+        return _parent_gone(self.pid)
+
+
 def _show_scene(job):
     """The scene and view layer the bake was started from."""
     window = bpy.context.window
@@ -290,12 +320,38 @@ def _show_scene(job):
         window.view_layer = layer
 
 
+def opt_out_of_power_throttling():
+    """Windows may slow a windowless process (power throttling, EcoQoS) and
+    ignore its timer resolution: this Blender has no window. The bridge opts
+    out the same way (F2b). Returns whether the setting was accepted."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+
+        class _State(ctypes.Structure):
+            _fields_ = [("Version", ctypes.c_ulong), ("ControlMask", ctypes.c_ulong), ("StateMask", ctypes.c_ulong)]
+
+        # PROCESS_POWER_THROTTLING_EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION, both off.
+        state = _State(1, 0x1 | 0x4, 0)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.SetProcessInformation.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong)
+        process_power_throttling = 4
+        return bool(kernel32.SetProcessInformation(
+            kernel32.GetCurrentProcess(), process_power_throttling, ctypes.byref(state), ctypes.sizeof(state)))
+    except (AttributeError, OSError):
+        return False
+
+
 def run(directory, job):
     """Bake job["domain"] of the loaded snapshot. Returns the exit code."""
+    opt_out_of_power_throttling()
+    parent = _Parent(int(job.get("parent_pid", 0)))
     status = _Status(directory, job)
     status.write()
     try:
-        return _bake(directory, job, status)
+        return _bake(directory, job, status, parent)
     except Exception as error:
         console_log(traceback.format_exc())
         status.write(state="failed", error=str(error) or type(error).__name__)
@@ -339,7 +395,7 @@ def _share_auto_memory(domain, job):
                 f"{device.get('name', 'this GPU')}: {props.simulation_memory:.1f} GB")
 
 
-def _bake(directory, job, status):
+def _bake(directory, job, status, parent):
     _show_scene(job)
     context = bpy.context
     domain = bpy.data.objects.get(job["domain"])
@@ -362,15 +418,14 @@ def _bake(directory, job, status):
     status.update(bake, force=True)
     status.write(state="running")
 
-    parent = int(job.get("parent_pid", 0))
     next_parent_check = 0.0
     next_cancel_check = 0.0
     orphaned = None     # when the main process was found gone
     while not bake._finished:
         now = time.monotonic()
-        if parent and orphaned is None and now >= next_parent_check:
+        if orphaned is None and now >= next_parent_check:
             next_parent_check = now + PARENT_CHECK_SECONDS
-            if _parent_gone(parent):
+            if parent.gone():
                 orphaned = now
         if not bake._stop_requested:
             cancelled = False

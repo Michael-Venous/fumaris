@@ -15,6 +15,8 @@ import sys
 JOB_FILE = "job.json"
 STATUS_FILE = "status.json"
 CANCEL_FILE = "cancel"
+# The frames' metadata this bake read (importers.frame_metadata), for the import.
+FRAMES_FILE = "frames.json"
 
 if __name__ == "__main__":
     # Started as a script: import the add-on this file belongs to from its
@@ -58,6 +60,8 @@ TICK_SECONDS = 0.001
 # status.json is also written between frames, so the main process can tell a
 # long frame from a bake that hangs.
 HEARTBEAT_SECONDS = 1.0
+# A status update that could not replace the file is written again after this.
+RETRY_SECONDS = 0.1
 PARENT_CHECK_SECONDS = 2.0
 # How often the loop looks for the cancel file.
 CANCEL_CHECK_SECONDS = 0.25
@@ -68,25 +72,30 @@ ORPHAN_SECONDS = 60.0
 RATE_FRAMES = 8
 
 
-def write_json(path, data):
-    """Readers never see a half-written file."""
+def write_json(path, data, *, wait=True):
+    """Readers never see a half-written file. Returns False when the file
+    could not be replaced (only without wait)."""
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "w", encoding="utf-8") as stream:
         json.dump(data, stream)
-    # Windows: replacing fails while the main process has the file open to
-    # read it. Dropping the write and relying on the next one lost the final
-    # "finished" status (there is no next write), so a completed bake was
-    # reported as ended unexpectedly (2026-11-19). Retry for up to ~2 s.
-    for attempt in range(40):
+    # Windows: replacing fails while the main process (or a virus scanner)
+    # has the file open. Dropping the write and relying on the next one lost
+    # the final "finished" status (there is no next write), so a completed
+    # bake was reported as ended unexpectedly (2026-11-19): that one retries
+    # for up to ~2 s. The per-frame updates do not wait (each waited inside
+    # the bake's loop, between frames): the next update writes them (R36).
+    for attempt in range(40 if wait else 1):
         try:
             os.replace(temporary, path)
-            return
+            return True
         except OSError:
-            time.sleep(0.05)
+            if wait:
+                time.sleep(0.05)
     try:
         os.remove(temporary)
     except OSError:
         pass
+    return False
 
 
 class BackgroundBake(FrameRangeJob):
@@ -220,11 +229,13 @@ class _Status:
             "log": [],
         }
 
-    def write(self, **values):
+    def write(self, *, wait=True, **values):
         self.data.update(values)
         self.data["time"] = time.time()
         self._written = time.monotonic()
-        write_json(self._path, self.data)
+        if not write_json(self._path, self.data, wait=wait):
+            # Not replaced (the file was open elsewhere): again in a moment.
+            self._written -= HEARTBEAT_SECONDS - RETRY_SECONDS
 
     def update(self, bake, *, force=False):
         """Every finished frame, and a heartbeat between them."""
@@ -238,6 +249,7 @@ class _Status:
         span = self._samples[-1][0] - self._samples[0][0] if len(self._samples) > 1 else 0.0
         state = diagnostics.snapshot(getattr(bake, "_diagnostic_key", None)) or {}
         self.write(
+            wait=False,
             message=bake.message,
             error=bake.error,
             accepted=bool(getattr(bake, "_accepted", False)),
@@ -386,6 +398,15 @@ def _bake(directory, job, status):
         time.sleep(TICK_SECONDS)
 
     failed = bool(getattr(bake, "_failed", False))
+    if not failed:
+        # What the import reads from every frame, read here while the files
+        # were cached (R36): the main process imports without reading them.
+        try:
+            from .importers import frame_metadata
+            bake.remember_written_frames(force=True)
+            write_json(os.path.join(directory, FRAMES_FILE), frame_metadata(bake._directory, bake._prefix))
+        except Exception as error:
+            console_log(f"Fumaris background bake: frame metadata not kept ({error})")
     status.update(bake, force=True)
     status.write(state="failed" if failed else "stopped" if bake._stop_requested else "finished",
                  error=(bake.error or "The bake failed") if failed else "")

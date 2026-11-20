@@ -369,11 +369,39 @@ class FUMARIS_PT_playback(bpy.types.Panel):
         self.layout.label(text='Edit shortcuts in Fumaris preferences', icon='PREFERENCES')
 
 
+class FUMARIS_OT_show_volumes_while_playing(bpy.types.Operator):
+    bl_idname = 'fumaris.show_volumes_while_playing'
+    bl_label = 'Show VDBs While Playing'
+    bl_description = ('Fumaris hides baked VDB volumes in the viewport while the timeline plays, because Blender '
+                      'reads every VDB frame from disk as it plays (Preferences > Hide Volumes While Playing). '
+                      'Show them now and from now on: playing goes through the VDB sequence as fast as the disk '
+                      'allows. Hide Volumes While Playing in the Fumaris preferences turns it back on')
+
+    def execute(self, context):
+        from .operators import _show_playback_hidden_volumes
+        from .utils import get_addon_preferences
+        prefs = get_addon_preferences()
+        if prefs is not None:
+            prefs.hide_volumes_during_playback = False
+        _show_playback_hidden_volumes()
+        self.report({'INFO'}, 'Baked volumes now play with the timeline (Fumaris preferences: Hide Volumes While Playing)')
+        return {'FINISHED'}
+
+
+def draw_hidden_volumes(layout):
+    """While the timeline plays with the baked volumes hidden, say so, with
+    a click that shows them (the play head seemed not to play the VDBs)."""
+    from .operators import HIDDEN_FOR_PLAYBACK
+    if HIDDEN_FOR_PLAYBACK[0]:
+        layout.operator('fumaris.show_volumes_while_playing', text='VDBs hidden while playing', icon='HIDE_ON')
+
+
 def draw_header(self, context):
     if context.area.type == 'DOPESHEET_EDITOR' and context.space_data.mode != 'TIMELINE':
         return
     if active_job() or scene_domains(context):
         draw_controls(self.layout, context, compact=True)
+    draw_hidden_volumes(self.layout)
     # Background bakes: "Baking 2 · 45%" and Stop, after the buttons.
     from .background import draw_header_status
     draw_header_status(self.layout)
@@ -395,7 +423,8 @@ def register():
     bpy.types.Scene.fumaris_preview_domain = PointerProperty(
         name='Preview Domain', type=bpy.types.Object, poll=_domain_poll,
         description='Domain controlled while editing other objects. A single available domain is chosen automatically')
-    for cls in (FUMARIS_OT_preview_toggle, FUMARIS_OT_preview_restart, FUMARIS_PT_playback):
+    for cls in (FUMARIS_OT_preview_toggle, FUMARIS_OT_preview_restart, FUMARIS_OT_show_volumes_while_playing,
+                FUMARIS_PT_playback):
         bpy.utils.register_class(cls)
     bpy.types.VIEW3D_HT_header.append(draw_header)
     bpy.types.DOPESHEET_HT_header.append(draw_header)
@@ -414,6 +443,7 @@ def unregister():
     _KEYMAPS.clear()
     bpy.types.DOPESHEET_HT_header.remove(draw_header)
     bpy.types.VIEW3D_HT_header.remove(draw_header)
-    for cls in (FUMARIS_PT_playback, FUMARIS_OT_preview_restart, FUMARIS_OT_preview_toggle):
+    for cls in (FUMARIS_PT_playback, FUMARIS_OT_show_volumes_while_playing, FUMARIS_OT_preview_restart,
+                FUMARIS_OT_preview_toggle):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.fumaris_preview_domain

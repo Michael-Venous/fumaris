@@ -286,7 +286,8 @@ done.
   on.
 - When more bakes run than GPUs are ticked, several share a GPU. With Auto,
   the bakes that start together on one GPU split what Auto would take
-  between them; a fixed `VRAM (GB)` is used as set.
+  between them; a fixed `VRAM (GB)` is used as set. A bake that runs alone on
+  its GPU takes all of it, whatever Background Bakes is set to.
 - While a domain bakes, its panel and its row in the sidebar show the frame,
   the speed and the time left, with a `Stop`. The 3D Viewport and Timeline
   headers show the background bakes in one short line ("Baking 2 · 45%", the
@@ -307,7 +308,11 @@ done.
 - Opening another file or quitting Blender stops the background bakes after
   the frame they are on. The frames written so far are kept.
 
-Each background bake is a second Blender with the scene loaded, so it needs
+A background bake costs about two seconds more than Bake (its Blender starts
+and loads the scene); its frames are as fast or faster, since it draws no live
+preview. Several domains with Bake All finish sooner than one Bake after the
+other. On a hard disk or a 4-core processor, writing the VDB files sets the pace
+of both. Each background bake is a second Blender with the scene loaded, so it needs
 its own system memory. Other add-ons are not loaded in it: motion that another
 add-on computes on each frame is missing, so bake such scenes with `Bake`.
 Python drivers run in it only when Auto Run Python Scripts is on in Blender's
@@ -1480,9 +1485,14 @@ other programs; the status line then says System RAM is low.
 
 **Save Playblast** (at the top of Versions, and in the menu beside Bake) asks
 for a name, then simulates the whole range as fast as the GPU allows (not in real
-time) and saves what the largest 3D viewport shows, with the smoke and without
+time) and saves what the 3D viewport shows, with the smoke and without
 overlays, as a movie and its PNG frames in Versions, beside the snapshots, with
-the settings it was made with. The new playblast is selected while it records.
+the settings it was made with. It records the viewport it is started from (from
+another editor, the largest one), framed as you see it: a perspective or
+orthographic view at the viewport's own size and shape; looking through a
+camera, the camera's frame (what is inside the passepartout, as a render shows
+it) at the render resolution and its percentage, up to 2048 pixels on the
+longer side. The new playblast is selected while it records.
 **Play** (the triangle on its row) opens the movie in your video player,
 independent of Blender's timeline (full screen, any monitor); **Image Editor**
 shows it in an Image Editor along the timeline, and an Image Editor showing a
@@ -1501,8 +1511,11 @@ between; on shows them again.
 
 Preferences > Hide Volumes While Playing (on by default) hides imported Fumaris
 volumes in the viewport while the timeline plays, since Blender loads every VDB
-frame as it plays, and shows them again when playback stops. Volumes you hid
-yourself stay hidden; renders are not affected.
+frame as it plays, and shows them again when playback stops. While they are
+hidden, the 3D Viewport and Timeline headers say `VDBs hidden while playing`:
+click it to play through the VDB sequence (it turns the preference off; turn it
+back on in the Fumaris preferences). Volumes you hid yourself stay hidden;
+renders are not affected.
 
 ### Capacity warning and defaults
 

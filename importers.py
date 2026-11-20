@@ -1960,13 +1960,91 @@ def _move_out_of_participant_collections(obj):
         collection.objects.unlink(obj)
 
 
+# What an import needs from each frame file (has it grids, its Thin Gas Auto
+# density reference), kept per file version (size, modification time). An
+# import read every frame's metadata twice; on a hard disk, once a bake's
+# files had left the page cache, the first pass took 1.3-2.4 s for 90 frames
+# at Resolution 768 (R36, 2026-11-19), with Blender frozen at the end of every
+# bake. A bake now reads each frame as it is published, still cached
+# (remember_written_frames), and a background bake hands what it read to the
+# main process (frame_metadata / adopt_frame_metadata).
+_FRAME_METADATA = {}        # normalized path -> (size, mtime_ns, (grids, density reference))
+_FRAME_METADATA_LIMIT = 50000
+
+
+def _metadata_key(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _read_frame_summary(path):
+    """(grid count, density reference or None) from the file. Raises when unreadable."""
+    if openvdb is None:
+        return len(_grid_metadata(path)), None
+    reference = None
+    grids = openvdb.readAllGridMetadata(path)
+    for grid in grids:
+        if grid.name in (PACKED_PYRO_GRID, "density_ref"):
+            metadata = grid.metadata
+            if DENSITY_REFERENCE_PROPERTY in metadata:
+                reference = float(metadata[DENSITY_REFERENCE_PROPERTY])
+                break
+    return len(grids), reference
+
+
+def _frame_summary(path):
+    stat = os.stat(path)
+    key = _metadata_key(path)
+    known = _FRAME_METADATA.get(key)
+    if known is not None and known[0] == stat.st_size and known[1] == stat.st_mtime_ns:
+        return known[2]
+    summary = _read_frame_summary(path)
+    if len(_FRAME_METADATA) >= _FRAME_METADATA_LIMIT:
+        _FRAME_METADATA.clear()
+    _FRAME_METADATA[key] = (stat.st_size, stat.st_mtime_ns, summary)
+    return summary
+
+
+def remember_written_frames(directory, prefix=PREFIX, seen=None):
+    """Read the frames a running bake has published since the last call (a
+    set of names, updated), while their files are still in the page cache."""
+    if seen is None:
+        seen = set()
+    for path in _frame_files(directory, prefix):
+        name = os.path.basename(path)
+        if name in seen:
+            continue
+        try:
+            _frame_summary(path)
+        except Exception:
+            continue    # read again (or skipped) by the import
+        seen.add(name)
+    return seen
+
+
+def frame_metadata(directory, prefix=PREFIX):
+    """What is known of a folder's frames, by file name: for another process."""
+    known = {}
+    for path in _frame_files(directory, prefix):
+        entry = _FRAME_METADATA.get(_metadata_key(path))
+        if entry is not None:
+            known[os.path.basename(path)] = [entry[0], entry[1], entry[2][0], entry[2][1]]
+    return known
+
+
+def adopt_frame_metadata(directory, known):
+    """frame_metadata from another process; files changed since are read again."""
+    for name, (size, mtime_ns, grids, reference) in (known or {}).items():
+        key = _metadata_key(os.path.join(directory, name))
+        _FRAME_METADATA[key] = (int(size), int(mtime_ns), (int(grids), None if reference is None else float(reference)))
+
+
 def _files_with_grids(files):
     started = time.perf_counter()
     valid = []
     skipped = []
     for path in files:
         try:
-            if _grid_metadata(path):
+            if _frame_summary(path)[0]:
                 valid.append(path)
         except Exception:
             skipped.append(path)
@@ -2216,12 +2294,9 @@ def _key_density_reference(volume_object, files, prefix=PREFIX):
             continue
         value = 0.0
         try:
-            for grid in openvdb.readAllGridMetadata(path):
-                if grid.name in (PACKED_PYRO_GRID, "density_ref"):
-                    metadata = grid.metadata
-                    if DENSITY_REFERENCE_PROPERTY in metadata:
-                        value = float(metadata[DENSITY_REFERENCE_PROPERTY])
-                        break
+            reference = _frame_summary(path)[1]
+            if reference is not None:
+                value = reference
         except Exception:
             pass
         # _stage_import_sequence numbers the files from 1; Blender shows

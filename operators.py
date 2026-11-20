@@ -2274,6 +2274,18 @@ def _preview_resolution_scale(domain):
 # Imported volumes hidden for timeline playback carry this mark until shown
 # again (also after a crash or a save mid-playback: shown on load).
 PLAYBACK_HIDDEN_MARKER = "fumaris_hidden_for_playback"
+# How many volumes the playing timeline hides now: the 3D Viewport and
+# Timeline headers say so while it plays (playback.draw_header).
+HIDDEN_FOR_PLAYBACK = [0]
+
+
+def _tag_headers():
+    for window in getattr(bpy.context.window_manager, "windows", ()):
+        for area in window.screen.areas:
+            if area.type in {"VIEW_3D", "DOPESHEET_EDITOR"}:
+                for region in area.regions:
+                    if region.type == "HEADER":
+                        region.tag_redraw()
 
 
 def _hide_volumes_enabled():
@@ -2287,6 +2299,9 @@ def _show_playback_hidden_volumes():
         if obj.get(PLAYBACK_HIDDEN_MARKER):
             del obj[PLAYBACK_HIDDEN_MARKER]
             obj.hide_viewport = False
+    if HIDDEN_FOR_PLAYBACK[0]:
+        HIDDEN_FOR_PLAYBACK[0] = 0
+        _tag_headers()
 
 
 @persistent
@@ -2295,10 +2310,16 @@ def _hide_volumes_for_playback(_scene=None, _depsgraph=None):
     volumes in the viewport while it plays (Hide Volumes While Playing)."""
     if not _hide_volumes_enabled():
         return
+    hidden = 0
     for obj in bpy.data.objects:
         if obj.type == "VOLUME" and _is_imported_volume(obj) and not obj.hide_viewport:
             obj[PLAYBACK_HIDDEN_MARKER] = True
             obj.hide_viewport = True
+            hidden += 1
+    if hidden:
+        # (Brent, 2026-11-19: "the play head no longer plays through the VDB sequence")
+        HIDDEN_FOR_PLAYBACK[0] = hidden
+        _tag_headers()
 
 
 @persistent

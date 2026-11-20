@@ -34,7 +34,7 @@ from bpy.props import BoolProperty, EnumProperty, StringProperty
 from bpy.types import Operator
 
 from . import diagnostics, runtime
-from .background_runner import CANCEL_FILE, JOB_FILE, STATUS_FILE, write_json
+from .background_runner import CANCEL_FILE, FRAMES_FILE, JOB_FILE, STATUS_FILE, write_json
 from .bridge import _popen_options
 from .cache import (
     _pid_is_alive,
@@ -46,7 +46,13 @@ from .cache import (
 from .devices import device_environment
 from .diagnostics import console_log
 from .exporters import bridge_executable, build_session
-from .importers import VOLUME_MARKER, baked_frame_count, delete_generated_data, delete_temporary_writes
+from .importers import (
+    VOLUME_MARKER,
+    adopt_frame_metadata,
+    baked_frame_count,
+    delete_generated_data,
+    delete_temporary_writes,
+)
 from .preview import clear_preview
 from .runtime import active_job, active_mode, background_job, blocking_job, release_parked_preview
 from .jobs import WRITING_LAST_FRAMES
@@ -69,6 +75,9 @@ RUNNER = "background_runner.py"
 KEPT_LOGS = 20
 
 POLL_SECONDS = 1.0
+# Once a bake is writing its last frames or has ended: its volume is imported
+# within this of its end, not up to POLL_SECONDS later (R36).
+END_POLL_SECONDS = 0.2
 # After Stop, a bake that writes no status for this long is ended: it cannot
 # see the request (its Blender is busy inside one frame).
 STOP_SECONDS = 30.0
@@ -291,27 +300,35 @@ def start(context, domains):
 def _launch_queued():
     """Give free workers the oldest queued jobs."""
     busy = {job.worker for job in _jobs if job.active}
+    starting = []
     for job in _jobs:
         if job.state != "queued":
             continue
         worker = next((index for index in range(worker_count()) if index not in busy), None)
         if worker is None:
-            return
+            break
         busy.add(worker)
-        _launch(job, worker)
+        starting.append((job, worker))
+    gpus = worker_gpus()
+    for job, worker in starting:
+        # The bakes on this job's GPU from now on, this one included: under
+        # Auto VRAM each takes its share of the card (two bakes each took
+        # ~85% of it and spilled into system memory, ~8x slower; beta 3
+        # review, 2026-11-19). Counted from the workers in use, not all of
+        # them: a lone bake with Background Bakes above the ticked GPUs took
+        # a fraction of an idle card (R36).
+        gpu = gpus[worker % len(gpus)]
+        sharing = sum(1 for index in busy if gpus[index % len(gpus)] == gpu)
+        _launch(job, worker, sharing)
 
 
-def _launch(job, worker):
+def _launch(job, worker, sharing=1):
     gpus = worker_gpus()
     job.worker = worker
     job.gpu = gpus[worker % len(gpus)]
     prefs = get_addon_preferences()
     custom_bridge = getattr(prefs, "executable_path", "") or ""
     try:
-        # Workers that bake on this job's GPU at once: under Auto VRAM each
-        # takes its share of the card (two bakes each took ~85% of it and
-        # spilled into system memory, ~8x slower; beta 3 review, 2026-11-19).
-        sharing = sum(1 for index in range(worker_count()) if gpus[index % len(gpus)] == job.gpu)
         write_json(os.path.join(job.path, JOB_FILE), {
             "auto_memory_share": 1.0 / max(1, sharing),
             "domain": job.domain_name,
@@ -365,7 +382,14 @@ def _tick():
         poll()
     except Exception as error:
         console_log(f"Fumaris background bakes: {error}")
-    return POLL_SECONDS if _jobs else None
+    if not _jobs:
+        return None
+    return END_POLL_SECONDS if any(_ending(job) for job in _jobs) else POLL_SECONDS
+
+
+def _ending(job):
+    """A bake about to end, or ended and waiting for the scene."""
+    return job.state == "ended" or bool(job.status.get("writing")) or job.status.get("state") in _FINAL
 
 
 def poll():
@@ -590,6 +614,7 @@ def _finish(job):
                     job.waiting = blocker
                     return True
                 return False
+            _adopt_frames(job)
             try:
                 with bpy.context.temp_override(window=window):
                     _import_cache(bpy.context, domain, job.directory, job.prefix)
@@ -653,6 +678,16 @@ def _finish(job):
                 console_log(f"Fumaris cleanup warning: {error}")
         report(level, text)
     return True
+
+
+def _adopt_frames(job):
+    """The frames' metadata the bake read while they were cached: the import
+    does not read every frame again (seconds on a hard disk, R36)."""
+    try:
+        with open(os.path.join(job.path, FRAMES_FILE), encoding="utf-8") as stream:
+            adopt_frame_metadata(job.directory, json.load(stream))
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
 
 
 def _forget(job):

@@ -15,6 +15,7 @@ from .importers import (
     delete_generated_data,
     delete_temporary_writes,
     hide_generated_volumes,
+    remember_written_frames,
     restore_generated_volumes,
 )
 from .protocol import (
@@ -152,6 +153,10 @@ class FrameRangeJob:
         mode = "Preview Recording" if write_vdb and keep_alive else "Bake" if write_vdb else "Preview"
         self._diagnostic_key = diagnostics.begin(domain, mode)
         self._preview_enabled = bool(preview_enabled)
+        # The frames' metadata the import needs, read as each is published
+        # (importers.remember_written_frames).
+        self._frames_seen = set() if write_vdb else None
+        self._next_frames_read = 0.0
 
         session, self._participants = build_session(
             context,
@@ -273,6 +278,7 @@ class FrameRangeJob:
     def _modal_tick(self, context):
         self._sample_memory()
         self._update_diagnostics(context)
+        self.remember_written_frames()
 
         for message_type, data, payload in self._worker.poll():
             if self._handle_worker_message(context, message_type, data, payload):
@@ -351,6 +357,21 @@ class FrameRangeJob:
 
     def _handle_worker_message(self, _context, _message_type, _data, _payload):
         return False
+
+    def remember_written_frames(self, force=False):
+        """Twice a second while writing VDBs: read the newly published frames'
+        metadata for the import while their files are still cached."""
+        seen = getattr(self, "_frames_seen", None)
+        if seen is None:
+            return
+        now = time.monotonic()
+        if not force and now < self._next_frames_read:
+            return
+        self._next_frames_read = now + 0.5
+        try:
+            remember_written_frames(self._directory, self._prefix, seen)
+        except OSError:
+            pass
 
     def request_cancel(self):
         if self._worker:

@@ -30,7 +30,13 @@ except ImportError:  # pragma: no cover - Blender ships numpy
 
 
 def _largest_view(context):
-    """(area, region, space) of the largest 3D viewport in this window."""
+    """(area, region, space) of the 3D viewport to record: the one Save
+    Playblast was started from, else the largest in this window."""
+    area = getattr(context, "area", None)
+    if area is not None and area.type == "VIEW_3D":
+        region = next((r for r in area.regions if r.type == "WINDOW"), None)
+        if region is not None:
+            return area, region, area.spaces.active
     best = None
     for area in context.screen.areas if context.screen else ():
         if area.type != "VIEW_3D":
@@ -42,6 +48,76 @@ def _largest_view(context):
         if best is None or size > best[0]:
             best = (size, area, region, area.spaces.active)
     return best[1:] if best else None
+
+
+# A playblast through a camera is at most this many pixels on its longer side
+# (the live smoke is drawn at up to 2048 too).
+CAMERA_FRAME_LIMIT = 2048
+
+
+def view_camera(context, space):
+    """The camera a viewport looks through, or None when it does not."""
+    region_3d = space.region_3d
+    if region_3d is None or region_3d.view_perspective != "CAMERA":
+        return None
+    if getattr(space, "use_local_camera", False) and space.camera is not None:
+        return space.camera
+    return context.scene.camera
+
+
+def camera_frame_size(scene):
+    """(width, height) of a playblast through the scene's camera: the render
+    resolution (with its %) at its displayed aspect, the longer side at most
+    CAMERA_FRAME_LIMIT."""
+    render = scene.render
+    scale = render.resolution_percentage / 100.0
+    width = max(1.0, render.resolution_x * scale * render.pixel_aspect_x)
+    height = max(1.0, render.resolution_y * scale * render.pixel_aspect_y)
+    # Square pixels at the render's height (or width, for portrait frames).
+    if render.pixel_aspect_x != render.pixel_aspect_y:
+        unit = min(render.pixel_aspect_x, render.pixel_aspect_y)
+        width, height = width / unit, height / unit
+    fit = min(1.0, CAMERA_FRAME_LIMIT / max(width, height))
+    return max(16, int(round(width * fit))), max(16, int(round(height * fit)))
+
+
+def recorded_view(context, space, region, size=None):
+    """What a playblast frame shows: (view matrix, projection matrix,
+    perspective). The viewport's own view for a free view, which the
+    region's size frames; through a camera, the camera's frame (what a
+    render shows, inside the passepartout), at `size`."""
+    region_3d = space.region_3d
+    camera = view_camera(context, space)
+    if camera is None or size is None:
+        return region_3d.view_matrix.copy(), region_3d.window_matrix.copy(), bool(region_3d.is_perspective)
+    render = context.scene.render
+    depsgraph = context.evaluated_depsgraph_get()
+    evaluated = camera.evaluated_get(depsgraph)
+    projection = evaluated.calc_matrix_camera(
+        depsgraph,
+        x=max(1, int(render.resolution_x * render.resolution_percentage / 100)),
+        y=max(1, int(render.resolution_y * render.resolution_percentage / 100)),
+        scale_x=render.pixel_aspect_x,
+        scale_y=render.pixel_aspect_y,
+    )
+    view = evaluated.matrix_world.normalized().inverted()
+    perspective = getattr(camera.data, "type", "PERSP") != "ORTHO"
+    return view, projection, perspective
+
+
+class _View:
+    """The region and region_3d preview.capture_volume_preview reads, for a
+    view that is not the region's own (a camera frame)."""
+
+    def __init__(self, region, width, height, view, projection, perspective):
+        self.width, self.height = width, height
+        self.view_matrix, self.window_matrix = view, projection
+        self.perspective_matrix = projection @ view
+        self.is_perspective = perspective
+        self._pointer = region.as_pointer()
+
+    def as_pointer(self):
+        return self._pointer
 
 
 PLAYBLAST_SUFFIX = "_playblast"
@@ -105,7 +181,9 @@ class FUMARIS_OT_playblast(Operator):
     bl_label = "Save Playblast"
     bl_description = ("Simulate the whole range as fast as possible and save the viewport with the live smoke "
                       "to a movie (and its PNG frames) in Versions, with the current settings. "
-                      "Uses the largest 3D viewport as it is shown, without overlays; Esc stops it")
+                      "Records the 3D viewport it is started from (else the largest) as it is shown, without "
+                      "overlays; looking through a camera, the camera's frame at the render resolution. "
+                      "Esc stops it")
     bl_options = {"REGISTER"}
 
     domain_name: bpy.props.StringProperty(options={"HIDDEN", "SKIP_SAVE"})
@@ -158,7 +236,13 @@ class FUMARIS_OT_playblast(Operator):
         scene = context.scene
         self._start, self._end = simulation_frame_range(domain)
         self._original_frame = scene.frame_current
-        self._width, self._height = self._region.width, self._region.height
+        # Framed like the viewport: the region's size for a free view; through
+        # a camera, the camera frame at the render's aspect (R37, Brent).
+        self._camera = view_camera(context, self._space) is not None
+        if self._camera:
+            self._width, self._height = camera_frame_size(scene)
+        else:
+            self._width, self._height = self._region.width, self._region.height
         self._directory = new_playblast_directory(domain)
         self._names = []
         # Listed and selected from its first frame under its name, so the list
@@ -190,13 +274,15 @@ class FUMARIS_OT_playblast(Operator):
         """The viewport as shown (no overlays), display-encoded RGBA, and its depth."""
         import gpu
         space, region = self._space, self._region
-        region_3d = space.region_3d
+        view, projection, self._perspective = recorded_view(
+            context, space, region, (self._width, self._height) if self._camera else None)
+        self._view = (view, projection)
         overlays = space.overlay.show_overlays
         space.overlay.show_overlays = False
         offscreen = gpu.types.GPUOffScreen(self._width, self._height)
         try:
             offscreen.draw_view3d(context.scene, context.view_layer, space, region,
-                                  region_3d.view_matrix, region_3d.window_matrix, do_color_management=True)
+                                  view, projection, do_color_management=True)
             with offscreen.bind():
                 framebuffer = gpu.state.active_framebuffer_get()
                 color = framebuffer.read_color(0, 0, self._width, self._height, 4, 0, "FLOAT")
@@ -212,8 +298,9 @@ class FUMARIS_OT_playblast(Operator):
 
     def _request(self, context, domain, depths):
         from . import preview
-        region_3d = self._space.region_3d
-        request = preview.capture_volume_preview(context, domain, (self._region, region_3d))
+        view, projection = self._view
+        target = _View(self._region, self._width, self._height, view, projection, self._perspective)
+        request = preview.capture_volume_preview(context, domain, (target, target))
         # Full viewport size (whatever Preview Resolution is), with this frame's depth.
         scale = min(1.0, 2048.0 / self._width, 2048.0 / self._height)
         width, height = max(16, int(round(self._width * scale))), max(16, int(round(self._height * scale)))
@@ -224,7 +311,7 @@ class FUMARIS_OT_playblast(Operator):
             self._depth_serial += 1
             request["depth_serial"] = self._depth_serial
             request[protocol.SCENE_DEPTH_KEY] = preview.sample_scene_depth(
-                depths, width, height, getattr(region_3d, "is_perspective", True))
+                depths, width, height, self._perspective)
         return request
 
     def _write_frame(self, background, data, payload):

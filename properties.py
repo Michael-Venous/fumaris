@@ -2279,7 +2279,7 @@ class FumarisSettings(PropertyGroup):
 
     adaptive_cfl: FloatProperty(
         name="Cells per Step",
-        description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; 8 bakes explosions in about half the time with a similar result, while 16 loses much of the smoke. 0 = off: always use Max Sub-Steps",
+        description="Adaptive Sub-Steps: how many voxels the fastest smoke may cross per step before another Sub-Step is added, up to Max Sub-Steps. Lower is more accurate and slower; 8 bakes explosions in about half the time with a similar result, while 16 loses much of the smoke. 0 = off: always use Max Sub-Steps (fast colliders add none)",
         default=8.0,
         min=0.0,
         soft_max=8.0,
@@ -2292,7 +2292,7 @@ class FumarisSettings(PropertyGroup):
     # 2 steps and close to a converged result (output/trace_final).
     num_sub_steps: IntProperty(
         name="Sub-Steps",
-        description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation. With Cells per Step above 0 it is the most allowed, and steps are added only where motion needs them",
+        description="How many smaller simulation steps run per frame; increase for fast motion or high-resolution accuracy, at the cost of slower simulation. With Cells per Step above 0 it is the most allowed, and steps are added only where motion needs them; a mesh or box collider that would move farther than its Collider Margin in one step adds steps beyond it, up to 8",
         default=1,
         min=1,
         soft_max=40,

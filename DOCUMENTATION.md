@@ -1093,10 +1093,19 @@ margin are shut.
 - **Moving and rotating colliders** push the smoke. Smoke within Collider
   Margin of a moving collider rides along with it and its path through smoke
   stays clear for a while (a 0.8 m box crossing a cloud at 4 m/s carried 17%
-  of it out). Very fast colliders, more than about one velocity cell per step,
-  lose or make smoke where they sweep: at Resolution 256 the same box at 16 m/s
-  kept 63% of the cloud, a 4 m plate at 8 m/s 34%, a paddle spinning once a
-  second made 15% more. Add Sub-Steps or lower the speed if that shows.
+  of it out at Resolution 256). A collider pushes with the air it holds out to
+  its Collider Margin, so with Cells per Step above 0 (the default) a mesh or
+  box collider whose surface would move farther than its margin (at least a
+  velocity cell) in one step adds Sub-Steps for that frame, beyond Sub-Steps
+  if needed, up to 8. Before 2.0.0 beta 4 such colliders jumped over the smoke
+  they should push and lost or made smoke where they swept. Measured at
+  Resolution 256 / 512: a 4 x 4 m plate 0.1 m thick at 8 m/s keeps all of a
+  cloud (49% / 6% before), a 0.8 m box at 16 m/s 99% / 96% (63% / 44%), a
+  plate at 24 m/s leaves nothing behind (43% passed through it at 512), a
+  paddle spinning 3 times a second keeps 83% / 89% (it made 110% / 49% more).
+  Frames in which a collider moves that fast take as many times the GPU time.
+  With Cells per Step 0 Sub-Steps is used as set: raise it for fast
+  colliders. With Move With Object colliders add no steps.
 - **Deforming colliders** (shape keys, armatures, modifiers) push the smoke
   with their surface as it moves (`Velocity Influence`), and are not treated
   as convex solids while they deform. A sphere inflating into smoke kept 87% of

@@ -567,7 +567,7 @@ class FUMARIS_OT_preview_play(FrameRangeJob, Operator):
             return True
         if getattr(self, "_pause_requested", False):
             return False
-        if self.can_park(context):
+        if getattr(self, "can_park", None) is not None and self.can_park(context):
             self.park(context)   # like Stop: the cached frames stay (F8)
         else:
             _cancel_job(context, self)

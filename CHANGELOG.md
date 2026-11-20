@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Fixed: cache scans ignore directories named like numbered VDB or PLY frames. If a directory blocks a frame write, the bake reports that frame and keeps the output already written.
+
 - Fixed: when Replace has to copy its backups, an open cache file can block publication. Rollback leaves that unchanged file alone, restores the earlier files, and keeps the partial bake in Versions.
 
 - Fixed: saving a copy of a Blender file beside the original could share a writable bake cache. The first cache edit in the copy gives it its own cache and keeps its existing versions.

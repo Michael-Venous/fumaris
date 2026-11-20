@@ -71,11 +71,14 @@ def _prefix(props):
     return props.output_prefix or "fumaris_"
 
 
-def _domain(context):
-    obj = context.object
-    if obj and hasattr(obj, "fumaris") and obj.fumaris.smoke_object_type == "domain" and not obj.get(VOLUME_MARKER):
-        return obj
-    return None
+def _domain(context, name=""):
+    obj = context.scene.objects.get(name) if name else context.object
+    return obj if _is_domain(obj) else None
+
+
+def _is_domain(obj):
+    return bool(obj and hasattr(obj, "fumaris") and obj.fumaris.smoke_object_type == "domain"
+                and not obj.get(VOLUME_MARKER))
 
 
 def forget_scan():
@@ -1148,6 +1151,20 @@ class _DomainOperator:
         return _domain(context) is not None and active_mode() != "baking"
 
 
+class _EntryOperator(_DomainOperator):
+    domain_name: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    @classmethod
+    def poll(cls, context):
+        return _can_target_domain(context) and active_mode() != "baking"
+
+
+def _can_target_domain(context):
+    # Poll cannot see operator properties. Explicit targets can be outside
+    # the current view layer, but must belong to the current scene.
+    return _domain(context) is not None or any(_is_domain(obj) for obj in context.scene.objects)
+
+
 def _writable_entry(domain, entry):
     old = os.path.dirname(output_directory_for_object(domain))
     ensure_cache_owner(domain)
@@ -1160,14 +1177,14 @@ def _writable_entry(domain, entry):
 
 
 def _entry_or_report(op, context):
-    domain = _domain(context)
+    domain = _domain(context, op.domain_name)
     entry = find_entry(domain, op.key, fresh=True) if domain else None
     if entry is None:
         op.report({"ERROR"}, "That version no longer exists")
     return domain, entry
 
 
-class FUMARIS_OT_entry_select(_DomainOperator, Operator):
+class FUMARIS_OT_entry_select(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_select"
     bl_label = "Select"
     bl_description = "Select this version; its buttons appear below the list. Right-click for more"
@@ -1176,7 +1193,7 @@ class FUMARIS_OT_entry_select(_DomainOperator, Operator):
 
     @classmethod
     def description(cls, context, properties):
-        domain = _domain(context)
+        domain = _domain(context, properties.domain_name)
         entry = find_entry(domain, properties.key) if domain else None
         if entry is None:
             return cls.bl_description
@@ -1193,17 +1210,19 @@ class FUMARIS_OT_entry_select(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def execute(self, context):
-        domain = _domain(context)
+        domain = _domain(context, self.domain_name)
+        if domain is None:
+            return {"CANCELLED"}
         domain.fumaris.compare_selected = self.key
         if self.key.startswith("blast:"):
             refresh_playblast_viewers(context, find_entry(domain, self.key))
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
+class FUMARIS_OT_entry_pin(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_pin"
     bl_label = "Pin"
     bl_description = "Pin or unpin. Pinned versions stay at the top; Bake offers to replace a pinned VDB version (a bake, or a preview sequence you want to keep as one)"
@@ -1212,7 +1231,7 @@ class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
@@ -1231,17 +1250,13 @@ class FUMARIS_OT_entry_pin(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_sync_material(_DomainOperator, Operator):
+class FUMARIS_OT_entry_sync_material(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_sync_material"
     bl_label = "Sync Material"
     bl_description = ("On: this version uses Fumaris's material, kept in step with the domain's Look (bakes start "
                       "on). Off: it gets its own copy, which the Look no longer changes (saves start off)")
 
     key: StringProperty()
-
-    @classmethod
-    def poll(cls, context):
-        return _domain(context) is not None and active_mode() != "baking"
 
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
@@ -1259,16 +1274,12 @@ class FUMARIS_OT_entry_sync_material(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_show(_DomainOperator, Operator):
+class FUMARIS_OT_entry_show(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_show"
     bl_label = "Show in Viewport"
     bl_description = "Show or hide this version in the viewport (imported as a volume the first time)"
 
     key: StringProperty()
-
-    @classmethod
-    def poll(cls, context):
-        return _domain(context) is not None and active_mode() != "baking"
 
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
@@ -1282,7 +1293,7 @@ class FUMARIS_OT_entry_show(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_import(_DomainOperator, Operator):
+class FUMARIS_OT_entry_import(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_import"
     bl_label = "Import"
     bl_description = "Bring this version into the scene as a volume object, to render (EEVEE or Cycles) and keep; Remove takes it out of the scene again (its files stay)"
@@ -1309,7 +1320,7 @@ class FUMARIS_OT_entry_import(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_image(_DomainOperator, Operator):
+class FUMARIS_OT_entry_image(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_image"
     bl_label = "Image Editor"
     bl_description = ("Show this snapshot, or this playblast, in an Image Editor (a playblast follows Blender's "
@@ -1319,7 +1330,7 @@ class FUMARIS_OT_entry_image(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
@@ -1349,7 +1360,7 @@ def _playblast_movie(entry):
     return movie if movie and os.path.isfile(movie) else ""
 
 
-class FUMARIS_OT_entry_play(_DomainOperator, Operator):
+class FUMARIS_OT_entry_play(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_play"
     bl_label = "Play"
     bl_description = ("Play this playblast in your video player: independent of Blender's timeline, full screen "
@@ -1359,7 +1370,7 @@ class FUMARIS_OT_entry_play(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def execute(self, context):
         domain, entry = _entry_or_report(self, context)
@@ -1369,7 +1380,7 @@ class FUMARIS_OT_entry_play(_DomainOperator, Operator):
         movie = _playblast_movie(entry)
         if not movie:
             self.report({"WARNING"}, "This playblast has no movie (it was stopped early): showing its frames")
-            return bpy.ops.fumaris.entry_image(key=entry["key"])
+            return bpy.ops.fumaris.entry_image(domain_name=domain.name, key=entry["key"])
         try:
             bpy.ops.wm.path_open(filepath=movie)
         except RuntimeError as error:
@@ -1378,7 +1389,7 @@ class FUMARIS_OT_entry_play(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_export_movie(_DomainOperator, Operator):
+class FUMARIS_OT_entry_export_movie(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_export_movie"
     bl_label = "Export MP4…"
     bl_description = ("Save a copy of this playblast's movie where you choose. Playblasts are kept on disk in the "
@@ -1390,7 +1401,7 @@ class FUMARIS_OT_entry_export_movie(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def invoke(self, context, _event):
         _domain_, entry = _entry_or_report(self, context)
@@ -1421,7 +1432,7 @@ class FUMARIS_OT_entry_export_movie(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_open_folder(_DomainOperator, Operator):
+class FUMARIS_OT_entry_open_folder(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_open_folder"
     bl_label = "Open Folder"
     bl_description = "Open the folder holding this version's files (on disk, not inside the .blend)"
@@ -1430,7 +1441,7 @@ class FUMARIS_OT_entry_open_folder(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def execute(self, context):
         _domain_, entry = _entry_or_report(self, context)
@@ -1445,7 +1456,7 @@ class FUMARIS_OT_entry_open_folder(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-_changes = {"title": "", "lines": [], "key": "", "measures": [], "settings": True}
+_changes = {"title": "", "lines": [], "key": "", "domain_name": "", "measures": [], "settings": True}
 
 
 def entry_measures(domain, entry, frame):
@@ -1461,7 +1472,7 @@ def entry_measures(domain, entry, frame):
     return frame, measured_differences(current, entry["path"], prefix, frame)
 
 
-class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
+class FUMARIS_OT_entry_changes(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_changes"
     bl_label = "View Changes"
     bl_description = ("The settings this version was made with that differ from the current ones, and for a bake, "
@@ -1472,7 +1483,7 @@ class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def invoke(self, context, _event):
         domain, entry = _entry_or_report(self, context)
@@ -1487,7 +1498,7 @@ class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
             self.report({"ERROR"}, f"'{entry['name']}' has no stored settings")
             return {"CANCELLED"}
         _changes.update(title=f"{entry['name']}: changes from the current settings", lines=lines, key=entry["key"],
-                        measures=measures, settings=lines is not None)
+                        measures=measures, settings=lines is not None, domain_name=domain.name)
         return context.window_manager.invoke_popup(self, width=520)
 
     def draw(self, _context):
@@ -1527,13 +1538,14 @@ class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
             return
         load = layout.row()
         load.enabled = active_job() is None or active_mode() == "previewing"
-        load.operator("fumaris.entry_load", text="Load These Settings", icon="LOOP_BACK").key = _changes["key"]
+        op = load.operator("fumaris.entry_load", text="Load These Settings", icon="LOOP_BACK")
+        op.domain_name, op.key = _changes["domain_name"], _changes["key"]
 
     def execute(self, _context):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_load(_DomainOperator, Operator):
+class FUMARIS_OT_entry_load(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_load"
     bl_label = "Load Settings"
     bl_description = "Set the domain and its sources to the settings this version was made with (sources are matched by name). Your current settings are overwritten"
@@ -1564,7 +1576,7 @@ class FUMARIS_OT_entry_load(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_save_preset(_DomainOperator, Operator):
+class FUMARIS_OT_entry_save_preset(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_save_preset"
     bl_label = "Save Settings as Preset"
     bl_description = "Save the domain settings this version was made with as a preset, available in every file"
@@ -1591,7 +1603,7 @@ class FUMARIS_OT_entry_save_preset(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_note(_DomainOperator, Operator):
+class FUMARIS_OT_entry_note(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_note"
     bl_label = "Rename…"
     bl_description = "Name or describe this version (its files keep their names)"
@@ -1601,7 +1613,7 @@ class FUMARIS_OT_entry_note(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def invoke(self, context, _event):
         _domain_, entry = _entry_or_report(self, context)
@@ -1627,7 +1639,7 @@ class FUMARIS_OT_entry_note(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
+class FUMARIS_OT_entry_delete(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_delete"
     bl_label = "Delete"
     bl_description = "Delete this version's files (frames, or the image) and stored settings. They cannot be recovered"
@@ -1638,7 +1650,7 @@ class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
     def poll(cls, context):
         # Not while baking (the bake writes a version); a live preview writes
         # only the version it is saving, which execute() refuses.
-        return _domain(context) is not None and (active_job() is None or active_mode() == "previewing")
+        return _can_target_domain(context) and (active_job() is None or active_mode() == "previewing")
 
     def invoke(self, context, event):
         _domain_, entry = _entry_or_report(self, context)
@@ -1666,7 +1678,7 @@ class FUMARIS_OT_entry_delete(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-class FUMARIS_OT_entry_menu(_DomainOperator, Operator):
+class FUMARIS_OT_entry_menu(_EntryOperator, Operator):
     bl_idname = "fumaris.entry_menu"
     bl_label = "More"
     bl_description = "Rename, save its settings as a preset, or delete"
@@ -1675,13 +1687,16 @@ class FUMARIS_OT_entry_menu(_DomainOperator, Operator):
 
     @classmethod
     def poll(cls, context):
-        return _domain(context) is not None
+        return _can_target_domain(context)
 
     def invoke(self, context, _event):
-        key = self.key
+        domain, entry = _entry_or_report(self, context)
+        if entry is None:
+            return {"CANCELLED"}
+        domain_name, key = domain.name, self.key
 
         def draw(menu, menu_context):
-            draw_entry_menu(menu.layout, _domain(menu_context), key)
+            draw_entry_menu(menu.layout, _domain(menu_context, domain_name), key)
         context.window_manager.popup_menu(draw, title="Version")
         return {"FINISHED"}
 
@@ -1838,6 +1853,11 @@ class FUMARIS_OT_snapshot(_DomainOperator, Operator):
 
 # --- Panel -------------------------------------------------------------------
 
+def _entry_button(layout, operator, domain, key, **kwargs):
+    props = layout.operator("fumaris." + operator, **kwargs)
+    props.domain_name, props.key = domain.name, key
+
+
 def draw_entry_menu(layout, domain, key):
     """An entry's extra actions (its More button and right-click)."""
     if domain is None:
@@ -1845,18 +1865,18 @@ def draw_entry_menu(layout, domain, key):
     entry = find_entry(domain, key)
     if entry is None:
         return
-    layout.operator("fumaris.entry_note", icon="GREASEPENCIL").key = key
+    _entry_button(layout, "entry_note", domain, key, icon="GREASEPENCIL")
     if entry["kind"] == "playblast":
         export = layout.row()
         export.enabled = bool(_playblast_movie(entry))
-        export.operator("fumaris.entry_export_movie", icon="EXPORT").key = key
+        _entry_button(export, "entry_export_movie", domain, key, icon="EXPORT")
     if entry["kind"] in ("playblast", "vdb"):
-        layout.operator("fumaris.entry_open_folder", icon="FILE_FOLDER").key = key
+        _entry_button(layout, "entry_open_folder", domain, key, icon="FILE_FOLDER")
     settings = layout.row()
     settings.enabled = entry["settings"]
-    settings.operator("fumaris.entry_save_preset", icon="PRESET_NEW").key = key
+    _entry_button(settings, "entry_save_preset", domain, key, icon="PRESET_NEW")
     layout.separator()
-    layout.operator("fumaris.entry_delete", text="Delete…", icon="TRASH").key = key
+    _entry_button(layout, "entry_delete", domain, key, text="Delete…", icon="TRASH")
 
 
 def _button_context_menu(self, context):
@@ -1869,7 +1889,7 @@ def _button_context_menu(self, context):
     if identifier not in {"FUMARIS_OT_entry_select", "FUMARIS_OT_entry_show", "FUMARIS_OT_entry_pin",
                           "FUMARIS_OT_entry_image", "FUMARIS_OT_entry_play"}:
         return
-    domain = _domain(context)
+    domain = _domain(context, op.domain_name)
     if domain is None or not op.key:
         return
     entry = find_entry(domain, op.key)
@@ -1879,13 +1899,13 @@ def _button_context_menu(self, context):
     layout.separator()
     layout.label(text=entry["name"], icon=_icon(entry))
     if entry["kind"] == "vdb":
-        layout.operator("fumaris.entry_import", text="Remove from Scene" if _entry_volumes(entry) else "Import",
-                        icon="IMPORT").key = op.key
+        _entry_button(layout, "entry_import", domain, op.key, text="Remove from Scene" if _entry_volumes(entry) else "Import",
+                        icon="IMPORT")
     else:
         if entry["kind"] == "playblast":
-            layout.operator("fumaris.entry_play", icon="PLAY").key = op.key
-        layout.operator("fumaris.entry_image", icon="IMAGE_DATA").key = op.key
-    layout.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = op.key
+            _entry_button(layout, "entry_play", domain, op.key, icon="PLAY")
+        _entry_button(layout, "entry_image", domain, op.key, icon="IMAGE_DATA")
+    _entry_button(layout, "entry_changes", domain, op.key, icon="SEQ_SPLITVIEW")
     draw_entry_menu(layout, domain, op.key)
 
 
@@ -1903,28 +1923,43 @@ def _draw_entry_row(column, domain, entry, selected):
                     icon="LOCKED" if entry["protected"] else "NONE")
     # "main" alone read as the domain (Brent, 2026-11-19): say it is a VDB version.
     text = f"VDB · {entry['name']}" if entry["kind"] == "vdb" else entry["name"]
-    name.operator("fumaris.entry_select", text=text, icon=icon, depress=selected).key = entry["key"]
-    row.operator("fumaris.entry_pin", text="", icon="PINNED" if entry["pinned"] else "UNPINNED",
-                 emboss=False).key = entry["key"]
+    _entry_button(name, "entry_select", domain, entry["key"], text=text, icon=icon, depress=selected)
+    _entry_button(row, "entry_pin", domain, entry["key"], text="", icon="PINNED" if entry["pinned"] else "UNPINNED",
+                 emboss=False)
     if entry["kind"] == "vdb":
         shown = entry_shown(domain, entry)
-        row.operator("fumaris.entry_show", text="", icon="HIDE_OFF" if shown else "HIDE_ON",
-                     depress=shown).key = entry["key"]
+        _entry_button(row, "entry_show", domain, entry["key"], text="", icon="HIDE_OFF" if shown else "HIDE_ON",
+                     depress=shown)
     elif entry["kind"] == "playblast":
-        row.operator("fumaris.entry_play", text="", icon="PLAY").key = entry["key"]
+        _entry_button(row, "entry_play", domain, entry["key"], text="", icon="PLAY")
     else:
-        row.operator("fumaris.entry_image", text="", icon="IMAGE_DATA").key = entry["key"]
+        _entry_button(row, "entry_image", domain, entry["key"], text="", icon="IMAGE_DATA")
 
 
-def draw_compare(layout, domain, props):
-    entries = list_entries(domain)
-    selected = props.compare_selected
+def draw_compare(layout, scene, domain):
     box = layout.box()
-    # Playblasts are kept here too (also in the Bake menu): saved above the list they land in.
-    box.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE").domain_name = domain.name
-    column = box.column(align=True)
+    actions = box.row(align=True)
+    actions.operator("fumaris.playblast", text="Save Playblast", icon="FILE_MOVIE").domain_name = domain.name
+    actions.prop(scene, "fumaris_versions_all", text="", icon="OUTLINER", toggle=True)
+    if not scene.fumaris_versions_all:
+        _draw_domain_versions(box, layout, domain)
+        return
+
+    domains = sorted((obj for obj in scene.objects if _is_domain(obj)), key=lambda obj: obj.name.casefold())
+    for index, target in enumerate(domains):
+        if index:
+            box.separator(type="LINE")
+        group = box.column()
+        group.label(text=target.name)
+        _draw_domain_versions(group, group, target, grouped=True)
+
+
+def _draw_domain_versions(list_layout, details_layout, domain, *, grouped=False):
+    entries = list_entries(domain)
+    selected = domain.fumaris.compare_selected
+    column = list_layout.column(align=True)
     if not entries:
-        column.label(text="Bake, or save while previewing (Cache Preview)", icon="INFO")
+        column.label(text="No saved versions" if grouped else "Bake, or save while previewing (Cache Preview)", icon="INFO")
     pinned = [entry for entry in entries if entry["pinned"]]
     others = [entry for entry in entries if not entry["pinned"]]
     for entry in pinned:
@@ -1939,24 +1974,29 @@ def draw_compare(layout, domain, props):
         return
     from . import ui
     # Tight (Blender's default Properties width): the first button on its own row.
-    column = layout.column(align=True)
+    column = details_layout.column(align=True)
     row = column.row(align=True)
     if entry["kind"] == "vdb":
         imported = bool(_entry_volumes(entry))
-        row.operator("fumaris.entry_import", text="Remove" if imported else "Import",
-                     icon="X" if imported else "IMPORT").key = entry["key"]
+        _entry_button(row, "entry_import", domain, entry["key"], text="Remove" if imported else "Import",
+                     icon="X" if imported else "IMPORT")
+        if grouped:
+            protected = entry["protected"]
+            protect = row.operator("fumaris.cache_protect", text="", icon="LOCKED" if protected else "UNLOCKED",
+                                   depress=protected)
+            protect.domain_name, protect.slot = domain.name, entry["key"].removeprefix("vdb:")
     elif entry["kind"] == "playblast":
-        row.operator("fumaris.entry_play", icon="PLAY").key = entry["key"]
-        row.operator("fumaris.entry_image", text="Image Editor", icon="IMAGE_DATA").key = entry["key"]
+        _entry_button(row, "entry_play", domain, entry["key"], icon="PLAY")
+        _entry_button(row, "entry_image", domain, entry["key"], text="Image Editor", icon="IMAGE_DATA")
     else:
-        row.operator("fumaris.entry_image", icon="IMAGE_DATA").key = entry["key"]
+        _entry_button(row, "entry_image", domain, entry["key"], icon="IMAGE_DATA")
     if ui._TIGHT:
         row = column.row(align=True)
     changes = row.row(align=True)
     # (a bake without stored settings still has its measures)
     changes.enabled = entry["settings"] or entry["kind"] == "vdb"
-    changes.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = entry["key"]
-    row.operator("fumaris.entry_menu", text="", icon="DOWNARROW_HLT").key = entry["key"]
+    _entry_button(changes, "entry_changes", domain, entry["key"], icon="SEQ_SPLITVIEW")
+    _entry_button(row, "entry_menu", domain, entry["key"], text="", icon="DOWNARROW_HLT")
     # What it is, on its own line (wraps in a narrow panel).
     if entry["kind"] == "vdb":
         parts = [version_summary(entry, size=True)]
@@ -1971,8 +2011,8 @@ def draw_compare(layout, domain, props):
         parts.append("protected")
     if entry["kind"] == "vdb":
         synced = material_synced(entry["path"])
-        layout.operator("fumaris.entry_sync_material", depress=synced,
-                        icon="LINKED" if synced else "UNLINKED").key = entry["key"]
+        _entry_button(details_layout, "entry_sync_material", domain, entry["key"], depress=synced,
+                        icon="LINKED" if synced else "UNLINKED")
     ui._wrapped(column, " · ".join(parts), "INFO")
 
 

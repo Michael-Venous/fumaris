@@ -2005,27 +2005,39 @@ class FUMARIS_OT_cache_protect(Operator):
     bl_label = "Protect"
     bl_description = "Lock this version: Bake and Delete are refused until it is unlocked"
 
+    domain_name: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+    slot: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+
     @classmethod
     def poll(cls, context):
-        return bool(_active_domain(context) and not blocking_job())
+        from .compare import _can_target_domain
+        return not blocking_job() and bool(_active_domain(context) or _can_target_domain(context))
 
     def execute(self, context):
-        domain = _active_domain(context)
+        from .compare import _domain, find_entry, forget_scan
+        domain = _domain(context, self.domain_name) if self.domain_name else _active_domain(context)
+        if domain is None:
+            return {"CANCELLED"}
+        slot = self.slot or domain.fumaris.cache_slot
+        if self.slot and find_entry(domain, "vdb:" + slot, fresh=True) is None:
+            self.report({"ERROR"}, "That version no longer exists")
+            return {"CANCELLED"}
         try:
             ensure_cache_owner(domain)
-            directory = output_directory_for_object(domain)
-            protect = not is_protected(directory)
-            if protect and not baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
-                self.report({"WARNING"}, f"Version '{domain.fumaris.cache_slot}' holds no baked frames: nothing to protect")
-                return {"CANCELLED"}
+            directory = cache_slot_directory(domain, slot)
             with cache_lock(directory):
+                protect = not is_protected(directory)
+                if protect and not baked_frame_count(directory, domain.fumaris.output_prefix or "fumaris_"):
+                    self.report({"WARNING"}, f"Version '{slot}' holds no baked frames: nothing to protect")
+                    return {"CANCELLED"}
                 set_protected(directory, protect)
         except (RuntimeError, OSError) as error:
             self.report({"ERROR"}, f"Could not change protection: {error}")
             return {"CANCELLED"}
+        forget_scan()
         self.report(
             {"INFO"},
-            f"Version '{domain.fumaris.cache_slot}' is "
+            f"Version '{slot}' is "
             + ("protected" if protect else "no longer protected"),
         )
         return {"FINISHED"}

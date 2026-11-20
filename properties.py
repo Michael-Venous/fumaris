@@ -2441,9 +2441,16 @@ def register():
     detail_stack.register_properties()
     bpy.utils.register_class(FumarisSettings)
     bpy.types.Object.fumaris = PointerProperty(type=FumarisSettings)
+    bpy.types.Scene.fumaris_versions_all = BoolProperty(
+        name="All domains",
+        description="Show the saved versions of every Fumaris domain in this scene",
+        default=False,
+    )
 
 
 def unregister():
+    if hasattr(bpy.types.Scene, "fumaris_versions_all"):
+        del bpy.types.Scene.fumaris_versions_all
     if hasattr(bpy.types.Object, 'fumaris'):
         del bpy.types.Object.fumaris
     try:

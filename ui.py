@@ -1244,7 +1244,7 @@ def _draw_domain(layout, scene, props):
     compare_box = layout.box()
     if _section(compare_box, props, "show_panel_compare", "Versions", "FILE_FOLDER"):
         from .compare import draw_compare
-        draw_compare(compare_box, props.id_data, props)
+        draw_compare(compare_box, scene, props.id_data)
 
     look_box = layout.box()
     look_box.enabled = not is_baking

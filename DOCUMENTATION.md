@@ -359,7 +359,7 @@ played starts it over there, as in Blender.)
 
 ## Versions
 
-The `Versions` section (below Output) lists what the domain has
+The `Versions` section (below Simulate) lists what the domain has
 saved, in one list:
 
 - **VDB versions** (volume icon): bakes, and live previews kept with Save
@@ -374,6 +374,13 @@ pinned. Any entry can be pinned or unpinned; Bake offers to replace a pinned
 VDB version. The button at the right of a row is a quick look: the eye shows or
 hides a VDB version in the viewport (imported the first time), the picture opens
 a snapshot in an Image Editor.
+
+Use **All domains**, the icon beside **Save Playblast**, to show every domain
+in the scene under its own name. Use the eye on each VDB version to set up
+which bakes play together, and open saved playblasts from the same list. You
+can do this without changing the active domain. View-layer and collection
+visibility still apply. Turn **All domains** off to return to the active
+domain's list.
 
 Click a row to select it; its buttons appear below the list:
 

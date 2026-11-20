@@ -4,6 +4,8 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: All domains in Versions groups the scene's bakes, snapshots and playblasts by domain. Use the eye beside each VDB version to set up which bakes play together without switching domains.
+
 - Changed: Full-Resolution Channels uses less GPU memory. The solver reuses the full-resolution density texture where possible and computes the smoke's motion paths directly on a stationary full-resolution grid (Cauliflower at Resolution 1100: 10.09 to 7.75 GiB on an RTX 4060 Ti). New full-resolution bakes can differ in the exact shape of individual folds. Existing bake files still play, and half-resolution motion is unchanged.
 - Changed: Full-Resolution Channels moved from Advanced up to Simulate, under Resolution and VRAM, with its cost note and memory forecast: for billowing explosions it is the biggest single quality choice.
 - Fixed: changing Per-Emitter Smoke Color during playback restarts the preview with the right VRAM budget, even if the simulation already kept all four channels.

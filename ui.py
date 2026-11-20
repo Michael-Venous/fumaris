@@ -1221,13 +1221,15 @@ def _draw_domain(layout, scene, props):
         auto = grid_row.row(align=True)
         auto.ui_units_x = 2.2
         auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
+        # Full-Resolution Channels sits with Resolution and VRAM (user,
+        # 2026-11-20): it decides the look of billowing explosions and costs
+        # 3-4x the VRAM, so it is a first-line quality choice, not Advanced.
+        settings.prop(props, "full_resolution_velocity")
         draw_budget_summary(settings, props, diagnostics.snapshot(domain))
-        if props.full_resolution_velocity and not props.show_panel_advanced:
-            # Advanced (where the forecast sits under the checkbox) is closed:
-            # say here when the last run's peak would not fit (Auto keeps the
-            # amount, the blocks cost 3-4x).
+        if props.full_resolution_velocity:
+            _wrapped(settings, "Motion at full resolution: about 3-4x the VRAM and 1.5-4x the time", "INFO")
             if draw_full_resolution_forecast(settings, props, diagnostics.snapshot(domain),
-                                             _fire_on_half_storage(props), alerts_only=True):
+                                             _fire_on_half_storage(props)):
                 settings.separator()
         settings.prop(props, "air_margin")
         substeps_row = _pair(settings)
@@ -1585,16 +1587,10 @@ def _draw_domain(layout, scene, props):
         # The on/off switches, two by two.
         grid = advanced.grid_flow(row_major=True, columns=1 if _NARROW else 2, even_columns=True, even_rows=True, align=True)
         grid.prop(props, "advection_reflection")
-        # Full-Resolution Channels (the old Full-Resolution Velocity's name
-        # in the file, which also counts that option's stored value)
-        grid.prop(props, "full_resolution_velocity")
+        # (Full-Resolution Channels moved up to Simulate, beside Resolution.)
         grid.prop(props, "auto_cell_size")
         storage = _fire_storage(props)
-        if props.full_resolution_velocity:
-            _wrapped(advanced, "Motion at full resolution: about 3-4x the VRAM and 1.5-4x the time", "INFO")
-            draw_full_resolution_forecast(advanced, props, diagnostics.snapshot(props.id_data),
-                                          _fire_on_half_storage(props))
-        elif storage == "half":
+        if not props.full_resolution_velocity and storage == "half":
             _wrapped(advanced, "Motion, fuel and burn at half resolution: 1.6x the blocks for a fire", "INFO")
         advanced.separator()
         walls = _pair(advanced)

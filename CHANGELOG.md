@@ -4,6 +4,7 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Changed: Full-Resolution Channels moved from Advanced up to Simulate, under Resolution and VRAM, with its cost note and memory forecast: for billowing explosions it is the biggest single quality choice.
 - Fixed: changing Per-Emitter Smoke Color during playback restarts the preview with the right VRAM budget, even if the simulation already kept all four channels.
 
 - Fixed (Windows): a background bake in a deep project folder could fail at its end with "The filename or extension is too long" (WinError 206): the folder Fumaris imports the bake from now has a shorter name.

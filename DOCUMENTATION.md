@@ -422,6 +422,33 @@ fills that space it is cut off or, with Auto Cell Size, simulated more
 coarsely; the panel then asks for more Simulation Memory. At the same memory,
 higher resolution covers a smaller region.
 
+`Full-Resolution Channels` simulates everything at the full Resolution:
+motion (velocity and pressure) and a fire's fuel and burn, like smoke and
+temperature. Rounder, finer billows and fewer grid-aligned artifacts from
+Vorticity at the same Resolution, but each block takes about 3-4 times the
+memory (so 3-4 times the VRAM for the same smoke; a set VRAM amount holds a
+third to a quarter of the blocks) and each frame 1.5-4 times as long; the
+live preview runs at about half the frame rate or less. For billowing
+explosions it is the biggest single quality choice: the rounded, nested
+cauliflower billows come from the full-resolution motion, and raising
+Resolution with half-resolution motion gives finer smoke but not those
+billows. On a tight budget, keep it on and lower Resolution instead (a
+1100 explosion at 950 kept most of the billows at two thirds of the time
+and VRAM). It also changes the timing: buoyant plumes rise up to
+about 20% faster and stay narrower (most at low Resolution), so a tuned
+scene may need less buoyancy. A fire also gets the heat of
+full-resolution fuel at low Resolution (explosions and the Oxygen options
+burn a little cooler without it). Only the fields the scene uses are
+stored either way: smoke alone stays smoke alone. A line under it says
+what runs at which resolution. After a preview or bake without it, turning
+it on also shows what that run's busiest frame would need with it ("Last
+run's peak at full res: ~2.4 of 9.0 GB VRAM"), in red when that is near or
+above `VRAM (GB)`: the smoke would be cut off. Auto VRAM does not grow for
+it (it takes what is free either way), so this line is the warning. Raise VRAM or lower
+Resolution until it fits. Changing it restarts the simulation. (It
+replaces Full-Resolution Velocity; scenes saved with that on open with
+this on.)
+
 Leave room for Blender and anything else on the same GPU, such as Cycles
 renders. If the simulation does not fit, Fumaris shows "GPU memory full": the
 driver moves data to system memory and the simulation runs very slowly. Lower
@@ -796,30 +823,8 @@ that expands a lot before burning (a growing fireball) needs more, about
   out cell-to-cell motion; lower lets fire flicker and puff (about 0.25) at
   the risk of grid-scale noise.
 - `Preserve Turbulence` (see Smoke Behavior) and `Auto Cell Size` (see
-  Resolution And Simulation Memory).
-- `Full-Resolution Channels` simulates everything at the full Resolution:
-  motion (velocity and pressure) and a fire's fuel and burn, like smoke and
-  temperature. Rounder, finer billows and fewer grid-aligned artifacts from
-  Vorticity at the same Resolution, but each block takes about 3-4 times the
-  memory (so 3-4 times the VRAM for the same smoke; a set VRAM amount holds a
-  third to a quarter of the blocks) and each frame 1.5-4 times as long; the
-  live preview runs at about half the frame rate or less. At the same memory,
-  half-resolution motion at about 1.5 times the Resolution looks as detailed,
-  with sharper smoke. It also changes the timing: buoyant plumes rise up to
-  about 20% faster and stay narrower (most at low Resolution), so a tuned
-  scene may need less buoyancy. A fire also gets the heat of
-  full-resolution fuel at low Resolution (explosions and the Oxygen options
-  burn a little cooler without it). Only the fields the scene uses are
-  stored either way: smoke alone stays smoke alone. A line under it says
-  what runs at which resolution. After a preview or bake without it, turning
-  it on also shows what that run's busiest frame would need with it ("Last
-  run's peak at full res: ~2.4 of 9.0 GB VRAM"), in red when that is near or
-  above `VRAM (GB)`: the smoke would be cut off. Auto VRAM does not grow for
-  it (it takes what is free either way), so this line is the warning; the red
-  line also shows under VRAM while Advanced is folded. Raise VRAM or lower
-  Resolution until it fits. Changing it restarts the simulation. (It
-  replaces Full-Resolution Velocity; scenes saved with that on open with
-  this on.)
+  Resolution And Simulation Memory). `Full-Resolution Channels` is under
+  Resolution and VRAM in Simulate (see Resolution And Simulation Memory).
 - `Open Collider Wall` is the thickness, in velocity cells, of the wall
   behind open collider meshes such as planes, so smoke cannot leak through
   them (0 = Collider Margin alone). `Collider Still Air` (called Closed

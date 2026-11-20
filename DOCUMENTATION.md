@@ -432,9 +432,10 @@ live preview runs at about half the frame rate or less. For billowing
 explosions it is the biggest single quality choice: the rounded, nested
 cauliflower billows come from the full-resolution motion, and raising
 Resolution with half-resolution motion gives finer smoke but not those
-billows. On a tight budget, keep it on and lower Resolution instead (a
-1100 explosion at 950 kept most of the billows at two thirds of the time
-and VRAM). It also changes the timing: buoyant plumes rise up to
+billows (in close-ups, the fine curls inside them too). On a tight budget,
+keep it on and lower Resolution instead: for a 1100 explosion, 1024 is the
+first step down for close-ups (about three quarters of the time and blocks)
+and 950 suits wider framing (about two thirds of the time and VRAM). It also changes the timing: buoyant plumes rise up to
 about 20% faster and stay narrower (most at low Resolution), so a tuned
 scene may need less buoyancy. A fire also gets the heat of
 full-resolution fuel at low Resolution (explosions and the Oxygen options

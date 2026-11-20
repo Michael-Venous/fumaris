@@ -2128,7 +2128,10 @@ def _stage_import_sequence(directory, files, prefix=PREFIX):
     from .utils import cache_project_key
     # Other .blend files can still read an inherited cache. A read/import in
     # one file must not prune another file's import sequence links.
-    root = os.path.join(directory, IMPORT_DIRECTORY, cache_project_key())
+    # 16 hex digits name the file's folder: the full key put the path past
+    # Windows' 248-character directory limit in ordinary deep project folders
+    # (WinError 206 at the end of a bake, 2026-11-20).
+    root = os.path.join(directory, IMPORT_DIRECTORY, cache_project_key()[:16])
     os.makedirs(root, exist_ok=True)
     target = os.path.join(root, str(time.time_ns()))
     os.makedirs(target, exist_ok=False)

@@ -348,11 +348,21 @@ def ensure_cache_owner(domain):
                     path = os.path.join(folder, name)
                     if os.path.islink(path):
                         source = os.path.join(root, os.path.relpath(path, stage))
-                        linked = os.path.abspath(os.path.join(os.path.dirname(source), os.readlink(path)))
+                        # realpath, not readlink: Windows returns link targets
+                        # as \\?\C:\..., which never matched root and left the
+                        # copied import folder empty (2026-11-20).
+                        linked = os.path.realpath(source)
                         os.unlink(path)
-                        if linked.startswith(root + os.sep):
-                            clone = os.path.join(stage, os.path.relpath(linked, root))
-                            os.symlink(os.path.relpath(clone, folder), path)
+                        real_root = os.path.realpath(root)
+                        if os.path.normcase(linked).startswith(os.path.normcase(real_root) + os.sep):
+                            clone = os.path.join(stage, os.path.relpath(linked, real_root))
+                            try:
+                                os.symlink(os.path.relpath(clone, folder), path)
+                            except OSError:   # Windows without symlink rights
+                                try:
+                                    os.link(clone, path)
+                                except OSError:
+                                    shutil.copy2(clone, path)
             with open(os.path.join(stage, _CACHE_OWNER), "w", encoding="ascii") as stream:
                 stream.write(owner)
             os.rename(stage, new)

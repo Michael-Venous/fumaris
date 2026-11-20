@@ -481,7 +481,7 @@ def _domain_state(props, resolution_scale=1.0):
         "edge_sharpness": float(getattr(props, "edge_sharpness", 0.9)),
         "projection_filter": float(getattr(props, "projection_filter", 1.0)),
         "open_collider_wall": float(getattr(props, "open_collider_wall", 1.0)),
-        "closed_collider_margin": float(getattr(props, "closed_collider_margin", 0.0)),
+        "closed_collider_margin": float(getattr(props, "closed_collider_margin", 0.25)),
         "fuel_energy": float(getattr(props, "fuel_energy", 1.0)),
         "dissipation": props.dissipation,
         "smoke_decay": props.smoke_decay,
@@ -585,20 +585,25 @@ def _mesh_state(participant, depsgraph, payload, frame):
     if not enabled:
         position_version = frame
         topology_version = frame
-    if enabled and participant["role"] == "emitter":
+    if enabled and participant["role"] in ("emitter", "collider"):
+        # A deforming collider pushes the air with its surface (Velocity
+        # Influence), as a moving one does: without it a growing balloon
+        # swallowed the smoke instead of pushing it (colliders-2026-11-19).
         if track_deformation:
             _add_mesh_motion_velocities(
                 velocities,
                 positions,
                 participant.get("previous_positions"),
                 matrix,
-                props.motion_velocity_scale,
+                props.motion_velocity_scale if participant["role"] == "emitter"
+                else props.collider_velocity_influence,
                 context_fps=bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
                 / participant.get("simulation_speed", 1.0),
             )
             participant["previous_positions"] = array("f", positions)
         else:
             participant.pop("previous_positions", None)
+    if enabled and participant["role"] == "emitter":
         if velocities and uses_velocity_attribute(props) and participant.get("simulation_speed", 1.0) != 1.0:
             # A velocity attribute is per second of scene time (copy: the array may be cached).
             inverse = 1.0 / participant["simulation_speed"]

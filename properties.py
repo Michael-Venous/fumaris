@@ -1051,7 +1051,7 @@ class FumarisSettings(PropertyGroup):
 
     collider_margin: FloatProperty(
         name="Collider Margin",
-        description="World-space padding around mesh and box colliders that participates in the smoke collision solve",
+        description="How far out from its surface a moving mesh or box collider holds the air at its own velocity, so it pushes smoke ahead of it. At rest it holds only Collider Still Air (Advanced, 0.25 velocity cells), at most this; with Collider Still Air 0, all of it, which keeps smoke this far off the collider",
         default=0.3,
         min=0.0,
         soft_max=5.0,
@@ -1736,15 +1736,15 @@ class FumarisSettings(PropertyGroup):
 
     open_collider_wall: FloatProperty(
         name="Open Collider Wall",
-        description="Minimum thickness, in velocity cells, of the wall behind an open (non-closed) collider mesh such as a plane, so smoke cannot leak through it when Collider Margin is thin (a 0.1 m margin let 2.5% of the smoke through a plane at Resolution 256). 0 uses Collider Margin alone",
+        description="Thickness, in velocity cells, of the wall behind an open (non-closed) collider mesh such as a plane, so smoke cannot leak through it (a 0.1 m margin let 2.5% of the smoke through a plane at Resolution 256). The wall no longer grows with Collider Margin, so smoke rests about this far behind the plane. 0 uses Collider Margin alone",
         default=1.0, min=0.0,
         soft_max=8.0,
     )
 
     closed_collider_margin: FloatProperty(
-        name="Closed Collider Margin",
-        description="Closed colliders (and boxes) hold the air still only this many velocity cells out from their surface instead of the full Collider Margin, so smoke and fire resting on them are not slowed by a layer of stuck air (a fire on a closed floor rose 35-42% slower with the full margin). 0 = the full Collider Margin; try 0.25",
-        default=0.0, min=0.0,
+        name="Collider Still Air",
+        description="Colliders at rest hold the air at their own velocity only this many velocity cells out from their surface (in front of open meshes), at most their Collider Margin; moving colliders hold their whole margin, so they push smoke instead of running over it. The default 0.25 lets smoke rest on walls and flow through gaps and pipes two cells wide (a fire on a closed floor rose 35-42% slower with the full margin). 0 = the full Collider Margin (before 2.0.0 beta 4)",
+        default=0.25, min=0.0,
         soft_max=8.0,
     )
 

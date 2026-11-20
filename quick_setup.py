@@ -114,6 +114,11 @@ PRESETS = {
         # at 192, a weak one at 256, i.e. a 50% preview of the default 512).
         # The collider sits a bed height lower (hidden in renders); a plain
         # plane shows the ground under the bed (2026-11-19, /tmp/fire_res.py).
+        # Since gas may leave a wall (one-sided wall velocity, colliders-
+        # 2026-11-19) a floor right under the bed burns at 256 and 512 as well
+        # (hot gas above 0.5 m at frame 48: 1750 / 18604 voxels against 1738 /
+        # 19915 dropped), but at 192 still only a third (296 against 840), so
+        # the drop stays.
         "ground_drop": 0.25,
         # The source only ignites the fuel; burning makes the heat (Fuel 1
         # burns at Flame Temperature with the default Fuel Energy).

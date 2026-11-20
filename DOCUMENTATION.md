@@ -771,8 +771,9 @@ that expands a lot before burning (a growing fireball) needs more, about
   them (0 = Collider Margin alone). `Collider Still Air` (called Closed
   Collider Margin before 2.0.0 beta 4, when it was 0 and applied to closed
   colliders only) holds the air at a collider's velocity only that many
-  velocity cells out from its surface, at most its Collider Margin; 0 = the
-  full margin. See Colliders.
+  velocity cells out from the surface of a collider at rest, at most its
+  Collider Margin; 0 = the full margin. Moving colliders always hold their
+  margin. See Colliders.
 - `Solver Internals` (folded; its title counts the settings changed from
   their defaults): `Trace Steps`, `Block Minimum Lifetime`, the two allocation
   thresholds and `Convex Collision`. The defaults suit almost every scene.
@@ -1022,22 +1023,23 @@ only applies its velocity, so very fast smoke can still pass through thin
 sheets; give them some thickness or raise Resolution. A velocity cell is
 64 / Resolution scene units (0.25 m at 256, 0.125 m at 512).
 
-After each step a collider also holds the air right at its surface at its
-own velocity. `Collider Still Air` (Advanced; 0.25 velocity cells by default)
-sets how far out; `Collider Margin` (on the collider, 0.3 m) is the most it
-may be. So smoke rests on a wall instead of a margin away from it, flows
-through gaps and pipes, and a moving collider leaves no layer of still air
-(and the smoke in it) stuck around it. With Collider Still Air at 0 the whole
-Collider Margin is held still, as before 2.0.0 beta 4: smoke then stops that
-far from colliders, gaps narrower than twice the margin are shut, and a moving
-collider carries the smoke within its margin along.
+After each step a collider also holds the air near its surface at its own
+velocity. A collider at rest holds only a thin layer: `Collider Still Air`
+(Advanced; 0.25 velocity cells by default), at most its `Collider Margin` (on
+the collider, 0.3 m). So smoke rests on walls instead of a margin away from
+them and flows through gaps and pipes. A moving (or deforming) collider holds
+its whole Collider Margin, so it pushes the smoke ahead of it instead of
+running over it; smoke within the margin rides along with it. With Collider
+Still Air at 0 colliders at rest hold the whole margin too, as before 2.0.0
+beta 4: smoke then stops that far from them and gaps narrower than twice the
+margin are shut.
 
 - **Closed meshes, boxes and spheres** are solids: smoke stays outside them.
 - **Open meshes** (a plane, a sheet with holes) have no inside. They are a wall
   `Open Collider Wall` velocity cells thick (Advanced, default 1) behind their
   normal, so smoke that comes from behind a plane rests about that far from
   it (0.125 m at Resolution 512; with Collider Margin 0.3 m before 2.0.0 beta 4,
-  0.31 m), and up against it in front.
+  0.31 m), and within a voxel of it in front (0.19 m before).
 - **Gaps and pipes.** A gap between colliders (or a pipe's inside) must be
   about two velocity cells wide for smoke to flow through it. One cell or less
   is sealed: no smoke passes. Measured at Resolution 256 (0.25 m cells) under
@@ -1045,14 +1047,16 @@ collider carries the smoke within its margin along.
   31% of the plume through, a 1 m slot 51%; 0.5 m wide round and square pipes
   2 m tall carried smoke out of their top, 0.25 m ones none. Nothing leaked
   through their walls.
-- **Moving and rotating colliders** push the smoke; it closes in again behind
-  them. Very fast colliders (more than about one velocity cell per step)
-  still lose or gain smoke where they sweep: a 0.8 m box at 16 m/s through a
-  cloud at Resolution 256 kept 85% of it, a paddle spinning once a second
-  73%. Add Sub-Steps or lower the speed if that shows.
+- **Moving and rotating colliders** push the smoke. Smoke within Collider
+  Margin of a moving collider rides along with it and its path through smoke
+  stays clear for a while (a 0.8 m box crossing a cloud at 4 m/s carried 17%
+  of it out). Very fast colliders, more than about one velocity cell per step,
+  lose or make smoke where they sweep: at Resolution 256 the same box at 16 m/s
+  kept 63% of the cloud, a 4 m plate at 8 m/s 34%, a paddle spinning once a
+  second made 15% more. Add Sub-Steps or lower the speed if that shows.
 - **Deforming colliders** (shape keys, armatures, modifiers) push the smoke
   with their surface as it moves (`Velocity Influence`), and are not treated
-  as convex solids while they deform. A sphere inflating into smoke kept 79% of
+  as convex solids while they deform. A sphere inflating into smoke kept 87% of
   it (55% before 2.0.0 beta 4, when it swallowed the smoke).
 
 ### Effectors

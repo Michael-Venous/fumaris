@@ -237,6 +237,7 @@ def delete_generated_data(directory, prefix=PREFIX):
 
     if os.path.isdir(directory):
         for path in _frame_files(directory, prefix):
+            _FRAME_METADATA.pop(_metadata_key(path), None)
             os.remove(path)
         delete_temporary_writes(directory, prefix)
         _delete_import_copies(directory)

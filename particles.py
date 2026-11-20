@@ -67,11 +67,11 @@ _SOURCE_MATRICES = {}
 
 KIND_DEFAULTS = {
     # Glittering tracers in white smoke, like an ink plume.
-    "TRACERS": dict(rate=200_000.0, drag=10000.0, gravity=0.0, lifetime=5.0, lifetime_random=0.3,
+    "TRACERS": dict(rate=200_000.0, drag=10000.0, gravity=0.0, effectors=0.0, lifetime=5.0, lifetime_random=0.3,
                     cooling_time=0.0, size=0.006, size_random=0.5, collision="BOUNCE", bounce=0.2,
                     brightness=6.0),
     # Embers thrown out of a fire: heavier than the gas, glowing by temperature.
-    "EMBERS": dict(rate=3_000.0, drag=3.0, gravity=1.0, lifetime=1.5, lifetime_random=0.4,
+    "EMBERS": dict(rate=3_000.0, drag=3.0, gravity=1.0, effectors=1.0, lifetime=1.5, lifetime_random=0.4,
                    cooling_time=0.6, size=0.012, size_random=0.5, collision="BOUNCE", bounce=0.3,
                    brightness=0.1),
 }
@@ -198,6 +198,11 @@ class FumarisSpawnSettings(PropertyGroup):
                     "10000 follows the smoke exactly (a tracer)")
     gravity: FloatProperty(name="Gravity", default=0.0, soft_min=-1.0, soft_max=2.0,
                            description="Share of the domain's gravity on the particles (negative: they rise)")
+    effectors: FloatProperty(
+        name="Effectors", default=0.0, min=0.0, soft_max=1.0, subtype="FACTOR",
+        description="How strongly the domain's effectors push these particles themselves, as they push the "
+                    "smoke (1). At 0 the particles feel them only through the smoke, enough for tracers; "
+                    "heavy embers need their own")
     lifetime: FloatProperty(name="Lifetime", default=5.0, min=0.0, soft_max=20.0, unit="TIME_ABSOLUTE",
                             description="Simulated seconds a particle lives (0: until it leaves the domain)")
     lifetime_random: FloatProperty(name="Lifetime Random", default=0.3, min=0.0, max=1.0, subtype="FACTOR",
@@ -726,6 +731,7 @@ def group_state(layer, system):
         "friction": float(spawn.friction),
         "draw": ("glow" if spawn.kind == "EMBERS" else "color") if drawn else "off",
         "draw_color": [float(v) for v in spawn.color],
+        "effectors": float(spawn.effectors),
     }
 
 
@@ -808,6 +814,7 @@ def migrate_domain(domain):
         setattr(spawn, name, getattr(settings, name))
     spawn.spawn_smoke = bool(settings.spawn_smoke)
     spawn.rate = settings.smoke_rate
+    spawn.effectors = 0.0   # v1: effectors reached particles through the gas only
     spawn.spawn_objects = settings.source_collection is not None
     for mask in (_range_masks("SMOKE", settings.smoke_min, settings.smoke_max, 1e-6) +
                  _range_masks("TEMPERATURE", settings.temperature_min, settings.temperature_max, 1e-3)):
@@ -1317,6 +1324,7 @@ def draw_modifier(layout, layer, domain):
     motion = pair(column)
     motion.prop(spawn, "drag")
     motion.prop(spawn, "gravity")
+    column.prop(spawn, "effectors", slider=True)
     life = pair(column)
     life.prop(spawn, "lifetime")
     life.prop(spawn, "lifetime_random", text="Random")

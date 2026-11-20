@@ -274,7 +274,7 @@ def export_layers(props):
 _LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail")
 _MASK_KEYS = ("enabled", "field", "blend", "range", "values", "noise_size")
 _SPAWN_KEYS = ("uid", "kind", "spawn_smoke", "spawn_objects", "rate", "spawn_jitter", "source_mode", "source_rate",
-               "source_speed", "source_inherit", "mask_objects", "drag", "gravity", "lifetime", "lifetime_random",
+               "source_speed", "source_inherit", "mask_objects", "drag", "gravity", "effectors", "lifetime", "lifetime_random",
                "cooling_time", "collision", "bounce", "friction", "size", "size_random", "color", "brightness",
                "show_in_preview")
 

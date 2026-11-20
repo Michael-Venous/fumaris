@@ -210,6 +210,10 @@ def _grid_measures(grid):
     low, high = meta.get("file_bbox_min"), meta.get("file_bbox_max")
     if count is not None:
         out["voxels"] = int(count)
+    # The grid's integral (value x m^3), written by the bridge since F6b.
+    total = meta.get("fumaris_total")
+    if isinstance(total, (int, float)):
+        out["total"] = float(total)
     if count and low is not None and high is not None and all(h >= l for l, h in zip(low, high)):
         try:
             a = grid.transform.indexToWorld(tuple(float(v) for v in low))
@@ -223,8 +227,8 @@ def _grid_measures(grid):
 
 def frame_measures(directory, prefix, frame):
     """Cheap measures of one frame from the VDB header (well under a
-    millisecond: no voxels are read): smoke and heat voxels, the smoke's
-    extent and top, file size."""
+    millisecond: no voxels are read): smoke and heat voxels, totals and tops,
+    the smoke's extent, file size."""
     files = [path for path in _frame_files(directory, prefix) if _frame_number(path, prefix) == frame]
     if not files:
         return None
@@ -239,10 +243,9 @@ def frame_measures(directory, prefix, frame):
         out.update(_grid_measures(grids["density"]))
     if "temperature" in grids:
         heat = _grid_measures(grids["temperature"])
-        if "voxels" in heat:
-            out["heat_voxels"] = heat["voxels"]
-        if "top" in heat:
-            out["heat_top"] = heat["top"]
+        for key in ("voxels", "top", "total"):
+            if key in heat:
+                out["heat_" + key] = heat[key]
     return out
 
 
@@ -252,6 +255,11 @@ def _change(a, b):
         return ""
     change = b / a - 1.0
     return "" if abs(change) < 0.005 else f" ({change:+.0%})"
+
+
+def _amount_text(value):
+    """A grid total (density or kelvin x m^3), three significant figures."""
+    return f"{value:.3g}"
 
 
 def _voxels_text(value):
@@ -272,6 +280,9 @@ def measured_differences(a_dir, b_dir, prefix, frame):
     a, b = frame_measures(a_dir, prefix, frame) or {}, frame_measures(b_dir, prefix, frame) or {}
     add(f"Smoke voxels (frame {frame})", a, b, "voxels", _voxels_text)
     add("Heat voxels", a, b, "heat_voxels", _voxels_text)
+    # Totals over the grid (bakes since F6b): how much smoke and heat there is.
+    add("Smoke amount", a, b, "total", _amount_text)
+    add("Heat amount", a, b, "heat_total", _amount_text)
     add("Smoke extent", a, b, "size", lambda v: " x ".join(f"{x:.1f}" for x in v) + " m", relative=False)
     # How high it rose: the top of the smoke and of the heat.
     add("Smoke top", a, b, "top", lambda v: f"{v:.2f} m", relative=False)

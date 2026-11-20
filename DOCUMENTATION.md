@@ -382,12 +382,13 @@ Click a row to select it; its buttons appear below the list:
 - **View Changes** lists every setting that differs from the current settings,
   with **Load These Settings** below. For a bake other than the version the
   domain shows, it also measures the two against each other (**Measured**):
-  smoke and heat voxels, the smoke's extent and top (how high it rose) at the
+  smoke and heat voxels, the amount of smoke and of heat (each grid's values
+  summed over its volume), the smoke's extent and top (how high it rose) at the
   current frame (or the last frame both have), the frame's file size, and the
   bakes' time, time per frame, peak VRAM, peak RAM and peak sparse blocks, with
   the change in percent. They come from the VDB files' headers and the bake's
   stored statistics, so they appear at once; older bakes (2.0 beta 3 and
-  before) have no peak blocks. Loading replaces the current settings of
+  before) have no peak blocks and no amounts. Loading replaces the current settings of
   the domain and its sources (sources are matched by name) after a warning; Undo
   brings them back.
 

@@ -497,6 +497,11 @@ def _narrow():
     return ui._NARROW
 
 
+def _short(value):
+    """A mask bound for a narrow row: 1200 as 1.2k."""
+    return f"{value / 1000:.3g}k" if abs(value) >= 1000 else f"{value:.3g}"
+
+
 class FUMARIS_MT_modifier_add(Menu):
     """The Add menu, grouped by purpose."""
     bl_idname = "FUMARIS_MT_modifier_add"
@@ -558,8 +563,9 @@ class FUMARIS_UL_field_masks(UIList):
         if _narrow():
             blend = _BLEND_SHORT.get(item.blend, _BLEND[item.blend][1])
             field = _FIELD_SHORT.get(item.field, _FIELD[item.field][1])
-            sub.label(text=f"{blend} {field} {item.range[0]:g}-{item.range[1]:g}{units}"
-                           f" → {item.values[0]:g}-{item.values[1]:g}")
+            # (To 0-1, the usual, goes unsaid: the row fits a narrow editor)
+            to = "" if tuple(item.values) == (0.0, 1.0) else f" → {item.values[0]:g}-{item.values[1]:g}"
+            sub.label(text=f"{blend} {field} {_short(item.range[0])}-{_short(item.range[1])}{units}{to}")
             return
         sub.label(text=f"{_BLEND[item.blend][1]} {_FIELD[item.field][1]}  "
                        f"{item.range[0]:g}-{item.range[1]:g}{units} → {item.values[0]:g}-{item.values[1]:g}")
@@ -575,7 +581,9 @@ def draw(layout, domain):
     particle system when a Spawn Particles modifier is in the stack."""
     props = domain.fumaris
     row = layout.row()
-    row.template_list("FUMARIS_UL_detail_layers", "", props, "detail_layers", props, "detail_layers_index", rows=3)
+    # Every modifier visible up to six (a scrolled list hid the last one).
+    rows = max(3, min(6, len(props.detail_layers)))
+    row.template_list("FUMARIS_UL_detail_layers", "", props, "detail_layers", props, "detail_layers_index", rows=rows)
     side = row.column(align=True)
     side.context_pointer_set("fumaris_domain", domain)
     side.menu("FUMARIS_MT_modifier_add", text="", icon="ADD")

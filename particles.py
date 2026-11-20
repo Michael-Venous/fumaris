@@ -347,7 +347,7 @@ def summary(layer, narrow=False):
         rate = spawn.rate
         parts.append(f"{rate / 1000:g}k/s" if rate >= 1000 else f"{rate:g}/s")
     if spawn.spawn_objects:
-        parts.append(spawn.source_collection.name if spawn.source_collection and not narrow else "objects")
+        parts.append("obj" if narrow else (spawn.source_collection.name if spawn.source_collection else "objects"))
     return parts
 
 
@@ -1321,7 +1321,7 @@ def draw_modifier(layout, layer, domain):
     life.prop(spawn, "lifetime")
     life.prop(spawn, "lifetime_random", text="Random")
     hits = pair(column)
-    hits.prop(spawn, "collision", text="")
+    hits.prop(spawn, "collision", text="Colliders" if ui._NARROW else "")
     bounce = hits.row(align=True)
     bounce.active = spawn.collision == "BOUNCE"
     bounce.prop(spawn, "bounce")
@@ -1331,7 +1331,7 @@ def draw_modifier(layout, layer, domain):
     look.prop(spawn, "size_random", text="Random")
     look = pair(column)
     if spawn.kind != "EMBERS":
-        look.prop(spawn, "color", text="")
+        look.prop(spawn, "color", text="Color" if ui._NARROW else "")
     look.prop(spawn, "brightness")
     column.prop(spawn, "show_in_preview")
     more, opened = nested_foldout(column, spawn, "show_more", "More")
@@ -1364,7 +1364,7 @@ def draw_system(layout, domain):
     limits.prop(settings, "seed")
     body.label(text=f"GPU memory: {settings.max_particles * DEVICE_BYTES_PER_PARTICLE / 2**20:.0f} MB")
     body.prop(settings, "kill_outside")
-    shown = body.row(align=True)
+    shown = ui._pair(body)
     shown.prop(settings, "show_in_preview")
     amount = shown.row(align=True)
     amount.active = settings.show_in_preview

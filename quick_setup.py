@@ -109,6 +109,12 @@ PRESETS = {
                        "emitter": {"mesh_emission_mode": "volume", "mesh_emission_distance": 0.5}},
         "ground": True,
         "ground_margin": 0.1,
+        # The collider keeps one cell of still air above it: a floor right
+        # under the 0.25 m bed starved the fire below Resolution 384 (no flame
+        # at 192, a weak one at 256, i.e. a 50% preview of the default 512).
+        # The collider sits a bed height lower (hidden in renders); a plain
+        # plane shows the ground under the bed (2026-11-19, /tmp/fire_res.py).
+        "ground_drop": 0.25,
         # The source only ignites the fuel; burning makes the heat (Fuel 1
         # burns at Flame Temperature with the default Fuel Energy).
         # Almost no source smoke: soot forms as the fuel burns, so under Smoke
@@ -430,10 +436,7 @@ def _masks(masks, size):
     return resolved
 
 
-def _new_ground(collection, name, minimum, maximum, margin=None):
-    """A collider floor just under the sources, ten source widths across
-    (margin: its Collider Margin, if not the default)."""
-    size = 10.0 * max(1.0, max(maximum - minimum))
+def _ground_plane(name, size):
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     try:
@@ -441,13 +444,28 @@ def _new_ground(collection, name, minimum, maximum, margin=None):
         bm.to_mesh(mesh)
     finally:
         bm.free()
-    obj = bpy.data.objects.new(name, mesh)
+    return bpy.data.objects.new(name, mesh)
+
+
+def _new_ground(collection, name, minimum, maximum, margin=None, drop=0.0, visible_collection=None):
+    """A collider floor just under the sources, ten source widths across
+    (margin: its Collider Margin, if not the default). drop > 0: the collider
+    sits that far lower, hidden in renders, and a plain plane (no collider, in
+    visible_collection) shows the ground where the sources stand."""
+    size = 10.0 * max(1.0, max(maximum - minimum))
+    centre = ((minimum.x + maximum.x) * 0.5, (minimum.y + maximum.y) * 0.5, minimum.z - 0.05)
+    obj = _ground_plane(name + (" Collider" if drop > 0.0 else ""), size)
     collection.objects.link(obj)
-    obj.location = ((minimum.x + maximum.x) * 0.5, (minimum.y + maximum.y) * 0.5, minimum.z - 0.05)
+    obj.location = (centre[0], centre[1], centre[2] - drop)
     obj.fumaris.smoke_object_type = "collider"
     obj.fumaris.participant_enabled = True
     if margin is not None:
         obj.fumaris.collider_margin = margin
+    if drop > 0.0:
+        obj.hide_render = True
+        floor = _ground_plane(name, size)
+        (visible_collection or collection).objects.link(floor)
+        floor.location = centre
     return obj
 
 
@@ -641,7 +659,8 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
         for source in sources:
             _configure_source(source, preset, props.sim_start_frame, context.scene.frame_current)
         if preset.get("ground"):
-            _new_ground(collections["collider"], f"{name} Ground", minimum, maximum, preset.get("ground_margin"))
+            _new_ground(collections["collider"], f"{name} Ground", minimum, maximum, preset.get("ground_margin"),
+                        preset.get("ground_drop", 0.0), root)
         if preset.get("clumps"):
             _new_clumps(collections["emitter"], f"{name} Clumps", minimum, maximum, props.sim_start_frame, preset)
         if self.debris and self.preset == "EXPLOSION":

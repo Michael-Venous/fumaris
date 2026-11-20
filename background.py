@@ -439,6 +439,8 @@ def _mirror_diagnostics(job):
     status = job.status
     diagnostics.record(job.uid, status.get("metrics", {}))
     if status.get("capacity_reached"):
+        if not state.get("capacity_reached"):
+            state["capacity_reached_frame"] = status.get("capacity_reached_frame")
         state["capacity_reached"] = True
     for line in status.get("log", ()):
         if line not in state["log"]:
@@ -631,6 +633,10 @@ def _finish(job):
         elif frames and not imported:
             text += f". It is version '{job.slot}' in Versions"
         level = "INFO"
+        capacity = diagnostics.capacity_message(diagnostics.snapshot(job.uid))
+        if capacity and frames:
+            text += ". " + capacity
+            level = "WARNING"
 
     _forget(job)
     if job.detached:
@@ -697,7 +703,8 @@ def _tag_redraw():
     try:
         for window in bpy.context.window_manager.windows:
             for area in window.screen.areas if window.screen else ():
-                if area.type in {"PROPERTIES", "VIEW_3D"}:
+                # (the Timeline is a Dope Sheet: its header shows the bakes)
+                if area.type in {"PROPERTIES", "VIEW_3D", "DOPESHEET_EDITOR"}:
                     area.tag_redraw()
     except (AttributeError, ReferenceError):
         # No window manager (Blender is closing).
@@ -871,6 +878,34 @@ def draw_status(layout, job):
         name = gpu_name(job.gpu)
         if name:
             column.label(text=f"On {name}", icon="MEMORY")
+
+
+def header_summary():
+    """(bakes, fraction, stopping) over the background bakes not yet ended,
+    queued ones at 0, or None: the 3D Viewport and Timeline headers' line."""
+    live = [job for job in _jobs if job.state != "ended" and not job.detached]
+    if not live:
+        return None
+    fraction = sum(min(1.0, progress(job)[0] or 0.0) for job in live) / len(live)
+    return len(live), fraction, all(job.state == "stopping" for job in live)
+
+
+def draw_header_status(layout):
+    """"Baking 2 · 45%" with a Stop for all of them, in the 3D Viewport and
+    Timeline headers. Compact and after the playback buttons, so they do not
+    move as it changes."""
+    summary = header_summary()
+    if summary is None:
+        return
+    count, fraction, stopping = summary
+    row = layout.row(align=True)
+    text = f"{'Stopping' if stopping else 'Baking'} {count} · {fraction:.0%}"
+    try:
+        row.progress(factor=fraction, type="RING", text=text)
+    except (AttributeError, TypeError):
+        row.label(text=text, icon="TIME")
+    if not stopping:
+        row.operator("fumaris.bake_background_stop", text="", icon="X").everything = True
 
 
 def stop_label(job):

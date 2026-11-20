@@ -6,8 +6,8 @@ averaged 2x2x2 into voxels twice as large, and voxels whose smoke falls below
 the cull threshold are dropped. The Pyro look's grids, already at half
 resolution, are halved again: copied as they were, they were most of a fire's
 lighter copy (121 -> 115 MB, 2026-11-14). Since 2.0.0 beta 2 they are "pyro"
-(heat, glow, glow_depth packed on the heat lattice), density_soft and glow_wide,
-all on one lattice, so all three are halved alike. Older bakes' coarse glow
+(heat, glow, glow_depth packed on the heat lattice) and glow_wide (bakes before
+2.0.0 beta 3 also density_soft), all on one lattice, so they are halved alike. Older bakes' coarse glow
 grids (glow, glow_wide, glow_depth) are copied unchanged (their lattice is the
 light's spread).
 """

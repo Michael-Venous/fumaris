@@ -51,6 +51,10 @@ def begin(domain, mode):
         # The VRAM setting this session started with: a later change applies
         # only when the simulation restarts.
         "vram_setting": _vram_setting(domain),
+        # Full-Resolution Channels at the start: its blocks cost 3-4x the
+        # memory, so the panel forecasts the other setting from this run.
+        "full_resolution": bool(getattr(getattr(domain, "fumaris", None), "full_resolution_velocity", False)),
+        "peak_blocks": 0,
     }
     # Diagnostics are session-only, not part of the .blend or cache.
     while len(_STATES) > 64:
@@ -82,8 +86,18 @@ def record(domain, data):
             state["metrics"][name] = entry[:512]
         elif isinstance(entry, (int, float)) and math.isfinite(entry):
             state["metrics"][name] = entry
-    if pool_use(state) >= 1.0:
+    state["peak_blocks"] = max(state.get("peak_blocks", 0), int(value(state, "flow_active_blocks")))
+    capacity = value(state, "flow_active_block_capacity")
+    if capacity > 0 and value(state, "flow_emitter_blocks_needed") > capacity:
+        # R35: a mesh source's surface alone needs more blocks than the pool
+        # holds (far more: nothing is emitted at all). More VRAM rarely helps.
+        state["source_too_large"] = True
+    if pool_use(state) >= 1.0 or state.get("source_too_large"):
         # Keep evidence of lost allocation visible if blocks are later freed.
+        if not state.get("capacity_reached"):
+            # (The bridge's numbers arrive as strings.)
+            state["capacity_reached_frame"] = int(value(state, "frame")) if "frame" in state["metrics"] else None
+            console_log(f"Fumaris: {capacity_message(state)}")
         state["capacity_reached"] = True
 
 
@@ -99,6 +113,22 @@ def pool_use(state):
     if fine_capacity > 0:
         use = max(use, value(state, "flow_fine_blocks") / fine_capacity)
     return use
+
+
+def capacity_message(state):
+    """One line for a bake or playback report when the block pool filled
+    during the run ("" when it did not): the frame it filled at and what to do."""
+    if not state or not (state.get("capacity_reached") or pool_use(state) >= 1.0):
+        return ""
+    if state.get("source_too_large"):
+        return (f"A source is too large for this Resolution: its surface alone needs at least "
+                f"{int(value(state, 'flow_emitter_blocks_needed')):,} sparse blocks and "
+                f"{int(value(state, 'flow_active_block_capacity')):,} fit, so its smoke is cut off or "
+                "missing. Lower Resolution.")
+    frame = state.get("capacity_reached_frame")
+    when = f" at frame {frame}" if frame is not None else ""
+    return (f"Simulation capacity reached{when}: the smoke is cut off beyond it. "
+            "Increase VRAM or lower Resolution, then run it again.")
 
 
 def capacity_status(state):
@@ -163,7 +193,9 @@ def error_summary(state):
 
 def warnings(state):
     result = []
-    if capacity_status(state) == "full":
+    if state and state.get("source_too_large"):
+        result.append(capacity_message(state))
+    elif capacity_status(state) == "full":
         result.append("Simulation capacity reached: smoke may be cut off. Increase VRAM or lower Resolution, then restart.")
     elif pool_use(state) >= 0.85:
         result.append("Sparse blocks nearly full: increase VRAM or lower Resolution.")

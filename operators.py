@@ -216,7 +216,10 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
             from .sparks import problems
             for message in problems(domain):
                 self.report({"ERROR"}, message)
-        self.report({"INFO"}, "Fumaris bake stopped" if self._stop_requested else "Fumaris bake complete")
+        text = "Fumaris bake stopped" if self._stop_requested else "Fumaris bake complete"
+        # The block pool filled: the frames are written, but the smoke is cut off.
+        capacity = diagnostics.capacity_message(diagnostics.snapshot(getattr(self, "_diagnostic_key", None)))
+        self.report({"WARNING"} if capacity else {"INFO"}, f"{text}. {capacity}" if capacity else text)
         return {"FINISHED"}
 
     def _cancelled(self, context, data):
@@ -243,7 +246,8 @@ class FUMARIS_OT_bake(FrameRangeJob, Operator):
         # Kept with the bake (its cost in View Changes); a bake is pinned.
         try:
             from .compare import write_bake_stats, write_pinned
-            write_bake_stats(self._directory, props)
+            state = diagnostics.snapshot(getattr(self, "_diagnostic_key", None))
+            write_bake_stats(self._directory, props, (state or {}).get("peak_blocks", 0))
             write_pinned(self._directory, True)
         except OSError as error:
             console_log(f"Fumaris could not store bake statistics: {error}")

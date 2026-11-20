@@ -450,12 +450,14 @@ def process_cpu_seconds(pid):
     try:
         if os.name == "nt":
             return _windows_process_cpu_seconds(pid)
+        if sys.platform == "darwin":
+            return _macos_process_cpu_seconds(pid)
         with open(f"/proc/{int(pid)}/stat", encoding="ascii") as stream:
             fields = stream.read().rsplit(")", 1)[1].split()
         # utime and stime: fields 14 and 15 of proc(5), after the name.
         return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
     except (OSError, ValueError, IndexError, AttributeError):
-        return None   # macOS has no /proc: the other signs of work count
+        return None   # unknown: the other signs of work count
 
 
 def _windows_process_cpu_seconds(pid):
@@ -489,12 +491,59 @@ def process_memory_bytes(pid):
     """Return a process working set without requiring third-party packages."""
     if os.name == "nt":
         return _windows_process_memory_bytes(pid)
+    if sys.platform == "darwin":
+        # No /proc on macOS: bake peak RAM read 0 there (beta 2, M4).
+        return _macos_process_memory_bytes(pid)
     try:
         with open(f"/proc/{int(pid)}/statm", encoding="ascii") as status:
             resident_pages = int(status.read().split()[1])
         return resident_pages * os.sysconf("SC_PAGE_SIZE")
     except (OSError, ValueError, IndexError):
         return 0
+
+
+_LIBPROC = None
+_MACH_TICK_SECONDS = None
+
+
+def _macos_task_info(pid):
+    """libproc's proc_pidinfo(PROC_PIDTASKINFO) for a process (macOS has no
+    /proc): struct proc_taskinfo as 12 uint64 (virtual and resident size,
+    user and system time, then twelve int32), or None."""
+    global _LIBPROC, _MACH_TICK_SECONDS
+    import ctypes
+    try:
+        if _LIBPROC is None:
+            try:
+                library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+            except OSError:
+                library = ctypes.CDLL(None, use_errno=True)  # libSystem has it too
+            library.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                                             ctypes.c_void_p, ctypes.c_int]
+            library.proc_pidinfo.restype = ctypes.c_int
+            # The times are Mach ticks (not nanoseconds on Apple Silicon).
+            timebase = (ctypes.c_uint32 * 2)()
+            if library.mach_timebase_info(ctypes.byref(timebase)) == 0 and timebase[1]:
+                _MACH_TICK_SECONDS = timebase[0] / timebase[1] * 1e-9
+            _LIBPROC = library
+        info = (ctypes.c_uint64 * 12)()
+        written = _LIBPROC.proc_pidinfo(int(pid), 4, 0, ctypes.byref(info), ctypes.sizeof(info))
+        return info if written >= 32 else None
+    except (OSError, AttributeError, ValueError, TypeError):
+        return None
+
+
+def _macos_process_memory_bytes(pid):
+    """Resident size, as Activity Monitor's Real Memory; 0 if unknown."""
+    info = _macos_task_info(pid)
+    return int(info[1]) if info is not None else 0
+
+
+def _macos_process_cpu_seconds(pid):
+    info = _macos_task_info(pid)
+    if info is None or _MACH_TICK_SECONDS is None:
+        return None
+    return (int(info[2]) + int(info[3])) * _MACH_TICK_SECONDS
 
 
 def _windows_process_memory_bytes(pid):

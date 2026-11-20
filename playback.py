@@ -356,9 +356,11 @@ class FUMARIS_PT_playback(bpy.types.Panel):
 def draw_header(self, context):
     if context.area.type == 'DOPESHEET_EDITOR' and context.space_data.mode != 'TIMELINE':
         return
-    if not active_job() and not scene_domains(context):
-        return
-    draw_controls(self.layout, context, compact=True)
+    if active_job() or scene_domains(context):
+        draw_controls(self.layout, context, compact=True)
+    # Background bakes: "Baking 2 · 45%" and Stop, after the buttons.
+    from .background import draw_header_status
+    draw_header_status(self.layout)
 
 
 def draw_keymaps(layout, context):

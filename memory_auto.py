@@ -166,6 +166,97 @@ def budget_text(props, state=None):
     return lines[0] + "".join(f" ({line})" for line in lines[1:])
 
 
+# Memory per block with Full-Resolution Channels against without it, at the
+# same VRAM (2 GB: 24,391 blocks; 6,859 for a fire, 8,400 for smoke;
+# notes/experiments/fullres-tradeoffs-2026-11-19 section 1). Auto keeps the
+# amount, so the same VRAM holds that many times fewer blocks.
+FULL_RESOLUTION_BLOCK_COST_FIRE = 3.6
+FULL_RESOLUTION_BLOCK_COST_SMOKE = 2.9
+# Pool-independent buffers in a run's estimate (the bridge's fixed overhead
+# and the preview's), not scaled with the block cost.
+_FIXED_ESTIMATE_BYTES = 176 << 20
+
+
+def full_resolution_forecast(props, state, fire=False):
+    """(needed_bytes, budget_bytes) for the last run's peak blocks with
+    Full-Resolution Channels, when it is on now and the last run (state) was
+    without it; else None. fire: the run kept a fire's fuel and burn at half
+    resolution (they move to the density grid too)."""
+    if not state or state.get("full_resolution", True) or not getattr(props, "full_resolution_velocity", False):
+        return None
+    metrics = state.get("metrics", {})
+
+    def number(name):
+        try:
+            return float(metrics.get(name, 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    peak = float(state.get("peak_blocks", 0) or 0)
+    capacity = number("flow_active_block_capacity")
+    if peak <= 0 or capacity <= 0:
+        return None
+    # What the run's pool cost per block: its own estimate, or the amount it
+    # started with (an older bridge reports no estimate).
+    pool = number("flow_estimated_memory_bytes")
+    if pool <= 0:
+        started = state.get("vram_setting")
+        pool = number("flow_auto_memory_bytes") if started == "auto" else float(started or 0) * (1 << 30)
+    if pool <= 0:
+        return None
+    fixed = min(pool / 2, _FIXED_ESTIMATE_BYTES)
+    per_block = (pool - fixed) / capacity
+    cost = FULL_RESOLUTION_BLOCK_COST_FIRE if fire else FULL_RESOLUTION_BLOCK_COST_SMOKE
+    budget, _when = budget_bytes_for_display(props, state)
+    if not budget:
+        return None
+    return int(fixed + peak * per_block * cost), int(budget)
+
+
+def full_resolution_lines(props, state, fire=False):
+    """(lines, alert) for the forecast, or None: two short lines that fit the
+    default Properties width. alert: the peak would fill 85% of VRAM or more
+    (the panel's "nearly full" notice), or not fit."""
+    forecast = full_resolution_forecast(props, state, fire)
+    if forecast is None:
+        return None
+    needed, budget = forecast
+    gib = float(1 << 30)
+    need = needed / gib
+    amount = f"~{need:.0f}" if need >= 10 else f"~{need:.1f}"
+    amount += f" of {budget / gib:.1f} GB"
+    use = needed / budget
+    if use >= 1.0:
+        second, alert = f"{amount}: smoke cut off", True
+    elif use >= 0.85:
+        second, alert = f"{amount}: nearly full", True
+    else:
+        second, alert = f"{amount} VRAM", False
+    return ["Last run's peak at full res:", second], alert
+
+
+def draw_full_resolution_forecast(layout, props, state, fire=False, alerts_only=False):
+    """The forecast under Full-Resolution Channels (or, alerts_only, under
+    VRAM): what the last run's peak needs with its 3-4x cost per block."""
+    result = full_resolution_lines(props, state, fire)
+    if result is None:
+        return False
+    lines, alert = result
+    if alerts_only and not alert:
+        return False
+    column = layout.column(align=True)
+    for index, line in enumerate(lines):
+        row = column.row()
+        row.alert = alert
+        row.label(text=line, icon=("ERROR" if alert else "INFO") if index == 0 else "BLANK1")
+    if alert:
+        row = column.row()
+        row.alert = True
+        row.label(text="Raise VRAM or lower Resolution" if not getattr(props, "simulation_memory_auto", False)
+                  else "Lower Resolution or free VRAM", icon="BLANK1")
+    return True
+
+
 def draw_budget_summary(layout, props, state=None):
     """Read-only line under Resolution / VRAM: the Auto amount."""
     budget, when = budget_bytes_for_display(props, state)

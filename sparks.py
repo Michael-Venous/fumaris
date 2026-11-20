@@ -25,7 +25,7 @@ GROUP_NAME = "Fumaris Sparks"
 MATERIAL_NAME = "Fumaris Spark"
 # Bump when the node group or the material changes: sparks already in a file
 # keep the group they were made with, new ones get the new group.
-VERSION = 3
+VERSION = 4
 VERSION_KEY = "fumaris_sparks_version"
 DOMAIN_MARKER = "fumaris_sparks_domain"   # on a sparks object: its domain
 MISSING_MARKER = "fumaris_sparks_missing"   # on a domain: grids its sparks lack in the bake it shows
@@ -125,6 +125,9 @@ def build_group():
             "Sparks start in gas hotter than this, in Kelvin. Set to 0.65 of the domain's Flame Temperature when added")
     _socket(tree, "Sparks per Frame", "NodeSocketFloat", 200.0, 0.0,
             "New sparks each frame, spread over the hot gas. At most one per hot voxel")
+    _socket(tree, "Lift Speed", "NodeSocketFloat", 0.5, 0.0,
+            "Sparks start only where the hot gas rises at least this fast, in m/s: embers are carried up by rising "
+            "gas, not born in still air at the source. Set from the domain's Simulation Scale when added")
     _socket(tree, "Lifetime", "NodeSocketFloat", 1.5, 0.0,
             f"Seconds a spark lives. Each spark gets between 0.6 and {LIFETIME_SPREAD} times this")
     _socket(tree, "Drag", "NodeSocketFloat", 3.0, 0.0,
@@ -259,10 +262,23 @@ def build_group():
     chance.location = (50, 650)
     _link(tree, probability, chance.inputs["Probability"])
     _link(tree, seed, chance.inputs["Seed"])
+    # Only where the gas rises (Lift Speed): sparks born in still air at the
+    # source fell straight through the ground (Steady Fire's fuel bed, 2026-11-19).
+    rise = nodes.new("ShaderNodeSeparateXYZ")
+    rise.location = (-250, 450)
+    _link(tree, gas_velocity((-450, 450)), rise.inputs[0])
+    rising = _math(tree, "GREATER_THAN", rise.outputs["Z"], group_in.outputs["Lift Speed"], (-100, 450))
+    hot_rising = nodes.new("FunctionNodeBooleanMath")
+    hot_rising.operation = "AND"
+    hot_rising.location = (50, 500)
+    _link(tree, is_hot, hot_rising.inputs[0])
+    _link(tree, rising, hot_rising.inputs[1])
+    # Sparks per Frame spread over the voxels that can spawn.
+    _link(tree, hot_rising.outputs[0], hot_count.inputs[2])
     keep = nodes.new("FunctionNodeBooleanMath")
     keep.operation = "AND"
     keep.location = (250, 550)
-    _link(tree, is_hot, keep.inputs[0])
+    _link(tree, hot_rising.outputs[0], keep.inputs[0])
     _link(tree, chance.outputs[0], keep.inputs[1])
     born = nodes.new("GeometryNodeDeleteGeometry")
     born.location = (450, 400)
@@ -511,6 +527,7 @@ def add_sparks(context, domain, volume, name="Fumaris Sparks"):
     # Temperature, not at it; 0.75 left a small fire almost without sparks.
     _input(modifier, "Spawn Temperature").value = 0.65 * props.flame_temperature
     _input(modifier, "Gravity").value = -props.gravity[2] / props.simulation_scale
+    _input(modifier, "Lift Speed").value = 0.5 / props.simulation_scale
     _input(modifier, "Simulation Speed").value = props.simulation_speed
     try:
         for other in context.selected_objects:

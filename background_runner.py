@@ -253,6 +253,7 @@ class _Status:
             stats=bake.stored_stats,
             metrics=dict(state.get("metrics", {})),
             capacity_reached=bool(state.get("capacity_reached", False)),
+            capacity_reached_frame=state.get("capacity_reached_frame"),
             log=list(state.get("log", ()))[-20:],
         )
 

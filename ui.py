@@ -7,7 +7,7 @@ from . import detail_stack
 from .runtime import active_job, active_mode, background_job
 from .jobs import WRITING_LAST_FRAMES, writing_last_frames
 from . import diagnostics
-from .memory_auto import draw_budget_summary
+from .memory_auto import draw_budget_summary, draw_full_resolution_forecast
 from .cache import is_protected
 from .sparks import MISSING_MARKER as SPARKS_MISSING_MARKER
 from .utils import FLAME_VALUE_KEYS, flame_value, glow_source_heat, is_pyro_look, peek_output_directory_for_object, physical_buoyancy
@@ -50,19 +50,24 @@ def _scene_heat(props):
         return False
 
 
+def _fire_on_half_storage(props):
+    """A fire whose fuel and burn stay at half resolution without
+    Full-Resolution Channels (no other option keeps all four channels)."""
+    from .exporters import _participants, emitted_fields, full_resolution_forced
+    if (full_resolution_forced(props) or props.density_storage != "auto"
+            or props.export_fuel_vdb or props.export_burn_vdb):
+        return False
+    try:
+        return emitted_fields(_participants(props)) == "fire"
+    except Exception:
+        return False
+
+
 def _fire_storage(props):
     """Where the domain's fire keeps its fuel and burn: "half" (fire
     storage), "full" (Full-Resolution Channels) or "none" (no fire, or
     another option already keeps all four channels)."""
-    from .exporters import _participants, emitted_fields, full_resolution_forced
-    if (full_resolution_forced(props) or props.density_storage != "auto"
-            or props.export_fuel_vdb or props.export_burn_vdb):
-        return "none"
-    try:
-        fire = emitted_fields(_participants(props)) == "fire"
-    except Exception:
-        return "none"
-    if not fire:
+    if not _fire_on_half_storage(props):
         return "none"
     return "full" if props.full_resolution_velocity else "half"
 
@@ -720,9 +725,16 @@ def _draw_capacity_warning(layout, domain):
     title.alert = True
     # Short lines: "Capacity reached — smoke may clip" was cut off at the
     # default Properties width (beta 3 review).
-    title.label(text="Capacity reached" if status == "full" else "Capacity almost full", icon="ERROR")
-    box.label(text="Smoke may clip: increase VRAM")
-    box.label(text="or lower Resolution, then restart.")
+    frame = (state or {}).get("capacity_reached_frame") if status == "full" else None
+    title.label(text=(f"Capacity reached at frame {frame}" if frame is not None else "Capacity reached")
+                if status == "full" else "Capacity almost full", icon="ERROR")
+    if state and state.get("source_too_large"):
+        # R35: more VRAM does not help a source thousands of times the pool.
+        box.label(text="A source is too large for this")
+        box.label(text="Resolution: lower Resolution.")
+    else:
+        box.label(text="Smoke may clip: increase VRAM")
+        box.label(text="or lower Resolution, then restart.")
     if status == "full" and state and not state.get("active"):
         box.label(text="Last run", icon="INFO")
 
@@ -1189,6 +1201,13 @@ def _draw_domain(layout, scene, props):
         auto.ui_units_x = 2.2
         auto.prop(props, "simulation_memory_auto", text="Auto", toggle=True)
         draw_budget_summary(settings, props, diagnostics.snapshot(domain))
+        if props.full_resolution_velocity and not props.show_panel_advanced:
+            # Advanced (where the forecast sits under the checkbox) is closed:
+            # say here when the last run's peak would not fit (Auto keeps the
+            # amount, the blocks cost 3-4x).
+            if draw_full_resolution_forecast(settings, props, diagnostics.snapshot(domain),
+                                             _fire_on_half_storage(props), alerts_only=True):
+                settings.separator()
         settings.prop(props, "air_margin")
         substeps_row = _pair(settings)
         substeps_row.prop(props, "num_sub_steps", text="Max Sub-Steps" if props.adaptive_cfl > 0.0 else "Sub-Steps")
@@ -1547,6 +1566,8 @@ def _draw_domain(layout, scene, props):
         storage = _fire_storage(props)
         if props.full_resolution_velocity:
             _wrapped(advanced, "Motion at full resolution: about 3-4x the VRAM and 1.5-4x the time", "INFO")
+            draw_full_resolution_forecast(advanced, props, diagnostics.snapshot(props.id_data),
+                                          _fire_on_half_storage(props))
         elif storage == "half":
             _wrapped(advanced, "Motion, fuel and burn at half resolution: 1.6x the blocks for a fire", "INFO")
         advanced.separator()

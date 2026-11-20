@@ -176,7 +176,7 @@ def apply_material_sync(domain, directory, default=None):
                 own_material_copy(obj, current or target, os.path.basename(os.path.normpath(directory)))
 
 
-def write_bake_stats(directory, props):
+def write_bake_stats(directory, props, peak_blocks=0):
     frames = _frame_files(directory, _prefix(props))
     data = {
         "frames": len(frames),
@@ -186,6 +186,8 @@ def write_bake_stats(directory, props):
         "resolution": int(props.resolution),
         "written": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
+    if peak_blocks:
+        data["peak_blocks"] = int(peak_blocks)
     with open(os.path.join(directory, STATS_FILE), "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=1)
 
@@ -193,32 +195,22 @@ def write_bake_stats(directory, props):
 def read_bake_stats(directory):
     try:
         with open(os.path.join(directory, STATS_FILE), encoding="utf-8") as stream:
-            return json.load(stream)
+            data = json.load(stream)
+        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
-def frame_measures(directory, prefix, frame):
-    """Cheap measures of one frame from the VDB header: smoke voxels, extent, top, file size."""
-    files = [path for path in _frame_files(directory, prefix) if _frame_number(path, prefix) == frame]
-    if not files:
-        return None
-    path = files[0]
-    out = {"file": os.path.getsize(path)}
-    try:
-        import openvdb
-        grids = {grid.name: grid for grid in openvdb.readAllGridMetadata(path)}
-    except Exception:
-        return out
-    grid = grids.get("density")
-    if grid is None:
-        return out
+def _grid_measures(grid):
+    """Voxels, extent (m) and top (m) of one grid, from the statistics
+    OpenVDB writes in its header: nothing of the grid is loaded."""
     meta = grid.metadata if hasattr(grid, "metadata") else {}
+    out = {}
     count = meta.get("file_voxel_count")
     low, high = meta.get("file_bbox_min"), meta.get("file_bbox_max")
     if count is not None:
         out["voxels"] = int(count)
-    if low is not None and high is not None and all(h >= l for l, h in zip(low, high)):
+    if count and low is not None and high is not None and all(h >= l for l, h in zip(low, high)):
         try:
             a = grid.transform.indexToWorld(tuple(float(v) for v in low))
             b = grid.transform.indexToWorld(tuple(float(v) + 1.0 for v in high))
@@ -229,39 +221,85 @@ def frame_measures(directory, prefix, frame):
     return out
 
 
-def measured_differences(domain, frame):
-    """Rows (measure, A, B) for the current frame and the two bakes' costs."""
-    props = domain.fumaris
-    prefix = _prefix(props)
-    a_dir = output_directory_for_object(domain)
-    b_dir = cache_slot_directory(domain, props.compare_slot)
-    rows = []
-    a, b = frame_measures(a_dir, prefix, frame), frame_measures(b_dir, prefix, frame)
-    if a or b:
-        a, b = a or {}, b or {}
+def frame_measures(directory, prefix, frame):
+    """Cheap measures of one frame from the VDB header (well under a
+    millisecond: no voxels are read): smoke and heat voxels, the smoke's
+    extent and top, file size."""
+    files = [path for path in _frame_files(directory, prefix) if _frame_number(path, prefix) == frame]
+    if not files:
+        return None
+    path = files[0]
+    out = {"file": os.path.getsize(path)}
+    try:
+        import openvdb
+        grids = {grid.name: grid for grid in openvdb.readAllGridMetadata(path)}
+    except Exception:
+        return out
+    if "density" in grids:
+        out.update(_grid_measures(grids["density"]))
+    if "temperature" in grids:
+        heat = _grid_measures(grids["temperature"])
+        if "voxels" in heat:
+            out["heat_voxels"] = heat["voxels"]
+        if "top" in heat:
+            out["heat_top"] = heat["top"]
+    return out
 
-        def row(label, key, fmt):
-            if key in a or key in b:
-                rows.append((f"{label} (frame {frame})",
-                             fmt(a[key]) if key in a else "-", fmt(b[key]) if key in b else "-"))
-        row("Smoke voxels", "voxels", lambda v: f"{v / 1e6:.2f} M" if v >= 100000 else f"{v:,}")
-        row("Extent", "size", lambda v: " x ".join(f"{x:.1f}" for x in v) + " m")
-        row("Top", "top", lambda v: f"{v:.2f} m")
-        row("File", "file", _size_text)
+
+def _change(a, b):
+    """' (+12%)': B against A, for a measure both have."""
+    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) or a <= 0:
+        return ""
+    change = b / a - 1.0
+    return "" if abs(change) < 0.005 else f" ({change:+.0%})"
+
+
+def _voxels_text(value):
+    return f"{value / 1e6:.2f} M" if value >= 100000 else f"{value:,}"
+
+
+def measured_differences(a_dir, b_dir, prefix, frame):
+    """Rows (measure, A, B) for two versions' folders: what their frame shows
+    (VDB headers) and what the bakes cost (their stored statistics). B's
+    values carry the change from A. Cheap enough to run on a click."""
+    rows = []
+
+    def add(label, a, b, key, fmt, relative=True):
+        if key in a or key in b:
+            rows.append((label, fmt(a[key]) if key in a else "-",
+                         (fmt(b[key]) + (_change(a.get(key), b[key]) if relative else "")) if key in b else "-"))
+
+    a, b = frame_measures(a_dir, prefix, frame) or {}, frame_measures(b_dir, prefix, frame) or {}
+    add(f"Smoke voxels (frame {frame})", a, b, "voxels", _voxels_text)
+    add("Heat voxels", a, b, "heat_voxels", _voxels_text)
+    add("Smoke extent", a, b, "size", lambda v: " x ".join(f"{x:.1f}" for x in v) + " m", relative=False)
+    # How high it rose: the top of the smoke and of the heat.
+    add("Smoke top", a, b, "top", lambda v: f"{v:.2f} m", relative=False)
+    add("Heat top", a, b, "heat_top", lambda v: f"{v:.2f} m", relative=False)
+    add("Frame file", a, b, "file", _size_text)
     sa, sb = read_bake_stats(a_dir), read_bake_stats(b_dir)
-    for label, key, fmt in (("Bake time", "seconds", lambda v: f"{v:.0f} s"),
-                            ("Time per frame", None, None),
-                            ("Peak VRAM", "peak_vram_mb", lambda v: f"{v / 1024:.2f} GB"),
-                            ("Peak RAM", "peak_ram_mb", lambda v: f"{v / 1024:.1f} GB")):
-        if key is None:
-            per = [f"{s['seconds'] / s['frames'] * 1000:.0f} ms" if s.get("frames") and s.get("seconds") else "-"
-                   for s in (sa, sb)]
-            if per != ["-", "-"]:
-                rows.append((label, *per))
-            continue
-        if key in sa or key in sb:
-            rows.append((label, fmt(sa[key]) if key in sa else "-", fmt(sb[key]) if key in sb else "-"))
+    for stats in (sa, sb):
+        if stats.get("frames") and stats.get("seconds"):
+            stats["frame_ms"] = float(stats["seconds"]) / float(stats["frames"]) * 1000.0
+    add("Bake time", sa, sb, "seconds", lambda v: f"{v:.1f} s" if v < 10 else f"{v:.0f} s")
+    add("Time per frame", sa, sb, "frame_ms", lambda v: f"{v:.0f} ms")
+    add("Peak VRAM", sa, sb, "peak_vram_mb", lambda v: f"{v / 1024:.2f} GB")
+    add("Peak RAM", sa, sb, "peak_ram_mb", lambda v: f"{v / 1024:.1f} GB")
+    add("Peak blocks", sa, sb, "peak_blocks", lambda v: f"{int(v):,}")
     return rows
+
+
+def measured_frame(a_dir, b_dir, prefix, frame):
+    """The frame to measure: the current one if either version has it, else
+    the last frame both have (else B's last)."""
+    a = {_frame_number(path, prefix) for path in _frame_files(a_dir, prefix)} if a_dir else set()
+    b = {_frame_number(path, prefix) for path in _frame_files(b_dir, prefix)} if b_dir else set()
+    if frame in a or frame in b:
+        return frame
+    common = a & b
+    if common:
+        return max(common)
+    return max(b) if b else frame
 
 
 def list_versions(domain, *, fresh=False):
@@ -1377,13 +1415,28 @@ class FUMARIS_OT_entry_open_folder(_DomainOperator, Operator):
         return {"FINISHED"}
 
 
-_changes = {"title": "", "lines": [], "key": ""}
+_changes = {"title": "", "lines": [], "key": "", "measures": [], "settings": True}
+
+
+def entry_measures(domain, entry, frame):
+    """(frame, rows) measured against the current version for a VDB version
+    that is not the current one, else (frame, [])."""
+    if entry["kind"] != "vdb":
+        return frame, []
+    current = output_directory_for_object(domain)
+    if not current or os.path.normpath(current) == os.path.normpath(entry["path"]):
+        return frame, []
+    prefix = _prefix(domain.fumaris)
+    frame = measured_frame(current, entry["path"], prefix, frame)
+    return frame, measured_differences(current, entry["path"], prefix, frame)
 
 
 class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
     bl_idname = "fumaris.entry_changes"
     bl_label = "View Changes"
-    bl_description = "The settings this version was made with that differ from the current ones; Load Settings from there"
+    bl_description = ("The settings this version was made with that differ from the current ones, and for a bake, "
+                      "what it measures against the current version (smoke, heat, extent, bake time, memory); "
+                      "Load Settings from there")
 
     key: StringProperty()
 
@@ -1396,17 +1449,24 @@ class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
         if entry is None:
             return {"CANCELLED"}
         lines = changes_from_current(domain, entry)
-        if lines is None:
+        try:
+            _frame, measures = entry_measures(domain, entry, context.scene.frame_current)
+        except OSError:
+            measures = []
+        if lines is None and not measures:
             self.report({"ERROR"}, f"'{entry['name']}' has no stored settings")
             return {"CANCELLED"}
-        _changes.update(title=f"{entry['name']}: changes from the current settings", lines=lines, key=entry["key"])
+        _changes.update(title=f"{entry['name']}: changes from the current settings", lines=lines, key=entry["key"],
+                        measures=measures, settings=lines is not None)
         return context.window_manager.invoke_popup(self, width=520)
 
     def draw(self, _context):
         layout = self.layout
         layout.label(text=_changes["title"], icon="SEQ_SPLITVIEW")
         lines = _changes["lines"]
-        if not lines:
+        if not _changes.get("settings", True):
+            layout.label(text="No stored settings")
+        elif not lines:
             layout.label(text="Same settings as now")
         else:
             grid = layout.grid_flow(row_major=True, columns=3, even_columns=False, align=True)
@@ -1419,7 +1479,22 @@ class FUMARIS_OT_entry_changes(_DomainOperator, Operator):
                 grid.label(text=then)
             if len(lines) > 60:
                 layout.label(text=f"… and {len(lines) - 60} more")
+        measures = _changes.get("measures")
+        if measures:
+            # Measured: the version shown now against this one.
+            layout.separator()
+            layout.label(text="Measured", icon="DRIVER_DISTANCE")
+            grid = layout.grid_flow(row_major=True, columns=3, even_columns=False, align=True)
+            grid.label(text="Measure")
+            grid.label(text="Current version")
+            grid.label(text="This version")
+            for name, now, then in measures:
+                grid.label(text=name)
+                grid.label(text=now)
+                grid.label(text=then)
         layout.separator()
+        if not _changes.get("settings", True):
+            return
         load = layout.row()
         load.enabled = active_job() is None or active_mode() == "previewing"
         load.operator("fumaris.entry_load", text="Load These Settings", icon="LOOP_BACK").key = _changes["key"]
@@ -1843,7 +1918,8 @@ def draw_compare(layout, domain, props):
     if ui._TIGHT:
         row = column.row(align=True)
     changes = row.row(align=True)
-    changes.enabled = entry["settings"]
+    # (a bake without stored settings still has its measures)
+    changes.enabled = entry["settings"] or entry["kind"] == "vdb"
     changes.operator("fumaris.entry_changes", icon="SEQ_SPLITVIEW").key = entry["key"]
     row.operator("fumaris.entry_menu", text="", icon="DOWNARROW_HLT").key = entry["key"]
     # What it is, on its own line (wraps in a narrow panel).

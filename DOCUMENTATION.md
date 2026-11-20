@@ -284,11 +284,12 @@ done.
 - With more than one GPU in use, each bake's progress says which GPU it runs
   on.
 - When more bakes run than GPUs are ticked, several share a GPU. With Auto,
-  each takes what is free on its GPU when it starts, so a later one gets less
-  (down to 0.5 GB, and its smoke may be cut off). Give each domain a fixed
-  `VRAM (GB)` instead of Auto, so they fit together.
+  the bakes that start together on one GPU split what Auto would take
+  between them; a fixed `VRAM (GB)` is used as set.
 - While a domain bakes, its panel and its row in the sidebar show the frame,
-  the speed and the time left, with a `Stop`. Stop keeps the frames already
+  the speed and the time left, with a `Stop`. The 3D Viewport and Timeline
+  headers show the background bakes in one short line ("Baking 2 · 45%", the
+  queued ones counted at 0%) with an `X` that stops them all. Stop keeps the frames already
   written, like Stop during a Bake. A second click (`Stop Now`) ends the bake at
   once and loses the frame it was writing.
 - After the last frame the status shows `Writing the last frames to disk…`
@@ -326,8 +327,10 @@ played starts it over there, as in Blender.)
   Sparks turns them on and asks you to bake again. If a later bake lacks them,
   the panel says so beside the Bake row (and Bake reports it) and turns them
   on again for the next bake.
+- Sparks start in hot gas that rises at least `Lift Speed` (0.5 m/s), as
+  embers are lifted by rising gas.
 - The settings are on the sparks object's Geometry Nodes modifier: `Sparks per
-  Frame`, `Lifetime`, `Drag` (how closely sparks follow the gas), `Gravity`,
+  Frame`, `Lift Speed`, `Lifetime`, `Drag` (how closely sparks follow the gas), `Gravity`,
   `Cooling Time`, `Radius`, `Brightness` and more, each with a tooltip.
 - `Spawn Temperature`, `Gravity` and `Simulation Speed` are taken from the
   domain when the sparks are added. Change them on the modifier if you later
@@ -371,7 +374,14 @@ Click a row to select it; its buttons appear below the list:
   no longer changes: a look you liked stays put. Bakes start synced; saves from
   the live preview start with their own copy.
 - **View Changes** lists every setting that differs from the current settings,
-  with **Load These Settings** below. Loading replaces the current settings of
+  with **Load These Settings** below. For a bake other than the version the
+  domain shows, it also measures the two against each other (**Measured**):
+  smoke and heat voxels, the smoke's extent and top (how high it rose) at the
+  current frame (or the last frame both have), the frame's file size, and the
+  bakes' time, time per frame, peak VRAM, peak RAM and peak sparse blocks, with
+  the change in percent. They come from the VDB files' headers and the bake's
+  stored statistics, so they appear at once; older bakes (2.0 beta 3 and
+  before) have no peak blocks. Loading replaces the current settings of
   the domain and its sources (sources are matched by name) after a warning; Undo
   brings them back.
 
@@ -697,7 +707,13 @@ that expands a lot before burning (a growing fireball) needs more, about
   full-resolution fuel at low Resolution (explosions and the Oxygen options
   burn a little cooler without it). Only the fields the scene uses are
   stored either way: smoke alone stays smoke alone. A line under it says
-  what runs at which resolution. Changing it restarts the simulation. (It
+  what runs at which resolution. After a preview or bake without it, turning
+  it on also shows what that run's busiest frame would need with it ("Last
+  run's peak at full res: ~2.4 of 9.0 GB VRAM"), in red when that is near or
+  above `VRAM (GB)`: the smoke would be cut off. Auto VRAM does not grow for
+  it (it takes what is free either way), so this line is the warning; the red
+  line also shows under VRAM while Advanced is folded. Raise VRAM or lower
+  Resolution until it fits. Changing it restarts the simulation. (It
   replaces Full-Resolution Velocity; scenes saved with that on open with
   this on.)
 - `Open Collider Wall` is the minimum thickness, in velocity cells, of the
@@ -1020,9 +1036,8 @@ Density is the standard smoke grid. Additional outputs are:
 - `velocity`: world-space motion used for volume motion blur and compositing.
 
 With fire, bakes also write the grids the generated material's fire and
-Scatter Glow read, all on one half-resolution lattice over the smoke:
-`density_soft` (the smoke, slightly blurred) and `pyro`, a vector grid packing
-three values per voxel: x the blurred heat above ambient (Kelvin, the Pyro
+Scatter Glow read, on one half-resolution lattice over the smoke: `pyro`, a
+vector grid packing three values per voxel: x the blurred heat above ambient (Kelvin, the Pyro
 look), y the fire light blurred into the smoke around it (Scatter Glow) and z
 the least smoke between the voxel and the fire (Glow Shadowing); `glow_wide`
 holds the same light spread four times farther (Glow Spread). In your own
@@ -1030,7 +1045,9 @@ material, an Attribute node named `pyro` with a Separate XYZ node gives the
 three. The light is computed on a coarse lattice and sampled onto the smoke's
 voxels, so renders do not march through empty space around the smoke. Bakes
 before 2.0.0 beta 2 wrote `heat`, `glow`, `glow_wide`, `glow_depth` and
-`density_ref` instead; the generated material still renders them. `Glow
+`density_ref` instead; the generated material still renders them. Bakes
+up to 2.0.0 beta 3 also wrote `density_soft` (the smoke, slightly blurred),
+which nothing reads. `Glow
 Radius` (Output) sets how far the
 light reaches; 0 follows the size of the fire. `Glow Source` sets what lights
 it: `Fire Brightness` weights each voxel by its fire's brightness (Wien's law,
@@ -1240,13 +1257,25 @@ do not replace Blender's normal Spacebar behavior.
 With Role set to **None**, click **Quick Setup…** in Physics → Fumaris, or choose it from the 3D Viewport's
 Add menu. **Rising Smoke**, **Steady Fire**, **Explosion**, **Ground Fog** and
 **Chimney Smoke** create a complete starting setup. Choose **Selected Objects** for unassigned mesh sources, or
-**New Source** to create an icosphere at the 3D cursor. Existing participants are
+**New Source** to create an icosphere at the 3D cursor (for Steady Fire, a fuel bed
+standing on it). Existing participants are
 left intact; the new setup has separate emitter, collider, effector and outflow
 collections. The new simulation object is an axes empty, with no physical domain bounds.
 
 Presets start from the defaults of a new domain and change only what makes the
-effect. Rising Smoke emits continuously without fuel; Steady Fire emits smoke and
-fuel that burns out within half a second, so flames stay a few source widths tall.
+effect. Rising Smoke emits continuously without fuel. Steady Fire is a fuel fire:
+its New Source is a fuel bed (a cylinder 2 m across and 0.25 m high, its base on
+the 3D cursor, filled with fuel by Volume emission) on a ground plane. The
+ground's collider (hidden in renders) sits a bed height lower: a collider keeps
+one cell of still air above it, which right under the bed starved the fire at
+low Resolution. Air comes in mostly from the sides and the flame base wrinkles
+into tongues. Its fuel
+burns out within half a second and burnt gas stops glowing within 0.6 s
+(Cooling Time), so the flames end in tips that turn into dark smoke a few
+source widths up; a Shred layer and a Vorticity layer (up to 5x in flames)
+break the puffs into licking tongues. Its Pyro look has Brightness 0.08 and
+Contrast 1 for a yellow base and orange tongues in daylight. Steady Fire
+setups made before 2.0.0 beta 4 used a 2 m icosphere centred on the cursor.
 Steady Fire and Explosion use the Pyro look with dark fuel soot (Smoke Color
 0.28, Hot Soot 0.25) and fire in glowing seams between the cells (Thin Gas 0.08).
 Explosion is a ground explosion with a 120-frame range: a 14-frame blast of fuel
@@ -1382,9 +1411,19 @@ yourself stay hidden; renders are not affected.
 
 A capacity warning appears beside the simulation controls even when Diagnostics
 is collapsed. At full capacity smoke may be cut off: increase **VRAM**
-(Simulation Memory) or lower **Resolution**, then restart. A full-capacity warning remains
+(Simulation Memory) or lower **Resolution**, then restart. The warning names the
+frame the capacity ran out at, a bake's report in the status bar says so too
+(the frames are written, but the smoke is cut off from that frame on), and the
+system console logs it once per run. A full-capacity warning remains
 for that run because freeing blocks later does not recover missing smoke. A new
-run or Delete clears it. Diagnostics sits below Advanced on the panel's darker background;
+run or Delete clears it.
+
+Resolution has no upper limit (physical-scale scenes use very large values), but a
+source can be too large for it: its surface alone may need more sparse blocks than
+VRAM holds. The smoke is then cut off at the first frame, and with a source
+thousands of times too large (the default 2 m source at Resolution 16.7 million
+and above) nothing is emitted at all. The panel then says "A source is too large
+for this Resolution": lower Resolution, since more VRAM cannot hold it. Diagnostics sits below Advanced on the panel's darker background;
 its exact appearance follows your Blender theme.
 
 Current defaults are Dissipation **0.2**, Smoke Decay **0.1**, emitter Fuel

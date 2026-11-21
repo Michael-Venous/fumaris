@@ -16,10 +16,14 @@ notes/reference/modifier-stack.md.
 Replaces Turbulence Detail, Control Ramps and Soot Burn-off (2.0), and the
 separate Particles section (Particles v1).
 """
+import math
+import struct
+
 import bpy
 from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatProperty,
                        FloatVectorProperty, IntProperty, PointerProperty, StringProperty)
 from bpy.types import Menu, Operator, PropertyGroup, UIList
+from mathutils import Vector
 
 from . import particles
 from .particles import FumarisSpawnSettings
@@ -61,15 +65,33 @@ LAYER_TYPES = (
      "GPU particles that ride the smoke (tracers, embers): they spawn where the masks allow, "
      "denser where they give more, and from objects; baked beside the VDBs as a point cloud",
      "PARTICLES", "particles", 0.0),
+    # 2026-11-21 (reel plan): appended, as enum numbers are stored.
+    ("ADD_SMOKE", "Add Smoke",
+     "Adds smoke at Rate per second where the masks allow, optionally in its own color. "
+     "Changes nothing else: no heat, fuel or burning",
+     "ADD", "add_smoke", 1.0),
+    ("TINT", "Tint",
+     "Recolors smoke toward Color at Rate per second where the masks allow, without changing "
+     "how much smoke there is. Uses the color field",
+     "COLOR", "tint", 2.0),
+    ("DETAIL", "Auto Detail",
+     "Fine swirls and larger breakup sized from the Resolution, stronger in hot and fast gas: "
+     "detail in one modifier. Counts as three motion modifiers; Convert to Layers to tune them by hand",
+     "SHADERFX", "detail", 1.0),
 )
 _LAYER = {item[0]: item for item in LAYER_TYPES}
-VELOCITY_TYPES = {"DISTURB", "GRAIN", "SHRED", "VORTICITY"}
+VELOCITY_TYPES = {"DISTURB", "GRAIN", "SHRED", "VORTICITY", "DETAIL"}
 SCALE_TYPES = {"VORTICITY", "DISSIPATION", "COOLING"}
-SHAPE_TYPES = {"DISSIPATION", "COOLING", "SOOT_BURN"}
+SHAPE_TYPES = {"DISSIPATION", "COOLING", "SOOT_BURN", "ADD_SMOKE", "TINT"}
+# Auto Detail becomes three motion layers; its own masks are added to each,
+# after its three built-in ones.
+AUTO_DETAIL_LAYERS = 3
+AUTO_DETAIL_MASKS = MASKS_PER_LAYER - 3
 # The Add menu, by purpose: (heading, [(type, kind or "")]).
 ADD_MENU = (
-    ("Detail", [("DISTURB", ""), ("GRAIN", ""), ("SHRED", "")]),
+    ("Detail", [("DETAIL", ""), ("DISTURB", ""), ("GRAIN", ""), ("SHRED", "")]),
     ("Rates", [("VORTICITY", ""), ("DISSIPATION", ""), ("COOLING", ""), ("SOOT_BURN", "")]),
+    ("Smoke", [("ADD_SMOKE", ""), ("TINT", "")]),
     ("Particles", [("PARTICLES", "TRACERS"), ("PARTICLES", "EMBERS")]),
 )
 
@@ -154,6 +176,26 @@ class FumarisDetailLayer(PropertyGroup):
                                     "three times the block size (up to 3). 1 = one size")
     speed: FloatProperty(name="Speed", default=1.0, min=0.0, soft_max=4.0,
                          description="How fast the noise changes over time: 1 is the default, 0 freezes it, 2 changes twice as fast")
+    # Add Smoke and Tint
+    color: FloatVectorProperty(name="Color", size=3, subtype="COLOR", default=(0.05, 0.05, 0.05), min=0.0, max=1.0,
+                               description="Add Smoke: the added smoke's color (with Color on). Tint: the color smoke takes")
+    use_color: BoolProperty(name="Color", default=False,
+                            description="Give the added smoke its own color (turns the color field on: about 1.4x the "
+                                        "simulation time and a third fewer blocks per GB)")
+    # Auto Detail
+    amount: FloatProperty(name="Amount", default=1.0, min=0.0, soft_max=2.0,
+                          description="How strong the detail is: 1 the tuned amount, 0 none")
+    scale: FloatProperty(name="Scale", default=1.0, min=0.5, max=4.0,
+                         description="Size of the swirls: 1 the finest the Resolution holds, 2 twice as large")
+    heat_boost: FloatProperty(name="Heat Boost", default=3.0, min=1.0, max=6.0,
+                              description="How much harder hot gas is stirred than warm gas (1: the same)")
+    breakup: FloatProperty(name="Breakup", default=0.5, min=0.0, max=1.0,
+                           description="Share of large swirls that break up the overall shape (0: fine detail only)")
+    # The sources' size when the modifier was added (not shown): sizes and
+    # Speed masks follow it. Stored, so a bake never depends on the frame
+    # the session starts at or on sources moving.
+    source_size: FloatProperty(name="Source Size", default=2.0, min=0.1, subtype="DISTANCE",
+                               description="Size of the sources Auto Detail was set up for")
     masks: CollectionProperty(type=FumarisFieldMask)
     masks_index: IntProperty(name="Active Mask", default=0)
     # Spawn Particles: the modifier's particles (particles.py).
@@ -170,18 +212,26 @@ def is_velocity(layer_type):
     return layer_type in VELOCITY_TYPES
 
 
+def motion_slots(layer_type):
+    """Motion layers a modifier of this type takes (Auto Detail: three)."""
+    return AUTO_DETAIL_LAYERS if layer_type == "DETAIL" else (1 if is_velocity(layer_type) else 0)
+
+
 def counts(props):
-    """Motion, smoke-and-heat and particle modifiers in the stack."""
-    velocity = sum(1 for layer in props.detail_layers if is_velocity(layer.layer_type))
+    """Motion layers, smoke-and-heat and particle modifiers in the stack."""
+    velocity = sum(motion_slots(layer.layer_type) for layer in props.detail_layers)
     spawn = sum(1 for layer in props.detail_layers if layer.layer_type == "PARTICLES")
-    return velocity, len(props.detail_layers) - velocity - spawn, spawn
+    shape = sum(1 for layer in props.detail_layers if layer.layer_type in SHAPE_TYPES)
+    return velocity, shape, spawn
 
 
 def can_add(props, layer_type):
     velocity, shape, spawn = counts(props)
     if layer_type == "PARTICLES":
         return spawn < PARTICLE_LAYER_LIMIT
-    return velocity < VELOCITY_LAYER_LIMIT if is_velocity(layer_type) else shape < SHAPE_LAYER_LIMIT
+    if is_velocity(layer_type):
+        return velocity + motion_slots(layer_type) <= VELOCITY_LAYER_LIMIT
+    return shape < SHAPE_LAYER_LIMIT
 
 
 def gate_masks():
@@ -189,6 +239,96 @@ def gate_masks():
     it (full at GATE_KELVIN)."""
     return [{"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]},
             {"field": "TEMPERATURE", "blend": "MAXIMUM", "range": [0.0, GATE_KELVIN], "values": [0.0, 1.0]}]
+
+
+def needs_color_field(props):
+    """An enabled Tint, or Add Smoke with its own color, needs the color field
+    (Per-Emitter Smoke Color's), so the session turns it on."""
+    for layer in getattr(props, "detail_layers", ()) or ():
+        if layer.enabled and (layer.layer_type == "TINT" or (layer.layer_type == "ADD_SMOKE" and layer.use_color)):
+            return True
+    return False
+
+
+def color_field_on(props):
+    """The color field is on: Per-Emitter Smoke Color, or a modifier that needs it."""
+    return bool(getattr(props, "color_mixing", False)) or needs_color_field(props)
+
+
+# --- Auto Detail -------------------------------------------------------------
+# The rule the bridge expands an Auto Detail modifier with (expandAutoDetail in
+# src/packet_readers.cpp, constants in packet_readers.h: keep both in step).
+# Convert to Layers writes these layers, and a bake of either is byte-identical.
+AUTO_FINE_CELLS = 4.0
+AUTO_BREAKUP_FINE = 2.0
+AUTO_BREAKUP_SOURCE = 0.5
+AUTO_STRENGTH = 160.0
+AUTO_SOURCE_FINE = 4.0
+AUTO_REFERENCE_SIZE = 0.25
+AUTO_GRAIN_SHARE = 0.6
+AUTO_GRAIN_STRENGTH = 30.0
+AUTO_GRAIN_REFERENCE = 0.15
+AUTO_SPEED = (1.2, 3.6)
+AUTO_SMOKE_GATE = 0.05
+AUTO_HEAT_FROM = 500.0
+
+def source_size(props):
+    """The largest dimension of the domain's sources (its emitter collection's
+    objects' world bounds), as Quick Setup sizes its layers; 2 without any."""
+    collection = getattr(props, "emitter_collection", None)
+    lo = [math.inf] * 3
+    hi = [-math.inf] * 3
+    for obj in (collection.all_objects if collection else ()):
+        if obj.type not in {"MESH", "EMPTY", "CURVE", "POINTCLOUD", "VOLUME"} or not obj.fumaris.participant_enabled:
+            continue
+        corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box] if obj.type != "EMPTY" else \
+            [obj.matrix_world.translation]
+        for corner in corners:
+            for axis in range(3):
+                lo[axis] = min(lo[axis], corner[axis])
+                hi[axis] = max(hi[axis], corner[axis])
+    if lo[0] == math.inf:
+        return 2.0
+    return max(0.1, max(h - l for l, h in zip(lo, hi)))
+
+
+def _f32(value):
+    return struct.unpack("f", struct.pack("f", value))[0]
+
+
+def auto_detail_layers(props, layer, resolution=None, size=None):
+    """The three layers (dicts for add_layer) an Auto Detail modifier stands for."""
+    resolution = max(1, int(props.resolution if resolution is None else resolution))
+    h = (32.0 if props.full_resolution_velocity else 64.0) / resolution
+    scale = min(100.0, max(0.01, _f32(layer.scale)))
+    source = max(0.1, _f32(layer.source_size if size is None else size))
+    amount, heat_boost, breakup = (_f32(v) for v in (layer.amount, layer.heat_boost, layer.breakup))
+    flame = _f32(float(getattr(props, "flame_temperature", 2000.0)))
+    fine = AUTO_FINE_CELLS * h * scale
+    big = max(AUTO_BREAKUP_FINE * fine, AUTO_BREAKUP_SOURCE * source * scale)
+    cover = min(1.0, source / (AUTO_SOURCE_FINE * fine))
+    fine_strength = amount * AUTO_STRENGTH * math.pow(fine / AUTO_REFERENCE_SIZE, -1.0 / 3.0) * cover
+    big_strength = breakup * fine_strength * math.pow(fine / big, 1.0 / 3.0)
+    grain = AUTO_GRAIN_SHARE * fine
+    grain_strength = amount * AUTO_GRAIN_STRENGTH * math.pow(grain / AUTO_GRAIN_REFERENCE, -1.0 / 3.0) * cover
+    root = math.sqrt(source)
+    speed = {"field": "SPEED", "blend": "MULTIPLY", "range": [AUTO_SPEED[0] * root, AUTO_SPEED[1] * root],
+             "values": [0.0, 1.0]}
+    gate = {"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, AUTO_SMOKE_GATE], "values": [0.0, 1.0]}
+    smoke = {"field": "SMOKE", "blend": "MULTIPLY", "range": [0.0, 1.0], "values": [0.0, 1.0]}
+    heat = {"field": "TEMPERATURE", "blend": "MULTIPLY", "range": [AUTO_HEAT_FROM, max(flame, AUTO_HEAT_FROM + 1.0)],
+            "values": [1.0 / max(1.0, heat_boost), 1.0]}
+    own = [{key: _plain(getattr(mask, key)) for key in _MASK_KEYS} for mask in layer.masks if mask.enabled]
+    own = own[:AUTO_DETAIL_MASKS]
+    common = {"speed": layer.speed}
+    return [
+        {"layer_type": "DISTURB", "strength": fine_strength, "size": fine, "detail": 2,
+         "masks": [speed, gate, heat] + own, **common},
+        {"layer_type": "DISTURB", "strength": big_strength, "size": big, "detail": 2, "masks": [gate, heat] + own,
+         **common},
+        {"layer_type": "GRAIN", "strength": grain_strength, "size": grain, "detail": 1, "masks": [smoke, speed] + own,
+         **common},
+    ]
 
 
 def default_masks(layer_type, flame_kelvin):
@@ -206,6 +346,10 @@ def default_masks(layer_type, flame_kelvin):
         return [{"field": "TEMPERATURE", "range": [0.0, 0.5 * flame_kelvin], "values": [2.0, 0.5]}]
     if layer_type == "COOLING":     # thin gas loses its heat faster
         return [{"field": "SMOKE", "range": [0.0, 1.0], "values": [2.0, 1.0]}]
+    if layer_type == "ADD_SMOKE":   # thicker where there is smoke (a neutral start: change the masks)
+        return [{"field": "SMOKE", "range": [0.0, 1.0], "values": [0.0, 1.0]}]
+    if layer_type == "TINT":        # the smoke where fire is burning takes the color
+        return [{"field": "BURN", "range": [0.0, 0.5], "values": [0.0, 1.0]}]
     return []
 
 
@@ -218,6 +362,8 @@ def add_layer(props, layer_type, masks=None, kind="TRACERS", **values):
     if layer_type == "PARTICLES":
         particles.init_spawn(props, layer, kind, masks=masks is None)
         masks = masks or []
+    if layer_type == "DETAIL" and "source_size" not in values:
+        layer.source_size = source_size(props)
     for key, value in values.items():
         if layer_type == "PARTICLES" and hasattr(layer.particles, key) and not hasattr(FumarisDetailLayer, key):
             setattr(layer.particles, key, value)
@@ -259,18 +405,39 @@ def export_layers(props):
         if not layer.enabled or layer.layer_type == "PARTICLES":
             continue
         masks = export_masks(layer)
-        layers.append({
+        if layer.layer_type == "DETAIL":
+            layers.append({
+                "type": "detail",
+                "amount": float(layer.amount),
+                "scale": float(layer.scale),
+                "heat_boost": float(layer.heat_boost),
+                "breakup": float(layer.breakup),
+                "source_size": float(layer.source_size),
+                "speed": float(layer.speed),
+                "masks": masks[:AUTO_DETAIL_MASKS],
+            })
+            continue
+        entry = {
             "type": _LAYER[layer.layer_type][4],
             "strength": float(layer.strength),
             "size": float(layer.size),
             "octaves": int(min(layer.detail, 3 if layer.layer_type == "GRAIN" else 6)),
             "speed": float(layer.speed),
             "masks": masks,
-        })
+        }
+        if layer.layer_type in {"ADD_SMOKE", "TINT"}:
+            entry["color"] = [float(c) for c in layer.color]
+            if layer.layer_type == "ADD_SMOKE":
+                entry["use_color"] = bool(layer.use_color)
+        layers.append(entry)
     return layers
 
 
 _LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail", "speed")
+# Settings only some types have (kept out of the others' entries, so stacks
+# saved before these types compare and load as before).
+_TYPE_KEYS = {"ADD_SMOKE": ("color", "use_color"), "TINT": ("color",),
+              "DETAIL": ("amount", "scale", "heat_boost", "breakup", "source_size")}
 _MASK_KEYS = ("enabled", "field", "blend", "range", "values", "noise_size")
 _SPAWN_KEYS = ("uid", "kind", "spawn_smoke", "spawn_objects", "rate", "spawn_jitter", "source_mode", "source_rate",
                "source_speed", "source_inherit", "mask_objects", "drag", "gravity", "effectors", "lifetime", "lifetime_random",
@@ -291,7 +458,7 @@ def _spawn_dict(spawn):
 def to_list(props):
     """Every layer, enabled or not, for presets and takes (a Spawn Particles
     modifier with its particle settings; a source collection by name)."""
-    return [{**{key: _plain(getattr(layer, key)) for key in _LAYER_KEYS},
+    return [{**{key: _plain(getattr(layer, key)) for key in _LAYER_KEYS + _TYPE_KEYS.get(layer.layer_type, ())},
              "masks": [{key: _plain(getattr(mask, key)) for key in _MASK_KEYS} for mask in layer.masks],
              **({"particles": _spawn_dict(layer.particles)} if layer.layer_type == "PARTICLES" else {})}
             for layer in props.detail_layers]
@@ -303,7 +470,7 @@ def from_list(props, layers):
         if entry.get("layer_type") not in _LAYER:
             continue
         layer = props.detail_layers.add()
-        for key in _LAYER_KEYS:
+        for key in _LAYER_KEYS + _TYPE_KEYS.get(entry.get("layer_type"), ()):
             if key in entry:
                 setattr(layer, key, entry[key])
         spawn = entry.get("particles")
@@ -366,9 +533,9 @@ class FUMARIS_OT_detail_layer_add(Operator):
             return {"CANCELLED"}
         props = domain.fumaris
         if not can_add(props, self.layer_type):
-            self.report({"WARNING"}, f"At most {VELOCITY_LAYER_LIMIT} motion modifiers (Disturb, Grain, Shred, "
-                                     f"Vorticity), {SHAPE_LAYER_LIMIT} smoke and heat modifiers and "
-                                     f"{PARTICLE_LAYER_LIMIT} Spawn Particles")
+            self.report({"WARNING"}, f"At most {VELOCITY_LAYER_LIMIT} motion layers (Disturb, Grain, Shred, "
+                                     f"Vorticity; Auto Detail counts as {AUTO_DETAIL_LAYERS}), {SHAPE_LAYER_LIMIT} "
+                                     f"smoke and heat modifiers and {PARTICLE_LAYER_LIMIT} Spawn Particles")
             return {"CANCELLED"}
         add_layer(props, self.layer_type, kind=self.kind)
         props.detail_layers_index = len(props.detail_layers) - 1
@@ -436,11 +603,39 @@ class FUMARIS_OT_field_mask_add(Operator):
         layer = _active_layer(context, self.domain_name)
         if layer is None:
             return {"CANCELLED"}
-        if len(layer.masks) >= MASKS_PER_LAYER:
-            self.report({"WARNING"}, f"At most {MASKS_PER_LAYER} masks per modifier")
+        limit = AUTO_DETAIL_MASKS if layer.layer_type == "DETAIL" else MASKS_PER_LAYER
+        if len(layer.masks) >= limit:
+            self.report({"WARNING"}, f"At most {limit} masks on this modifier")
             return {"CANCELLED"}
         add_mask(layer)
         layer.masks_index = len(layer.masks) - 1
+        return {"FINISHED"}
+
+
+class FUMARIS_OT_detail_convert(Operator):
+    bl_idname = "fumaris.detail_convert"
+    bl_label = "Convert to Layers"
+    bl_description = ("Replace Auto Detail with the Disturb, Disturb and Grain layers it stands for, to tune "
+                      "them by hand (the result is the same)")
+    bl_options = {"REGISTER", "UNDO"}
+
+    domain_name: StringProperty(options={"HIDDEN", "SKIP_SAVE"})
+
+    def execute(self, context):
+        domain = _domain(context, self.domain_name)
+        layer = _active_layer(context, self.domain_name)
+        if domain is None or layer is None or layer.layer_type != "DETAIL":
+            return {"CANCELLED"}
+        props = domain.fumaris
+        index = props.detail_layers_index
+        enabled = layer.enabled
+        parts = auto_detail_layers(props, layer)
+        props.detail_layers.remove(index)
+        for offset, part in enumerate(parts):
+            values = {key: value for key, value in part.items() if key not in ("layer_type", "masks")}
+            add_layer(props, part["layer_type"], masks=part["masks"], enabled=enabled, **values)
+            props.detail_layers.move(len(props.detail_layers) - 1, index + offset)
+        props.detail_layers_index = index
         return {"FINISHED"}
 
 
@@ -542,6 +737,10 @@ class FUMARIS_UL_detail_layers(UIList):
                 text += (" " if narrow else "  ") + gap.join(parts)
             if item.particles.kind == "EMBERS":
                 icon = "LIGHT_SUN"
+        elif item.layer_type == "DETAIL":
+            text += f" {item.amount:g}" if narrow else f"  {item.amount:g}"
+            if item.scale != 1.0:
+                text += f"{gap}×{item.scale:g}"
         else:
             if item.layer_type not in SCALE_TYPES:
                 text += f" {item.strength:g}" if narrow else f"  {item.strength:g}"
@@ -609,6 +808,28 @@ def draw(layout, domain):
         row.prop(layer, "speed")
     elif kind in {"SHRED", "SOOT_BURN"}:
         box.prop(layer, "strength", text="Rate" if kind == "SOOT_BURN" else "Strength")
+    elif kind == "DETAIL":
+        row = box.column(align=True) if _narrow() else box.row(align=True)
+        row.prop(layer, "amount")
+        row.prop(layer, "scale")
+        row = box.column(align=True) if _narrow() else box.row(align=True)
+        row.prop(layer, "heat_boost")
+        row.prop(layer, "breakup")
+        box.operator("fumaris.detail_convert", icon="MODIFIER").domain_name = domain.name
+    elif kind in {"ADD_SMOKE", "TINT"}:
+        box.prop(layer, "strength", text="Rate")
+        row = box.row(align=True)
+        if kind == "ADD_SMOKE":
+            row.prop(layer, "use_color", text="Color")
+            sub = row.row(align=True)
+            sub.active = layer.use_color
+            sub.prop(layer, "color", text="")
+        else:
+            row.prop(layer, "color")
+        if (kind == "TINT" or layer.use_color) and not props.color_mixing:
+            from . import ui
+            ui._wrapped(layout, "Turns the color field on: about 1.4x the simulation time, a third fewer "
+                                "blocks per GB", "INFO")
     elif kind == "PARTICLES":
         particles.draw_modifier(box, layer, domain)
     else:
@@ -637,6 +858,7 @@ def _draw_masks(layout, layer, domain):
     down.direction, down.domain_name = "DOWN", domain.name
     if not len(layer.masks):
         text = ("No masks: spawns evenly in all smoke" if spawn else
+                "No masks: detail wherever smoke moves" if kind == "DETAIL" else
                 "No masks: this modifier changes nothing" if kind in SCALE_TYPES else
                 "No masks: this modifier acts everywhere")
         layout.label(text=text, icon="INFO")
@@ -672,6 +894,7 @@ PROPERTY_CLASSES = (FumarisFieldMask, *particles.PROPERTY_CLASSES, FumarisDetail
 CLASSES = (
     FUMARIS_MT_modifier_add,
     FUMARIS_OT_detail_layer_add, FUMARIS_OT_detail_layer_remove, FUMARIS_OT_detail_layer_move,
+    FUMARIS_OT_detail_convert,
     FUMARIS_OT_field_mask_add, FUMARIS_OT_field_mask_remove, FUMARIS_OT_field_mask_move,
     FUMARIS_UL_detail_layers, FUMARIS_UL_field_masks,
 )

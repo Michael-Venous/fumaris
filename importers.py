@@ -278,6 +278,11 @@ def _socket(sockets, *names):
     raise KeyError(f"Missing node socket: {', '.join(names)}")
 
 
+def _needs_color_field(settings):
+    from .detail_stack import needs_color_field   # (bpy-only module: imported where used)
+    return needs_color_field(settings)
+
+
 def _appearance_value(settings, name, default):
     return getattr(settings, name, default) if settings is not None else default
 
@@ -442,7 +447,9 @@ def control_values(settings):
         "Smoke Color": smoke_color,
         "Smoke Density": max(0.0, float(_appearance_value(settings, "shader_smoke_density", 2.0))),
         "Anisotropy": max(-0.999999, min(0.999999, float(_appearance_value(settings, "shader_anisotropy", 0.3)))),
-        "Per-Emitter Color": bool(_appearance_value(settings, "color_mixing", False)),
+        # The color field: Per-Emitter Smoke Color or a Tint / colored Add Smoke.
+        "Per-Emitter Color": bool(_appearance_value(settings, "color_mixing", False))
+        or (settings is not None and _needs_color_field(settings)),
         "Hot Soot": max(0.0, min(1.0, float(_appearance_value(settings, "shader_hot_soot", 1.0)))),
         "Hot Smoke Density": max(0.0, float(_appearance_value(settings, "shader_hot_density", 1.0))),
         "Hot Smoke From": max(0.0, float(_appearance_value(settings, "shader_hot_density_from", 500.0))),

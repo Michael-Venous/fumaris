@@ -186,7 +186,7 @@ def full_resolution_forced(domain_props):
     # Colour Mixing's attribute field shares the density level's layout.
     # (Full-Resolution Channels no longer does: smoke alone stays one channel,
     # Flow's velocity level reads the density level without its channel code.)
-    return bool(getattr(domain_props, "color_mixing", False))
+    return detail_stack.color_field_on(domain_props)
 
 
 def fire_at_full_resolution(domain_props):
@@ -251,7 +251,7 @@ def session_structure_signature(domain):
         bool(getattr(props, "simulation_memory_auto", False)),
         bool(getattr(props, "full_resolution_velocity", False)),
         # An already four-channel session still needs a separate attribute pool.
-        bool(getattr(props, "color_mixing", False)),
+        detail_stack.color_field_on(props),
         bool(getattr(props, "advection_reflection", False)),
         bool(props.follow_object),
         sim_start,
@@ -453,7 +453,8 @@ def _domain_state(props, resolution_scale=1.0):
         "adaptive_sub_steps": props.adaptive_cfl > 0.0,
         "adaptive_cfl": props.adaptive_cfl,
         "full_resolution_velocity": props.full_resolution_velocity,
-        "color_mixing": bool(getattr(props, "color_mixing", False)),
+        # Per-Emitter Smoke Color, or a Tint / colored Add Smoke modifier.
+        "color_mixing": detail_stack.color_field_on(props),
         "simulation_memory_mb": simulation_memory_mb(props),
         "simulation_memory_auto": bool(getattr(props, "simulation_memory_auto", False)),
         "simulation_memory_auto_reserve": AUTO_RESERVE_SHARE,

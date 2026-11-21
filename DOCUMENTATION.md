@@ -651,18 +651,37 @@ simulation: detail, per-cell rates and particles. A domain needs none; Quick
 Setups fill it with what suits them (the Explosion: a fine Disturb and Grain).
 Add with `+`, a menu grouped by purpose:
 
-- Detail: `Disturb`, `Grain`, `Shred`.
+- Detail: `Auto Detail`, `Disturb`, `Grain`, `Shred`.
 - Rates: `Vorticity`, `Dissipation`, `Cooling`, `Soot Burn-off`.
+- Smoke: `Add Smoke`, `Tint`.
 - Particles: `Spawn Tracers`, `Spawn Embers` (a `Spawn Particles` modifier).
 
 Reorder with the arrows (motion modifiers apply in that order); the checkbox
 turns one off; `-` removes it. Below the list are the selected modifier's
-settings and its masks. At most 8 motion modifiers (Disturb, Grain, Shred,
-Vorticity), 4 smoke and heat ones (Dissipation, Cooling, Soot Burn-off) and
-4 Spawn Particles.
+settings and its masks. At most 8 motion layers (Disturb, Grain, Shred,
+Vorticity; Auto Detail counts as 3), 4 smoke and heat modifiers
+(Dissipation, Cooling, Soot Burn-off, Add Smoke, Tint) and 4 Spawn
+Particles.
 
 #### Detail
 
+- `Auto Detail`: detail in one modifier. It stands for three layers it sizes
+  itself: fine swirls four motion cells across (the finest the Resolution
+  holds well, so they never fall under the two-cell limit below), larger
+  swirls that break up the overall shape, and Grain on fast fronts. Hot gas
+  is stirred harder than warm gas, and only smoke that moves at about the
+  sources' own speed gets the fine detail, so slow smoke stays calm. Four
+  settings: `Amount` (1 is the tuned strength, 0 none), `Scale` (2 makes
+  every swirl twice as large), `Heat Boost` (how much harder gas at Flame
+  Temperature is stirred than gas at 500 K) and `Breakup` (the large swirls'
+  share; 0 keeps only fine detail). Up to three masks of your own apply to
+  all three layers. Because its sizes follow the Resolution, a bake at a
+  higher Resolution gets finer swirls, not just sharper ones; at a
+  Resolution so low that the finest swirls would be larger than a quarter of
+  the sources, it is weaker, so it does not reshape the whole plume; the sizes also
+  follow the size of the domain's sources when you add it. `Convert to Layers`
+  replaces it with the three Disturb, Disturb and Grain layers it stands for
+  (the bake is the same), to tune them by hand.
 - `Disturb`: swirling pushes of a set `Size` (scene units), with `Detail`
   adding smaller swirls, each half the size. Strength
   is an acceleration: about 50 is subtle, 300 strong on a fireball a few
@@ -698,6 +717,42 @@ These scale a rate per cell, by their masks:
   smoke that fades faster.
 - `Soot Burn-off` thins smoke at its rate per second where the masks allow
   (by default where gas is hot and air is left), as soot oxidises.
+
+#### Smoke
+
+Two general tools: they act where their masks say and nothing else.
+
+- `Add Smoke` adds smoke at `Rate` (smoke per second) where its masks allow.
+  It changes nothing else: no heat, fuel or burning, and the smoke that fire
+  makes (Smoke Amount) is unchanged. With `Color` on, the added smoke has its
+  own color. It starts with a Smoke mask (thicker where there is smoke);
+  change the masks to put it anywhere.
+- `Tint` recolors the smoke toward `Color` at `Rate` per second where its
+  masks allow, without changing how much smoke there is (Rate 4 is most of
+  the way within a quarter of a second). It starts with a Burn mask: the
+  smoke fire makes takes this color, for example dark smoke from the fire
+  beside light-colored dust.
+
+Both use the color field of Per-Emitter Smoke Color, and turn it on for the
+domain while they are on (Add Smoke only with `Color`): about 1.4x the
+simulation time and a third fewer blocks for the same VRAM. Masks read the
+fields after each step; a colored Add Smoke adds its color as the smoke it
+adds.
+
+#### Seeing fire through smoke
+
+Dense smoke in front of fire hides it. Three ways to open it up, from the
+cheapest:
+
+- In the Look (no new bake): lower `Hot Soot` so hot smoke renders lighter,
+  and keep `Thin Gas` low so the fire glows in the thin seams between darker
+  cells (the Pyro look).
+- A `Soot Burn-off` modifier with only a Temperature mask (remove its Air
+  Left mask): smoke thins where the gas is hot, so the fire shows through. Add
+  a Noise mask to thin it in pockets instead of evenly.
+- A `Dissipation` modifier scales the domain's `Dissipation` by its masks
+  (for example faster where hot). It does nothing while the domain's
+  Dissipation is 0, as in the fire Quick Setups.
 
 #### Masks
 
@@ -878,7 +933,9 @@ colors all of its smoke at no cost. With the option on and every emitter the
 same Smoke Color, the domain's Look says so: the option changes nothing until
 the emitters have different colors. Mesh, box, sphere, Collection Points,
 Collection Mesh, particle and OpenVDB sources all carry a color (one per
-emitter, or per particle system).
+emitter, or per particle system). The Tint and Add Smoke modifiers (Modifiers,
+Smoke) use the same field: while one of them is on it turns the field on
+for its domain, with the same cost.
 
 ## Emitters
 
@@ -1440,7 +1497,7 @@ do not replace Blender's normal Spacebar behavior.
 ### Quick Setup
 
 With Role set to **None**, click **Quick Setup…** in Physics → Fumaris, or choose it from the 3D Viewport's
-Add menu. **Rising Smoke**, **Steady Fire**, **Explosion**, **Ground Fog** and
+Add menu. **Rising Smoke**, **Steady Fire**, **Explosion**, **Dust Explosion**, **Ground Fog** and
 **Chimney Smoke** create a complete starting setup. Choose **Selected Objects** for unassigned mesh sources, or
 **New Source** to create an icosphere at the 3D cursor (for Steady Fire, a fuel bed
 standing on it). Existing participants are
@@ -1484,6 +1541,19 @@ moves at about blast speed, crisping the young fireball with a crust of cells
 while the late smoke stays calm. Disturb sizes, the Speed masks, Air Margin and Cooling Time follow the size of the
 sources, so a larger explosion keeps the same look at the same number of
 voxels across it.
+Dust Explosion is a ground burst: a column of sand-colored dust, thrown up
+and out by a hidden ring source on the ground around the source (**Dust**,
+for its first second), with a brief fire inside it: the Explosion's clumps,
+half as many, slower and with a quarter of the fuel, flash and are gone in
+about a second. The smoke is two-tone through Per-Emitter Smoke Color (on,
+with its cost): the dust is sand, and a **Tint** modifier turns the smoke
+where fire is burning near black, so the fire's smoke stays dark where it
+meets the dust (change either color on the Dust emitter and on the Tint).
+The Look's Smoke Color is near white, so the emitters' colors show as set,
+and its Smoke Density is lower than the fire setups' (a dust cloud is
+thinner than soot). Detail comes from **Auto Detail** (soft billows), and
+the smoke is a little heavier than air (Smoke Buoyancy), so the dust skirt
+stays low while the hot core rises.
 Ground Fog emits cold smoke that is heavier than air, and adds a collider floor
 just under the source for it to spread over. Chimney Smoke blows warm smoke
 straight up at 4 m/s.

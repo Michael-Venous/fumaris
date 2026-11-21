@@ -936,6 +936,9 @@ def _draw_emitter_colors(layout, props):
     """Show advice when the enabled option makes no visible difference."""
     layout.prop(props, "color_mixing")
     if not props.color_mixing:
+        from .detail_stack import needs_color_field
+        if needs_color_field(props):
+            layout.label(text="On for a Tint or Add Smoke modifier", icon="INFO")
         return
     note = _emitter_color_note(props)
     if note:

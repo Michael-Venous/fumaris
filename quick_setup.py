@@ -219,6 +219,54 @@ PRESETS = {
         "ground": True,
         "duration": 120,
     },
+    # A ground burst (reel plan 7.2, 2026-11-21; tuned in
+    # notes/experiments/reel-research-2026-11-21, runs s1_dust_a-l): a brief,
+    # compact fire inside a column of dust thrown up and out by a smoke-only
+    # "Dust" ring, as a dirt charge throws a thick brown-beige plume that rises
+    # and spreads at the ground. The Explosion's clumps, fewer and slower and
+    # with a quarter of the fuel, so the fire flashes and is gone in about a
+    # second. Two-tone smoke through the color field (Per-Emitter Smoke
+    # Color): the dust is sand, and a Tint turns the smoke where fire is
+    # burning near black (without it that smoke took the dust's color and the
+    # cloud was one grey-brown); less soot per fuel (Smoke Amount 0.8) so the
+    # dust dominates. The Look's Smoke Color is near white (the color grid
+    # carries the colors) and its Smoke Density lower than the fire presets'
+    # (1.5): a dust cloud is thinner than soot, and at 4.5 it rendered as a
+    # dark grey mass. Auto Detail instead of the Explosion's fine Disturb and
+    # Grain: soft billows instead of shards. Smoke a little heavier than air
+    # (-0.05; -0.15 and below grew falling fingers). The color field costs
+    # about 1.4x the simulation time and a third fewer blocks per GB.
+    "DUST": {
+        "name": "Dust Explosion",
+        "description": "A ground burst: a brief fireball in a rising column of sand-colored dust and dark smoke",
+        "domain": {"shader_flame_enabled": True, "buoyancy_per_temp": 0.5, "smoke_per_burn": 0.8,
+                   "oxygen_limit": 0.0, "burn_time": 0.5, "simulation_speed": 0.75,
+                   "shader_look": "PYRO", "pyro_brightness": 0.2,
+                   "pyro_temperature_multiplier": 0.8, "pyro_scatter_glow": 2.0,
+                   "shader_hot_density": 10.0, **_PYRO_FIRE,
+                   "shader_smoke_color": (0.9, 0.9, 0.9), "shader_smoke_density": 1.5, "shader_hot_soot": 0.25,
+                   "color_mixing": True, "buoyancy_per_smoke": -0.05},
+        "domain_per_size": {"air_margin": 0.25},
+        "domain_per_root_size": {"cooling_time": 1.6 / math.sqrt(2.0)},
+        "clumps": {"count": 24, "clump_size": 0.45, "speed_per_root_size": 6.0, "drag": 2.5,
+                   "fuel": 4.0, "expansion": 14.0, "lift": 0.05, "upward_spread": 0.35,
+                   "fuel_low": 0.15, "fuel_high": 3.0, "long_burn": 0.1, "long_burn_seconds": 1.5},
+        "emitter": {"emitter_smoke": 0.3, "emitter_temperature": 1.0,
+                    "couple_rate_temperature": 60.0, "source_op_temperature": "max",
+                    "source_op_smoke": "max", "source_op_fuel": "max",
+                    "couple_rate_smoke": 10.0, "couple_rate_fuel": 10.0,
+                    "emitter_fuel": 2.0, "normal_velocity": 1.0, "emitter_divergence": 14.0,
+                    "velocity": (0.0, 0.0, 0.0), "emitter_color": (0.05, 0.045, 0.04)},
+        # The dust: a ring on the ground around the source (radius 0.8 source
+        # sizes, tube 0.35) blowing smoke out and up for a second; speeds grow
+        # with the square root of the size, as the blast's do.
+        "dust": {"radius": 0.8, "tube": 0.35, "frames": 24, "smoke": 12.0, "expansion": 4.0,
+                 "normal_velocity_per_root_size": 3.5, "up_per_root_size": 4.0, "color": (0.75, 0.64, 0.5)},
+        "layers": [{"type": "DETAIL"}, {"type": "TINT", "strength": 6.0, "color": (0.04, 0.035, 0.03)}],
+        "burst_frames": 14,
+        "ground": True,
+        "duration": 120,
+    },
     "FOG": {
         "name": "Ground Fog",
         "description": "Cold, heavy fog that spills out and creeps along the ground",
@@ -421,6 +469,58 @@ def _new_clumps(collection, name, minimum, maximum, start_frame, preset):
     return obj
 
 
+def _new_dust(collection, name, minimum, maximum, start_frame, dust):
+    """A ground burst's dust: a smoke-only ring on the ground around the sources
+    (a torus, radius and tube relative to their size) that blows sand-colored
+    smoke outward and upward over its burst frames."""
+    size = max(0.1, max(maximum - minimum))
+    centre = (minimum + maximum) * 0.5
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    try:
+        major, minor = dust["radius"] * size, dust["tube"] * size
+        rings, sides = 48, 12
+        verts = []
+        for i in range(rings):
+            u = 2.0 * math.pi * i / rings
+            for j in range(sides):
+                v = 2.0 * math.pi * j / sides
+                r = major + minor * math.cos(v)
+                verts.append(bm.verts.new((r * math.cos(u), r * math.sin(u), minor * math.sin(v))))
+        for i in range(rings):
+            for j in range(sides):
+                a = verts[i * sides + j]
+                b = verts[((i + 1) % rings) * sides + j]
+                c = verts[((i + 1) % rings) * sides + (j + 1) % sides]
+                d = verts[i * sides + (j + 1) % sides]
+                bm.faces.new((a, b, c, d))
+        bm.normal_update()
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    collection.objects.link(obj)
+    obj.location = (centre.x, centre.y, minimum.z + dust["tube"] * size)
+    obj.hide_render = True
+    props = obj.fumaris
+    props.smoke_object_type = "emitter"
+    props.participant_type = "mesh"
+    _apply_settings(props, {"emitter_smoke": dust["smoke"], "emitter_temperature": 0.0, "emitter_fuel": 0.0,
+                            "emitter_divergence": dust["expansion"], "emitter_color": dust["color"],
+                            "normal_velocity": dust["normal_velocity_per_root_size"] * math.sqrt(size)})
+    if dust.get("up_per_root_size"):
+        # blown upward too, as a dirt charge throws its dust (the speed grows as the blast's)
+        _apply_settings(props, {"velocity": (0.0, 0.0, dust["up_per_root_size"] * math.sqrt(size)),
+                                "couple_rate_velocity": dust.get("couple_rate_velocity", 8.0)})
+    end = start_frame + dust["frames"] - 1
+    props.participant_enabled = True
+    props.keyframe_insert("participant_enabled", frame=end)
+    props.participant_enabled = False
+    props.keyframe_insert("participant_enabled", frame=end + 1)
+    props.participant_enabled = bpy.context.scene.frame_current <= end
+    return obj
+
+
 def _fps():
     scene = bpy.context.scene
     return scene.render.fps / scene.render.fps_base if scene else 24.0
@@ -579,7 +679,7 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
     )
     debris: bpy.props.BoolProperty(
         name="Debris Trails",
-        description="Explosion only: throw a few dozen particles out of the blast that leave hot, smoky trails",
+        description="Explosion and Dust Explosion: throw a few dozen particles out of the blast that leave hot, smoky trails",
         default=False,
     )
 
@@ -607,7 +707,7 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
                 layout.label(text=error, icon="ERROR")
             else:
                 layout.label(text=f"{len(context.selected_objects)} selected mesh source(s)", icon="MESH_DATA")
-        if self.preset == "EXPLOSION":
+        if self.preset in {"EXPLOSION", "DUST"}:
             layout.prop(self, "debris")
         layout.label(text="Creates a simulation empty and its collections under Fumaris", icon="MOD_FLUID")
 
@@ -657,8 +757,10 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
                                    size=max(0.02, grain["size_per_size"] * size))
         for layer in preset.get("layers", ()):
             # Other layers (Shred, Vorticity, Cooling...): strength and masks as given.
-            detail_stack.add_layer(props, layer["type"], masks=_masks(layer.get("masks"), basis),
-                                   **{key: value for key, value in layer.items() if key not in ("type", "masks")})
+            values = {key: value for key, value in layer.items() if key not in ("type", "masks")}
+            if layer["type"] == "DETAIL":
+                values.setdefault("source_size", basis)   # (the collections are linked below)
+            detail_stack.add_layer(props, layer["type"], masks=_masks(layer.get("masks"), basis), **values)
         for role, collection in collections.items():
             setattr(props, f"{role}_collection", collection)
         for source in sources:
@@ -668,7 +770,9 @@ class FUMARIS_OT_quick_setup(bpy.types.Operator):
                         preset.get("ground_drop", 0.0), root)
         if preset.get("clumps"):
             _new_clumps(collections["emitter"], f"{name} Clumps", minimum, maximum, props.sim_start_frame, preset)
-        if self.debris and self.preset == "EXPLOSION":
+        if preset.get("dust"):
+            _new_dust(collections["emitter"], f"{name} Dust", minimum, maximum, props.sim_start_frame, preset["dust"])
+        if self.debris and self.preset in {"EXPLOSION", "DUST"}:
             _new_debris(collections["emitter"], f"{name} Debris", minimum, maximum, props.sim_start_frame)
         for obj in context.selected_objects:
             obj.select_set(False)

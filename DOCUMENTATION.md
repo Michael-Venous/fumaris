@@ -673,8 +673,9 @@ Particles.
   sources' own speed gets the fine detail, so slow smoke stays calm. Four
   settings: `Amount` (1 is the tuned strength, 0 none), `Scale` (2 makes
   every swirl twice as large), `Heat Boost` (how much harder gas at Flame
-  Temperature is stirred than gas at 500 K) and `Breakup` (the large swirls'
-  share; 0 keeps only fine detail). Up to three masks of your own apply to
+  Temperature is stirred than gas at 500 K; for smoke that is only warm, as
+  from a chimney, set it to 1 for full strength) and `Breakup` (the large
+  swirls' share; 0 keeps only fine detail). Up to three masks of your own apply to
   all three layers. Because its sizes follow the Resolution, a bake at a
   higher Resolution gets finer swirls, not just sharper ones; at a
   Resolution so low that the finest swirls would be larger than a quarter of

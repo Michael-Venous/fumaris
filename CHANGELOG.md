@@ -4,6 +4,7 @@ All notable customer-facing changes are recorded here.
 
 ## Unreleased
 
+- Added: Disturb and Grain have a Speed: how fast their noise changes over time (1 as before, 0.5 calmer and more coherent, 2 churning, 0 frozen). Existing scenes bake as before.
 - Changed: interface pass. Versions is the first section, above Simulate, and is also in the sidebar; All domains is a compact toggle at the right of its header. Save Playblast left Versions; it is in the menu beside Bake and in the Timeline header's Fumaris popover. The sidebar has the same Bake menu, which there also holds Cache Preview and Preview While Baking. Cache Preview and Preview While Baking sit side by side, and the Auto VRAM note is one line under VRAM. Participants, in the Properties panel and the sidebar (formerly Objects), folds each category open to its objects, indented under it; categories with none show no arrow. The info lines under Full-Resolution Channels and in Advanced are gone (the tooltips say it), and tooltips are now one or two short sentences.
 - Fixed: the eye in the sidebar's Domains list shifted right on the selected domain.
 - Added: Save Playblast in the Timeline header's Fumaris popover records the chosen domain from the largest 3D viewport.

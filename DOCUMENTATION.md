@@ -667,9 +667,15 @@ Vorticity), 4 smoke and heat ones (Dissipation, Cooling, Soot Burn-off) and
   adding smaller swirls, each half the size. Strength
   is an acceleration: about 50 is subtle, 300 strong on a fireball a few
   metres across. Stack a large and a fine Disturb for detail at two scales.
+  The swirls are a smooth noise fixed in space that slowly changes: a new
+  pattern every 0.25 s of simulated time, blended in (smaller swirls change
+  faster).
 - `Grain`: small random kicks, one direction per block of `Size`, renewed
   every frame: the gritty breakup of fast fronts. `Layers` adds blocks three
   times larger (up to 3).
+- `Speed` (Disturb and Grain) sets how fast the noise changes: 1 is the
+  default, 0.5 changes half as fast (Grain holds each pattern two frames) for
+  calmer, more coherent motion, 2 twice as fast for churning, 0 freezes it.
 - `Shred`: stretches the flow across steep temperature changes, tearing flame
   edges into strands.
 

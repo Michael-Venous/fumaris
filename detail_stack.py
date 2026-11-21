@@ -152,6 +152,8 @@ class FumarisDetailLayer(PropertyGroup):
     detail: IntProperty(name="Detail", default=1, min=1, max=6,
                         description="Disturb: adds smaller swirls, each half the size. Grain: layers, each "
                                     "three times the block size (up to 3). 1 = one size")
+    speed: FloatProperty(name="Speed", default=1.0, min=0.0, soft_max=4.0,
+                         description="How fast the noise changes over time: 1 is the default, 0 freezes it, 2 changes twice as fast")
     masks: CollectionProperty(type=FumarisFieldMask)
     masks_index: IntProperty(name="Active Mask", default=0)
     # Spawn Particles: the modifier's particles (particles.py).
@@ -262,12 +264,13 @@ def export_layers(props):
             "strength": float(layer.strength),
             "size": float(layer.size),
             "octaves": int(min(layer.detail, 3 if layer.layer_type == "GRAIN" else 6)),
+            "speed": float(layer.speed),
             "masks": masks,
         })
     return layers
 
 
-_LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail")
+_LAYER_KEYS = ("enabled", "layer_type", "strength", "size", "detail", "speed")
 _MASK_KEYS = ("enabled", "field", "blend", "range", "values", "noise_size")
 _SPAWN_KEYS = ("uid", "kind", "spawn_smoke", "spawn_objects", "rate", "spawn_jitter", "source_mode", "source_rate",
                "source_speed", "source_inherit", "mask_objects", "drag", "gravity", "effectors", "lifetime", "lifetime_random",
@@ -601,7 +604,9 @@ def draw(layout, domain):
         row = box.column(align=True) if _narrow() else box.row(align=True)
         row.prop(layer, "strength")
         row.prop(layer, "size")
-        box.prop(layer, "detail", text="Detail" if kind == "DISTURB" else "Layers")
+        row = box.column(align=True) if _narrow() else box.row(align=True)
+        row.prop(layer, "detail", text="Detail" if kind == "DISTURB" else "Layers")
+        row.prop(layer, "speed")
     elif kind in {"SHRED", "SOOT_BURN"}:
         box.prop(layer, "strength", text="Rate" if kind == "SOOT_BURN" else "Strength")
     elif kind == "PARTICLES":
